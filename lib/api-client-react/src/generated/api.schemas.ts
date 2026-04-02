@@ -235,6 +235,10 @@ export interface Document {
   source_trace: SourceTraceEntry[];
   /** @nullable */
   content?: string | null;
+  /** @nullable */
+  gdoc_id?: string | null;
+  /** @nullable */
+  gdoc_url?: string | null;
 }
 
 export interface UpdateDocumentBody {
@@ -244,6 +248,33 @@ export interface UpdateDocumentBody {
   lifecycle_status?: string;
   review_state?: string;
   version?: number;
+}
+
+export interface GdocsExportResult {
+  gdoc_url: string;
+  gdoc_id: string;
+  document_id: string;
+  status: string;
+}
+
+export interface GdocsImportResult {
+  document_id: string;
+  status: string;
+  content_length?: number;
+}
+
+export interface GdocsStatus {
+  linked: boolean;
+  accessible?: boolean;
+  document_id: string;
+  /** @nullable */
+  gdoc_id?: string | null;
+  /** @nullable */
+  gdoc_url?: string | null;
+  /** @nullable */
+  gdoc_name?: string | null;
+  /** @nullable */
+  gdoc_modified?: string | null;
 }
 
 export interface PropagationResult {

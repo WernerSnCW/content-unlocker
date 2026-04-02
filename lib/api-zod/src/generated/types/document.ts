@@ -34,4 +34,8 @@ export interface Document {
   source_trace: SourceTraceEntry[];
   /** @nullable */
   content?: string | null;
+  /** @nullable */
+  gdoc_id?: string | null;
+  /** @nullable */
+  gdoc_url?: string | null;
 }

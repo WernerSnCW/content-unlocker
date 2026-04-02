@@ -325,6 +325,8 @@ export const ListDocumentsResponseItem = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
 });
 export const ListDocumentsResponse = zod.array(ListDocumentsResponseItem);
 
@@ -365,6 +367,8 @@ export const GetDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
 });
 
 /**
@@ -413,6 +417,8 @@ export const UpdateDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
 });
 
 /**
@@ -461,10 +467,56 @@ export const GetPropagationStatusResponseItem = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
 });
 export const GetPropagationStatusResponse = zod.array(
   GetPropagationStatusResponseItem,
 );
+
+/**
+ * @summary Export document content to a new Google Doc (or return existing link)
+ */
+export const ExportToGoogleDocsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ExportToGoogleDocsResponse = zod.object({
+  gdoc_url: zod.string(),
+  gdoc_id: zod.string(),
+  document_id: zod.string(),
+  status: zod.string(),
+});
+
+/**
+ * @summary Pull latest content from linked Google Doc back into the registry
+ */
+export const ImportFromGoogleDocsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ImportFromGoogleDocsResponse = zod.object({
+  document_id: zod.string(),
+  status: zod.string(),
+  content_length: zod.number().optional(),
+});
+
+/**
+ * @summary Check if a document is linked to a Google Doc
+ */
+export const GetGdocsStatusParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetGdocsStatusResponse = zod.object({
+  linked: zod.boolean(),
+  accessible: zod.boolean().optional(),
+  document_id: zod.string(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
+  gdoc_name: zod.string().nullish(),
+  gdoc_modified: zod.string().nullish(),
+});
 
 /**
  * @summary Get all compliance constants
@@ -575,6 +627,8 @@ export const GenerateDocumentResponse = zod.object({
       }),
     ),
     content: zod.string().nullish(),
+    gdoc_id: zod.string().nullish(),
+    gdoc_url: zod.string().nullish(),
   }),
   generated_content: zod.string(),
   qc_report: zod.object({
@@ -633,6 +687,8 @@ export const RegenerateDocumentResponse = zod.object({
       }),
     ),
     content: zod.string().nullish(),
+    gdoc_id: zod.string().nullish(),
+    gdoc_url: zod.string().nullish(),
   }),
   generated_content: zod.string(),
   qc_report: zod.object({
@@ -690,6 +746,8 @@ export const PromoteDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  gdoc_id: zod.string().nullish(),
+  gdoc_url: zod.string().nullish(),
 });
 
 /**

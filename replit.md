@@ -16,6 +16,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Database**: PostgreSQL + Drizzle ORM
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui
 - **AI Integration**: Anthropic Claude (claude-sonnet-4-6) via Replit AI Integrations proxy
+- **Google Docs**: Google Drive/Docs API via Replit Connectors SDK (OAuth managed by Replit)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (ESM bundle for API), Vite (frontend)
@@ -33,6 +34,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 - **Confidence thresholds**: >=0.80 auto-proceed (green), 0.60-0.79 "please review" (amber), <0.60 must explicitly confirm (red)
 - **REQUIRES_REVIEW documents**: NEVER appear in recommendations
+- **Google Docs sync**: Export document to Google Docs, edit in Docs, pull changes back. Uses `@replit/connectors-sdk` proxy with `google-drive` connector. DB fields `gdoc_id`/`gdoc_url` track link.
 - **Immutable send logs**: Corrections via appended audit entry, originals remain
 - **Propagation cascade**: Tier 1 update flags Tier 2 + Tier 3 dependents; Tier 2 flags Tier 3 only
 - **QC evaluator**: Separate API call, separate system prompt, never shares context with generator

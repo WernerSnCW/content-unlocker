@@ -345,6 +345,63 @@ paths:
                 items:
                   $ref: "#/components/schemas/Document"
 
+  /gdocs/export/{id}:
+    post:
+      operationId: exportToGoogleDocs
+      tags: [gdocs]
+      summary: Export document content to a new Google Doc (or return existing link)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Google Doc link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdocsExportResult"
+
+  /gdocs/import/{id}:
+    post:
+      operationId: importFromGoogleDocs
+      tags: [gdocs]
+      summary: Pull latest content from linked Google Doc back into the registry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdocsImportResult"
+
+  /gdocs/status/{id}:
+    get:
+      operationId: getGdocsStatus
+      tags: [gdocs]
+      summary: Check if a document is linked to a Google Doc
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Google Docs link status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdocsStatus"
+
   /compliance-constants:
     get:
       operationId: getComplianceConstants
@@ -1035,6 +1092,10 @@ components:
             $ref: "#/components/schemas/SourceTraceEntry"
         content:
           type: ["string", "null"]
+        gdoc_id:
+          type: ["string", "null"]
+        gdoc_url:
+          type: ["string", "null"]
       required:
         - id
         - file_code
@@ -1087,6 +1148,57 @@ components:
           type: string
         version:
           type: integer
+
+    GdocsExportResult:
+      type: object
+      properties:
+        gdoc_url:
+          type: string
+        gdoc_id:
+          type: string
+        document_id:
+          type: string
+        status:
+          type: string
+      required:
+        - gdoc_url
+        - gdoc_id
+        - document_id
+        - status
+
+    GdocsImportResult:
+      type: object
+      properties:
+        document_id:
+          type: string
+        status:
+          type: string
+        content_length:
+          type: integer
+      required:
+        - document_id
+        - status
+
+    GdocsStatus:
+      type: object
+      properties:
+        linked:
+          type: boolean
+        accessible:
+          type: boolean
+        document_id:
+          type: string
+        gdoc_id:
+          type: ["string", "null"]
+        gdoc_url:
+          type: ["string", "null"]
+        gdoc_name:
+          type: ["string", "null"]
+        gdoc_modified:
+          type: ["string", "null"]
+      required:
+        - linked
+        - document_id
 
     PropagationResult:
       type: object

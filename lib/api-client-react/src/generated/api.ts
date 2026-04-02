@@ -28,6 +28,9 @@ import type {
   EmailDraft,
   EmailDraftBody,
   ErrorResponse,
+  GdocsExportResult,
+  GdocsImportResult,
+  GdocsStatus,
   GenerationBrief,
   GenerationResult,
   GetContentBankParams,
@@ -1329,6 +1332,261 @@ export function useGetPropagationStatus<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPropagationStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Export document content to a new Google Doc (or return existing link)
+ */
+export const getExportToGoogleDocsUrl = (id: string) => {
+  return `/api/gdocs/export/${id}`;
+};
+
+export const exportToGoogleDocs = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GdocsExportResult> => {
+  return customFetch<GdocsExportResult>(getExportToGoogleDocsUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getExportToGoogleDocsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof exportToGoogleDocs>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof exportToGoogleDocs>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["exportToGoogleDocs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof exportToGoogleDocs>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return exportToGoogleDocs(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ExportToGoogleDocsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof exportToGoogleDocs>>
+>;
+
+export type ExportToGoogleDocsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Export document content to a new Google Doc (or return existing link)
+ */
+export const useExportToGoogleDocs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof exportToGoogleDocs>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof exportToGoogleDocs>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getExportToGoogleDocsMutationOptions(options));
+};
+
+/**
+ * @summary Pull latest content from linked Google Doc back into the registry
+ */
+export const getImportFromGoogleDocsUrl = (id: string) => {
+  return `/api/gdocs/import/${id}`;
+};
+
+export const importFromGoogleDocs = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GdocsImportResult> => {
+  return customFetch<GdocsImportResult>(getImportFromGoogleDocsUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getImportFromGoogleDocsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importFromGoogleDocs>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importFromGoogleDocs>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["importFromGoogleDocs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importFromGoogleDocs>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return importFromGoogleDocs(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportFromGoogleDocsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importFromGoogleDocs>>
+>;
+
+export type ImportFromGoogleDocsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Pull latest content from linked Google Doc back into the registry
+ */
+export const useImportFromGoogleDocs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importFromGoogleDocs>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importFromGoogleDocs>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getImportFromGoogleDocsMutationOptions(options));
+};
+
+/**
+ * @summary Check if a document is linked to a Google Doc
+ */
+export const getGetGdocsStatusUrl = (id: string) => {
+  return `/api/gdocs/status/${id}`;
+};
+
+export const getGdocsStatus = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GdocsStatus> => {
+  return customFetch<GdocsStatus>(getGetGdocsStatusUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGdocsStatusQueryKey = (id: string) => {
+  return [`/api/gdocs/status/${id}`] as const;
+};
+
+export const getGetGdocsStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGdocsStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGdocsStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetGdocsStatusQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGdocsStatus>>> = ({
+    signal,
+  }) => getGdocsStatus(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGdocsStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGdocsStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGdocsStatus>>
+>;
+export type GetGdocsStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Check if a document is linked to a Google Doc
+ */
+
+export function useGetGdocsStatus<
+  TData = Awaited<ReturnType<typeof getGdocsStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGdocsStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGdocsStatusQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
