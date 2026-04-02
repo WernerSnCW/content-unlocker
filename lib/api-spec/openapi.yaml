@@ -1,15 +1,31 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Unlock Content Intelligence Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: leads
+    description: Lead management
+  - name: recommendation
+    description: Recommendation engine
+  - name: documents
+    description: Document registry
+  - name: compliance
+    description: Compliance constants
+  - name: changelog
+    description: Changelog operations
+  - name: content
+    description: Content bank
+  - name: generation
+    description: Content generation & QC
+  - name: dashboard
+    description: Dashboard summaries
+
 paths:
   /healthz:
     get:
@@ -24,6 +40,486 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List and search leads
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: stage
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create a new lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadBody"
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get a lead with full history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadDetail"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLeadBody"
+      responses:
+        "200":
+          description: Lead updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadDetail"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{id}/next-action:
+    get:
+      operationId: getLeadNextAction
+      tags: [leads]
+      summary: Get next best action for a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Next best action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextAction"
+
+  /recommendation/analyze:
+    post:
+      operationId: analyzeTranscript
+      tags: [recommendation]
+      summary: "Pass 1: Analyze transcript for persona, stage, objections"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeTranscriptBody"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptAnalysis"
+
+  /recommendation/rank:
+    post:
+      operationId: rankDocuments
+      tags: [recommendation]
+      summary: "Pass 2: Rank eligible documents"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RankDocumentsBody"
+      responses:
+        "200":
+          description: Ranked recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendationResult"
+
+  /recommendation/confirm-send:
+    post:
+      operationId: confirmSend
+      tags: [recommendation]
+      summary: Log a send action against a lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmSendBody"
+      responses:
+        "200":
+          description: Send logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendLogEntry"
+
+  /recommendation/email-draft:
+    post:
+      operationId: generateEmailDraft
+      tags: [recommendation]
+      summary: Generate a covering email draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailDraftBody"
+      responses:
+        "200":
+          description: Email draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailDraft"
+
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List all documents in registry
+      parameters:
+        - name: tier
+          in: query
+          schema:
+            type: integer
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: lifecycle_status
+          in: query
+          schema:
+            type: string
+        - name: review_state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      tags: [documents]
+      summary: Get a single document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateDocument
+      tags: [documents]
+      summary: Update document status or review state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentBody"
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}/propagate:
+    post:
+      operationId: propagateDocumentUpdate
+      tags: [documents]
+      summary: Trigger propagation after a document update
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Propagation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropagationResult"
+
+  /documents/propagation-status:
+    get:
+      operationId: getPropagationStatus
+      tags: [documents]
+      summary: Get all documents requiring review
+      responses:
+        "200":
+          description: Propagation alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+
+  /compliance-constants:
+    get:
+      operationId: getComplianceConstants
+      tags: [compliance]
+      summary: Get all compliance constants
+      responses:
+        "200":
+          description: Compliance constants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceConstants"
+
+  /changelog:
+    get:
+      operationId: listChangelog
+      tags: [changelog]
+      summary: List changelog entries
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: document_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Changelog entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChangelogEntry"
+
+  /content-bank:
+    get:
+      operationId: getContentBank
+      tags: [content]
+      summary: Get the content bank
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Content bank sections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentBank"
+
+  /content-bank/personas:
+    get:
+      operationId: getPersonas
+      tags: [content]
+      summary: Get compact persona reference
+      responses:
+        "200":
+          description: Persona list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Persona"
+
+  /generation/generate:
+    post:
+      operationId: generateDocument
+      tags: [generation]
+      summary: Generate a document from a brief
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerationBrief"
+      responses:
+        "200":
+          description: Generated document with QC report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerationResult"
+
+  /generation/{id}/regenerate:
+    post:
+      operationId: regenerateDocument
+      tags: [generation]
+      summary: Regenerate a document with QC failures as constraints
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Regeneration result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerationResult"
+
+  /generation/{id}/promote:
+    post:
+      operationId: promoteDocument
+      tags: [generation]
+      summary: Promote a DRAFT document to CURRENT
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Promoted document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard overview stats
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Recent activity feed
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChangelogEntry"
+
+  /seed-validation:
+    get:
+      operationId: getSeedValidation
+      tags: [health]
+      summary: Validate seed data integrity
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedValidation"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +530,827 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Lead:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        company:
+          type: ["string", "null"]
+        pipeline_stage:
+          type: string
+        first_contact:
+          type: string
+        last_contact:
+          type: string
+        detected_persona:
+          type: ["string", "null"]
+        archived:
+          type: boolean
+        send_count:
+          type: integer
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - name
+        - pipeline_stage
+        - first_contact
+        - last_contact
+        - archived
+        - send_count
+        - created_at
+        - updated_at
+
+    LeadDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        company:
+          type: ["string", "null"]
+        pipeline_stage:
+          type: string
+        first_contact:
+          type: string
+        last_contact:
+          type: string
+        detected_persona:
+          type: ["string", "null"]
+        archived:
+          type: boolean
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        send_log:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendLogEntry"
+        stage_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageHistoryEntry"
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - name
+        - pipeline_stage
+        - first_contact
+        - last_contact
+        - archived
+        - created_at
+        - updated_at
+        - send_log
+        - stage_history
+        - notes
+
+    CreateLeadBody:
+      type: object
+      properties:
+        name:
+          type: string
+        company:
+          type: ["string", "null"]
+        pipeline_stage:
+          type: string
+          default: "Outreach"
+      required:
+        - name
+
+    UpdateLeadBody:
+      type: object
+      properties:
+        pipeline_stage:
+          type: string
+        detected_persona:
+          type: ["string", "null"]
+        archived:
+          type: boolean
+        company:
+          type: ["string", "null"]
+
+    SendLogEntry:
+      type: object
+      properties:
+        send_id:
+          type: string
+        date:
+          type: string
+        documents_sent:
+          type: array
+          items:
+            type: string
+        pipeline_stage_at_send:
+          type: string
+        transcript_summary:
+          type: string
+        analysis_confidence:
+          type: object
+          properties:
+            persona:
+              type: number
+            stage:
+              type: number
+          required:
+            - persona
+            - stage
+        already_sent_exclusions:
+          type: array
+          items:
+            type: string
+        blocked_documents_seen:
+          type: array
+          items:
+            type: string
+        stage_suggestion:
+          type: ["string", "null"]
+        email_sent:
+          type: boolean
+        status:
+          type: string
+      required:
+        - send_id
+        - date
+        - documents_sent
+        - pipeline_stage_at_send
+        - transcript_summary
+        - analysis_confidence
+        - already_sent_exclusions
+        - blocked_documents_seen
+        - email_sent
+        - status
+
+    StageHistoryEntry:
+      type: object
+      properties:
+        stage:
+          type: string
+        date:
+          type: string
+        logged_by:
+          type: string
+      required:
+        - stage
+        - date
+        - logged_by
+
+    NextAction:
+      type: object
+      properties:
+        action:
+          type: string
+        rationale:
+          type: string
+        suggested_documents:
+          type: array
+          items:
+            type: string
+      required:
+        - action
+        - rationale
+        - suggested_documents
+
+    AnalyzeTranscriptBody:
+      type: object
+      properties:
+        transcript:
+          type: string
+        lead_id:
+          type: ["string", "null"]
+      required:
+        - transcript
+
+    TranscriptAnalysis:
+      type: object
+      properties:
+        detected_persona:
+          type: object
+          properties:
+            name:
+              type: string
+            confidence_score:
+              type: number
+            evidence:
+              type: array
+              items:
+                type: string
+          required:
+            - name
+            - confidence_score
+            - evidence
+        pipeline_stage:
+          type: object
+          properties:
+            stage:
+              type: string
+            confidence_score:
+              type: number
+            rationale:
+              type: string
+          required:
+            - stage
+            - confidence_score
+            - rationale
+        objections:
+          type: array
+          items:
+            $ref: "#/components/schemas/Objection"
+        transcript_summary:
+          type: string
+        pipeline_stage_suggestion:
+          type: ["string", "null"]
+      required:
+        - detected_persona
+        - pipeline_stage
+        - objections
+        - transcript_summary
+
+    Objection:
+      type: object
+      properties:
+        objection:
+          type: string
+        suggested_response:
+          type: string
+      required:
+        - objection
+        - suggested_response
+
+    RankDocumentsBody:
+      type: object
+      properties:
+        lead_id:
+          type: ["string", "null"]
+        detected_persona:
+          type: string
+        pipeline_stage:
+          type: string
+        transcript_summary:
+          type: string
+        objections:
+          type: array
+          items:
+            type: string
+      required:
+        - detected_persona
+        - pipeline_stage
+        - transcript_summary
+
+    RecommendationResult:
+      type: object
+      properties:
+        ranked_documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/RankedDocument"
+        already_sent:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentSummary"
+        blocked_documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockedDocument"
+        all_sent_message:
+          type: ["string", "null"]
+      required:
+        - ranked_documents
+        - already_sent
+        - blocked_documents
+
+    RankedDocument:
+      type: object
+      properties:
+        document_id:
+          type: string
+        file_code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        tier:
+          type: integer
+        priority:
+          type: integer
+        rationale:
+          type: string
+      required:
+        - document_id
+        - file_code
+        - name
+        - description
+        - tier
+        - priority
+        - rationale
+
+    DocumentSummary:
+      type: object
+      properties:
+        document_id:
+          type: string
+        file_code:
+          type: string
+        name:
+          type: string
+        date_sent:
+          type: string
+      required:
+        - document_id
+        - file_code
+        - name
+        - date_sent
+
+    BlockedDocument:
+      type: object
+      properties:
+        document_id:
+          type: string
+        file_code:
+          type: string
+        name:
+          type: string
+        reason:
+          type: string
+      required:
+        - document_id
+        - file_code
+        - name
+        - reason
+
+    ConfirmSendBody:
+      type: object
+      properties:
+        lead_id:
+          type: string
+        document_ids:
+          type: array
+          items:
+            type: string
+        transcript_summary:
+          type: string
+        detected_persona:
+          type: string
+        pipeline_stage:
+          type: string
+        analysis_confidence:
+          type: object
+          properties:
+            persona:
+              type: number
+            stage:
+              type: number
+          required:
+            - persona
+            - stage
+        stage_suggestion:
+          type: ["string", "null"]
+        email_sent:
+          type: boolean
+        already_sent_exclusions:
+          type: array
+          items:
+            type: string
+        blocked_documents_seen:
+          type: array
+          items:
+            type: string
+      required:
+        - lead_id
+        - document_ids
+        - transcript_summary
+        - detected_persona
+        - pipeline_stage
+        - analysis_confidence
+        - email_sent
+
+    EmailDraftBody:
+      type: object
+      properties:
+        lead_name:
+          type: string
+        detected_persona:
+          type: string
+        pipeline_stage:
+          type: string
+        document_names:
+          type: array
+          items:
+            type: string
+        transcript_summary:
+          type: string
+      required:
+        - lead_name
+        - detected_persona
+        - pipeline_stage
+        - document_names
+        - transcript_summary
+
+    EmailDraft:
+      type: object
+      properties:
+        subject:
+          type: string
+        body:
+          type: string
+        template_used:
+          type: string
+      required:
+        - subject
+        - body
+        - template_used
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        file_code:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        filename:
+          type: string
+        tier:
+          type: integer
+        category:
+          type: string
+        lifecycle_status:
+          type: string
+        review_state:
+          type: string
+        version:
+          type: integer
+        last_reviewed:
+          type: string
+        description:
+          type: string
+        pipeline_stage_relevance:
+          type: array
+          items:
+            type: string
+        persona_relevance:
+          type: array
+          items:
+            type: string
+        upstream_dependencies:
+          type: array
+          items:
+            type: string
+        downstream_dependents:
+          type: array
+          items:
+            type: string
+        is_generated:
+          type: boolean
+        generation_brief_id:
+          type: ["string", "null"]
+        generation_attempt:
+          type: ["integer", "null"]
+        qc_report_id:
+          type: ["string", "null"]
+        source_trace:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceTraceEntry"
+        content:
+          type: ["string", "null"]
+      required:
+        - id
+        - file_code
+        - type
+        - name
+        - filename
+        - tier
+        - category
+        - lifecycle_status
+        - review_state
+        - version
+        - last_reviewed
+        - description
+        - pipeline_stage_relevance
+        - persona_relevance
+        - upstream_dependencies
+        - downstream_dependents
+        - is_generated
+        - source_trace
+
+    SourceTraceEntry:
+      type: object
+      properties:
+        claim_area:
+          type: string
+        source_document_id:
+          type: string
+        source_section:
+          type: string
+        source_excerpt_key:
+          type: string
+      required:
+        - claim_area
+        - source_document_id
+        - source_section
+        - source_excerpt_key
+
+    UpdateDocumentBody:
+      type: object
+      properties:
+        lifecycle_status:
+          type: string
+        review_state:
+          type: string
+        version:
+          type: integer
+
+    PropagationResult:
+      type: object
+      properties:
+        updated_document_id:
+          type: string
+        flagged_documents:
+          type: array
+          items:
+            type: string
+        changelog_entries:
+          type: array
+          items:
+            type: string
+      required:
+        - updated_document_id
+        - flagged_documents
+        - changelog_entries
+
+    ComplianceConstants:
+      type: object
+      properties:
+        version:
+          type: string
+        constants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComplianceConstant"
+      required:
+        - version
+        - constants
+
+    ComplianceConstant:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        note:
+          type: string
+        applies_to:
+          type: array
+          items:
+            type: string
+      required:
+        - key
+        - label
+        - value
+
+    ChangelogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+        action:
+          type: string
+        document_id:
+          type: ["string", "null"]
+        lead_id:
+          type: ["string", "null"]
+        details:
+          type: string
+        triggered_by:
+          type: ["string", "null"]
+      required:
+        - id
+        - timestamp
+        - action
+        - details
+
+    ContentBank:
+      type: object
+      properties:
+        full_text:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentSection"
+      required:
+        - full_text
+        - sections
+
+    ContentSection:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+      required:
+        - title
+        - content
+
+    Persona:
+      type: object
+      properties:
+        name:
+          type: string
+        archetype:
+          type: string
+        tier:
+          type: string
+        signals:
+          type: array
+          items:
+            type: string
+        pain_points:
+          type: array
+          items:
+            type: string
+        objections:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - archetype
+        - tier
+        - signals
+        - pain_points
+        - objections
+
+    GenerationBrief:
+      type: object
+      properties:
+        document_type:
+          type: string
+        target_personas:
+          type: array
+          items:
+            type: string
+        pipeline_stage_relevance:
+          type: array
+          items:
+            type: string
+        requirements:
+          type: string
+        document_name:
+          type: string
+      required:
+        - document_type
+        - target_personas
+        - pipeline_stage_relevance
+        - requirements
+        - document_name
+
+    GenerationResult:
+      type: object
+      properties:
+        document:
+          $ref: "#/components/schemas/Document"
+        generated_content:
+          type: string
+        qc_report:
+          $ref: "#/components/schemas/QCReport"
+      required:
+        - document
+        - generated_content
+        - qc_report
+
+    QCReport:
+      type: object
+      properties:
+        overall:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/QCCheck"
+        fail_count:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+        qc_attempt:
+          type: integer
+      required:
+        - overall
+        - checks
+        - fail_count
+        - warnings
+        - qc_attempt
+
+    QCCheck:
+      type: object
+      properties:
+        check_id:
+          type: string
+        label:
+          type: string
+        result:
+          type: string
+        offending_text:
+          type: ["string", "null"]
+        correct_version:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+      required:
+        - check_id
+        - label
+        - result
+
+    DashboardSummary:
+      type: object
+      properties:
+        total_leads:
+          type: integer
+        total_documents:
+          type: integer
+        documents_sent_this_week:
+          type: integer
+        pipeline_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        documents_requiring_review:
+          type: integer
+        recent_sends:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentSend"
+      required:
+        - total_leads
+        - total_documents
+        - documents_sent_this_week
+        - pipeline_breakdown
+        - documents_requiring_review
+        - recent_sends
+
+    RecentSend:
+      type: object
+      properties:
+        lead_name:
+          type: string
+        lead_id:
+          type: string
+        documents_sent:
+          type: array
+          items:
+            type: string
+        date:
+          type: string
+      required:
+        - lead_name
+        - lead_id
+        - documents_sent
+        - date
+
+    SeedValidation:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+        - valid
+        - errors
+        - warnings

@@ -1,0 +1,74 @@
+{
+  "generated": "2026-04-02",
+  "version": "V4",
+  "constants": [
+    {
+      "key": "bpr_cap",
+      "label": "BPR cap",
+      "value": "£2,500,000",
+      "note": "Not £1M. April 2026 effective date.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "bpr_effective_date",
+      "label": "BPR effective date",
+      "value": "April 2026",
+      "note": "Must always include qualifier: 'subject to final enactment'",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "vct_relief_rate",
+      "label": "VCT income tax relief rate",
+      "value": "20%",
+      "note": "Post-2025 Budget. NOT 30%. Known bug in app spec — must be corrected before developer handoff.",
+      "applies_to": ["all investor docs", "app spec"]
+    },
+    {
+      "key": "pension_iht_change",
+      "label": "Pension IHT change date",
+      "value": "April 2027",
+      "note": "Must always include qualifier: 'subject to final enactment'. Not yet enacted as of April 2026.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "decumulation_planner_status",
+      "label": "Decumulation Planner status",
+      "value": "Specification complete. Prototype build commencing.",
+      "note": "This exact wording required. Do not describe as live or available.",
+      "applies_to": ["all investor docs", "demos"]
+    },
+    {
+      "key": "access_framework_framing",
+      "label": "Unlock Access framework",
+      "value": "Structured disclosure — not scoring, evaluation, or investment advice",
+      "note": "Absence from platform is the filter. Failed companies do not appear. Never frame as scoring or advice.",
+      "applies_to": ["140", "all Access references"]
+    },
+    {
+      "key": "product_tagline",
+      "label": "Product tagline",
+      "value": "Clarity, without complexity",
+      "note": "Approved and registered in Content Bank. Use exactly.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "target_portfolio_range",
+      "label": "Target portfolio range",
+      "value": "£250K–£5M",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "pre_money_valuation",
+      "label": "Pre-money valuation",
+      "value": "£6,500,000",
+      "applies_to": ["120", "130"]
+    },
+    {
+      "key": "instrument",
+      "label": "Investment instrument",
+      "value": "Instant Investment",
+      "note": "Not ASA. Via SeedLegals.",
+      "applies_to": ["120", "130"]
+    }
+  ]
+}

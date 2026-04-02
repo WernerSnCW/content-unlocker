@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Unlock Content Intelligence"
+version = "1.0.0"
+id = "artifacts/unlock-intel"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22068
+
+[services.development]
+run = "pnpm --filter @workspace/unlock-intel run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/unlock-intel", "run", "build" ]
+publicDir = "artifacts/unlock-intel/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22068"
+BASE_PATH = "/"

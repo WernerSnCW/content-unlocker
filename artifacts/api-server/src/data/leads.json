@@ -1,0 +1,104 @@
+{
+  "generated": "2026-04-02",
+  "leads": [
+    {
+      "id": "lead_001",
+      "name": "Duncan Stewart",
+      "company": null,
+      "pipeline_stage": "Demo Complete",
+      "first_contact": "2026-03-15",
+      "last_contact": "2026-03-30",
+      "detected_persona": "Legacy Builder",
+      "archived": false,
+      "created_at": "2026-03-15T09:30:00Z",
+      "updated_at": "2026-03-30T14:15:00Z",
+      "last_recommendation_at": "2026-03-30T14:15:00Z",
+      "send_log": [
+        {
+          "send_id": "send_001",
+          "date": "2026-03-15",
+          "documents_sent": ["100", "110"],
+          "pipeline_stage_at_send": "Called",
+          "transcript_summary": "Interested in IHT planning. Mentioned trust structures and property holdings across three platforms. Asked specifically about EIS and BPR interaction.",
+          "analysis_confidence": { "persona": 0.84, "stage": 0.91 },
+          "already_sent_exclusions": [],
+          "blocked_documents_seen": [],
+          "stage_suggestion": "Demo Booked",
+          "email_sent": true,
+          "status": "confirmed"
+        },
+        {
+          "send_id": "send_002",
+          "date": "2026-03-30",
+          "documents_sent": ["120", "170"],
+          "pipeline_stage_at_send": "Demo Complete",
+          "transcript_summary": "Post-demo follow-up. Engaged and positive. Asked detailed questions about BPR cap changes in April and IHT treatment of AIM holdings. Mentioned accountant review.",
+          "analysis_confidence": { "persona": 0.91, "stage": 0.88 },
+          "already_sent_exclusions": ["100", "110"],
+          "blocked_documents_seen": [],
+          "stage_suggestion": "Decision",
+          "email_sent": true,
+          "status": "confirmed"
+        }
+      ],
+      "stage_history": [
+        { "stage": "Outreach", "date": "2026-03-14", "logged_by": "system" },
+        { "stage": "Called", "date": "2026-03-15", "logged_by": "agent" },
+        { "stage": "Demo Booked", "date": "2026-03-16", "logged_by": "system" },
+        { "stage": "Demo Complete", "date": "2026-03-30", "logged_by": "agent" }
+      ],
+      "notes": []
+    },
+    {
+      "id": "lead_002",
+      "name": "Sarah Mitchell",
+      "company": null,
+      "pipeline_stage": "Called",
+      "first_contact": "2026-03-28",
+      "last_contact": "2026-03-28",
+      "detected_persona": "Preserver",
+      "archived": false,
+      "created_at": "2026-03-28T11:00:00Z",
+      "updated_at": "2026-03-28T11:45:00Z",
+      "last_recommendation_at": "2026-03-28T11:45:00Z",
+      "send_log": [
+        {
+          "send_id": "send_003",
+          "date": "2026-03-28",
+          "documents_sent": ["100", "190"],
+          "pipeline_stage_at_send": "Called",
+          "transcript_summary": "First call. Retired, portfolio across ISA and property. Concerned about fragmentation and lack of consolidated view. Mentioned adviser but feels underserved on alternatives.",
+          "analysis_confidence": { "persona": 0.76, "stage": 0.95 },
+          "already_sent_exclusions": [],
+          "blocked_documents_seen": [],
+          "stage_suggestion": "Demo Booked",
+          "email_sent": true,
+          "status": "confirmed"
+        }
+      ],
+      "stage_history": [
+        { "stage": "Outreach", "date": "2026-03-27", "logged_by": "system" },
+        { "stage": "Called", "date": "2026-03-28", "logged_by": "agent" }
+      ],
+      "notes": []
+    },
+    {
+      "id": "lead_003",
+      "name": "James Whitfield",
+      "company": "Whitfield Capital",
+      "pipeline_stage": "Outreach",
+      "first_contact": "2026-04-01",
+      "last_contact": "2026-04-01",
+      "detected_persona": null,
+      "archived": false,
+      "created_at": "2026-04-01T09:00:00Z",
+      "updated_at": "2026-04-01T09:00:00Z",
+      "last_recommendation_at": null,
+      "send_log": [],
+      "stage_history": [
+        { "stage": "Outreach", "date": "2026-04-01", "logged_by": "system" }
+      ],
+      "notes": []
+    }
+  ]
+}

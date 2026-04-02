@@ -1,0 +1,310 @@
+================================================================================
+UNLOCK: EMAIL TEMPLATES FOR INVESTOR OUTREACH
+Version 2 — Updated March 2026 | V4 Content Bank aligned
+================================================================================
+
+Use these templates for Stage 1 (Awareness) outreach. Personalize with investor name, 
+relevant details, and your contact info.
+
+================================================================================
+TEMPLATE 1: WARM INTRODUCTION EMAIL (First Contact)
+================================================================================
+
+Subject: Quick intro – could be interesting for you
+
+Hi [Investor Name],
+
+[OPTIONAL OPENER: mutual connection or context]
+I got your name from [mutual contact / event] and thought you might find this interesting.
+
+We've just opened a founding investor round for Unlock—a platform that gives private 
+investors institutional-grade portfolio tools without the institutional price tag.
+
+It's aimed at experienced investors like you who manage meaningful portfolios and 
+want clearer visibility into diversification, risk, and tax efficiency.
+
+The founding round offer: equity discount, lifetime platform access, and anti-dilution protection until Series A. We're limiting it to approximately 25 founding investors by design — not artificial scarcity, quality of fit.
+
+Worth a brief 20-minute call to see if it fits? 
+
+I've attached a one-page overview — four minutes to read. If it resonates, happy to arrange a short call.
+
+Best,
+[Your Name]
+[Your Title]
+[Contact Info]
+
+---
+
+================================================================================
+TEMPLATE 2: INTRO + PACK 1 ATTACHED (Initial Outreach with Document)
+================================================================================
+
+Subject: Institutional tools for private investors
+
+Hi [Investor Name],
+
+I'm reaching out because you strike me as someone who probably manages a diversified 
+portfolio and cares about clarity and tax efficiency.
+
+We're building Unlock—a platform that solves three persistent problems for serious 
+private investors:
+• Fragmented data across multiple accounts and advisors
+• Complex portfolio analysis locked behind institutional paywalls
+• Tax planning that actually makes sense
+
+I've attached a one-page overview — four minutes to read. If it lands, I can send the full founding investor brief and we can arrange a call.
+
+If it resonates, I'd love to hop on a 20-minute call to walk you through how it works 
+and answer any questions.
+
+Best,
+[Your Name]
+[Your Title]
+[Contact Info]
+
+---
+
+================================================================================
+TEMPLATE 3: FOLLOW-UP (After Initial Email, No Response)
+================================================================================
+
+Subject: Re: Quick intro – could be interesting for you
+
+Hi [Investor Name],
+
+Probably landed in the spam folder—happens all the time. 
+
+Quick context: we're running a limited founding investor round for Unlock 
+(independent wealth intelligence platform). Definitely not for everyone, but 
+figured you might find it useful given your background in [their area of expertise].
+
+One paragraph: it gives private investors institutional-grade portfolio tools 
+(stress-testing, tax optimization, early-stage deal access) without the cost.
+
+If you want to see how it works, 20-minute call over the next week?
+
+Best,
+[Your Name]
+
+---
+
+================================================================================
+TEMPLATE 4: PACK 1 FOLLOW-UP (After Sending Pack 1, Scheduling Call)
+================================================================================
+
+Subject: Thoughts on Unlock?
+
+Hi [Investor Name],
+
+Did you get a chance to glance at the pack? No pressure if you're swamped.
+
+If any of it caught your eye, let's grab 20 minutes this week so I can walk you 
+through how it actually works. Happy to do a demo or just answer questions.
+
+We’re working through the round now — April 6 is a hard date (shares issue that day, and it’s the last date for unlimited EIS Inheritance Tax relief before a rule change).—we have 20 available now, down from 25.
+
+Best,
+[Your Name]
+[Your Title]
+
+---
+
+================================================================================
+TEMPLATE 5: DISCOVERY CALL CONFIRMATION (After Booking)
+================================================================================
+
+Subject: Confirmed – Unlock demo call [DATE] at [TIME]
+
+Hi [Investor Name],
+
+Confirmed for [DAY, DATE] at [TIME] [TIMEZONE].
+
+I'll send you a Zoom/Teams link 30 minutes before. You can join from any device, 
+but laptop/iPad works best so you can see the platform clearly.
+
+Plan: 20 minutes walking through:
+1. How the portfolio simulator works (real example with your profile)
+2. Tax planning features (EIS/SEIS optimization)
+3. How the founding investor program works
+
+No prep needed. Just bring any questions about your portfolio or investment approach.
+
+See you then,
+[Your Name]
+
+---
+
+================================================================================
+TEMPLATE 6: POST-DEMO FOLLOW-UP (After Discovery Call)
+================================================================================
+
+Subject: Great call today – next steps
+
+Hi [Investor Name],
+
+Enjoyed our conversation. A few things we covered:
+• Your portfolio is well-diversified, but there's blind spot in [specific area]
+• EIS/SEIS relief could save you £[X] per year
+• You'd be a strong fit for our Growth Seeker persona
+
+Next steps:
+1. I'm sending you a customized portfolio report (attached) showing exactly how 
+   Unlock would analyze your holdings
+2. If that lands well, let's do a 30-minute session with you, me, and potentially 
+   your adviser to walk through the full picture
+3. If you're interested in moving forward, we'd do a soft allocation (non-binding) and then move to Instant Investment execution via SeedLegals
+
+Timing matters on two counts: shares issue 6 April 2026 (the deadline for unlimited EIS IHT relief), and founding benefits expire at public launch (Q1 2027). If you want to move, sooner is better.
+
+Any questions, just holler.
+
+Best,
+[Your Name]
+
+---
+
+================================================================================
+TEMPLATE 7: SOFT COMMITMENT FOLLOW-UP (Moving to Decision Stage)
+================================================================================
+
+Subject: Ready to commit? Here's how it works
+
+Hi [Investor Name],
+
+Following up on our chat. Sounds like you're interested in moving forward.
+
+Here's the process from here:
+
+1. Soft Commitment (this week)
+   - You decide on ticket size (£20K–£500K) and confirm which discount tier applies
+   - We reserve your slot
+   - Non-binding at this stage
+
+2. Deep Dive with Your Adviser (optional, next 1–2 weeks)
+   - We walk your accountant through EIS/SEIS mechanics, Instant Investment structure, and tax implications
+   - Answer all due diligence questions
+   - Give you full confidence you understand the structure
+
+3. Instant Investment Execution (following week)
+   - Agreement processed via SeedLegals (digital, straightforward)
+   - You sign, capital transferred
+   - EIS compliance processed at point of investment — not after round close
+
+Total time: 2–3 weeks from commitment to execution.
+
+Ticket size range: £20K–£500K. Discount is negotiated individually — we discuss this on the call.
+
+What range are you thinking?
+
+Best,
+[Your Name]
+
+---
+
+================================================================================
+TEMPLATE 8: CLOSING PUSH (Last Chance/Scarcity Message)
+================================================================================
+
+Subject: Last few founding slots available
+
+Hi [Investor Name],
+
+Just wanted to flag: we're down to the last few founding investor slots before we 
+close the round.
+
+3 closed, 2 committed, 5 available now (was 25 total).
+
+Key dates:
+- Founding benefits lock in with Instant Investment execution
+- Shares issue 6 April 2026 — the last date for unlimited EIS Inheritance Tax relief before rule change
+- Valuation steps up 20–30% in Growth Capital round (Q2 2026)
+- Lifetime perks never offered again after Q1 2027 launch
+
+If you want to move forward, we'd need soft commitment by [DATE] to make the 
+HMRC timeline.
+
+Happy to hop on a quick call to answer any last-minute questions.
+
+Best,
+[Your Name]
+
+---
+
+================================================================================
+KEY PRINCIPLES FOR ALL EMAILS
+================================================================================
+
+1. Keep it SHORT (3–4 paragraphs max, 50–100 words each)
+   - Nobody reads long emails. Busy investors scan them in 10 seconds.
+
+2. Lead with THEIR pain, not your features
+   - "You probably manage a diversified portfolio" (relatable)
+   - Not "We've built an institutional-grade portfolio simulator" (feature-focused)
+
+3. Use their language
+   - From Pack 1 training guide: "institutional-grade clarity," "independent, investor-first," 
+     "20 pence on the pound," "founding investor" (not "early investor")
+   - Match their tone (if they're formal, be formal; if casual, be casual)
+
+4. Create micro-urgency without being pushy
+   - "We're down to 20 available slots" (scarcity)
+   - "Shares issue 6 April 2026 — last date for unlimited EIS IHT relief" (genuine urgency)
+   - Not: "You better decide now or miss out forever"
+
+5. Always include a clear call-to-action
+   - Not: "Let me know if you're interested"
+   - Do: "Let's grab 20 minutes this week—are you available Tuesday or Thursday?"
+
+6. Personalize (even if just one detail)
+   - "Given your background in fintech" or "I know you've been exploring alternatives"
+   - Generic templates get 5% response; personalized get 30%+
+
+7. Use consistent terminology (V4 rules — see Content Bank Section 19)
+   - "Founding investor" (not "early investor" or "seed investor" or "angel investor")
+   - "EIS/SEIS relief" (not just "tax relief")
+   - "Institutional-grade clarity" (not "professional tools")
+   - "Instant Investment" (not "ASA", "Advanced Subscription Agreement", or "SAFE")
+   - Never publish discount tier percentages in any document
+
+---
+
+================================================================================
+SEQUENCE RECOMMENDATION FOR COLD OUTREACH
+================================================================================
+
+Week 1:
+- Mon–Tue: Send Template 1 or 2 (initial outreach, cold list A)
+- Thu: Send Template 1 or 2 to cold list B (different segment)
+
+Week 2:
+- Mon: Template 3 follow-up to Week 1 non-responders
+- Tue–Wed: Schedule discovery calls for interested parties (Template 5)
+
+Week 3:
+- Conduct discovery calls
+- Send Template 6 (post-demo follow-up) to call attendees
+
+Week 4:
+- Template 7 (soft commitment) to qualified prospects
+- Template 8 (closing push) to fence-sitters
+
+---
+
+================================================================================
+CONVERSION TARGETS (WEEKLY TRACKING)
+================================================================================
+
+Email Sent â†’ Pack 1 Request: 40% (if Template 1/2 is engaging, this is realistic)
+Pack 1 Requested â†’ Demo Booked: 60% (packs should drive action)
+Demo Attended â†’ Soft Commitment: 30–40% (based on fit and discovery quality)
+Soft Commitment â†’ Instant Investment signed: 80%+ (by this stage, deal's mostly closed)
+
+Track these weekly in a spreadsheet:
+- Date sent | Recipient | Email template | Status | Next step | Outcome
+
+Example:
+11/11 | Jane Smith | Template 2 | Opened | Follow-up | Demo booked 11/14
+11/12 | John Doe | Template 1 | No open | Follow-up | N/A
+
+================================================================================

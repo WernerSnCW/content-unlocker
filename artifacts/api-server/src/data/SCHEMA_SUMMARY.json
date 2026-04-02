@@ -1,0 +1,161 @@
+{
+  "project": "Unlock",
+  "version": "1.0",
+  "generated": "2026-04-02",
+  "file_naming_convention": "[NNN]_[TYPE]_[Description]_V[N]_[STATUS].ext",
+  "status_values": ["CURRENT", "SUPERSEDED", "DRAFT"],
+  "category_ranges": {
+    "000-099": "Navigation & System",
+    "100-199": "Investor-Facing Documents",
+    "200-299": "Campaign Operations (Internal)",
+    "300-399": "Research & Market Intelligence",
+    "400-499": "Technical Specifications",
+    "500-599": "Agent Tools & Scripts",
+    "600-699": "Compliance & Audit",
+    "700-799": "Source of Truth & Standards"
+  },
+  "content_hierarchy": {
+    "tier_1": {
+      "label": "Foundational Strategy — Primary Sources of Truth",
+      "documents": [
+        "Play to Win Strategy Workshop",
+        "19-Persona Suitability Guide",
+        "Financial Model & Projections",
+        "Value Proposition Canvas",
+        "Decumulation Engine Spec v1.5"
+      ],
+      "rule": "Strategy changes upstream before language changes downstream. If Tier 1 changes, all downstream documents require review."
+    },
+    "tier_2": {
+      "label": "Structural Content — Derived from Tier 1, Feed Tier 3",
+      "documents": [
+        "Business Plan",
+        "Marketing & Investor Conversion Brief",
+        "Competitive Analysis",
+        "App Walkthrough Script"
+      ],
+      "rule": "Update when Tier 1 changes or new evidence requires revision. These are the source material for all investor-facing outputs."
+    },
+    "tier_3": {
+      "label": "Investor-Facing Outputs — Derived, Not Primary",
+      "documents": [
+        "Pack 1 — The Opportunity (Founding Investor Brief)",
+        "Pack 2 — Investor Terms & Due Diligence (IIM)",
+        "Investor Pitch Deck",
+        "Agent Training Playbook & Calling Scripts",
+        "Unlock Access Explainer"
+      ],
+      "rule": "Never edit to resolve a strategic question — trace back upstream to Tier 1 or 2 first."
+    }
+  },
+  "propagation_rules": [
+    "Strategy changes upstream before language changes downstream",
+    "The 3 public personas are a simplification of the 19 — 19 is operational truth",
+    "Financial claims must trace to the Financial Model — no figure in any investor document without a traceable source",
+    "Lifecycle stage (accumulation / decumulation) is a Tier 1 structural dimension",
+    "Terminology is controlled in the Glossary (Content Bank Section 17)"
+  ],
+  "crm_schema": {
+    "platform": "Pipedrive",
+    "calling_platform": "Aircall",
+    "pipeline_stages": [
+      "Outreach",
+      "Called",
+      "Demo Booked",
+      "Demo Complete",
+      "Decision"
+    ],
+    "custom_fields": [
+      {"name": "Investor Tier", "type": "dropdown", "values": ["Tier 1", "Tier 2", "Tier 3"]},
+      {"name": "Investor Persona", "type": "dropdown", "values": ["Preserver", "Growth Seeker", "Legacy Builder"]},
+      {"name": "EIS/SEIS Eligible", "type": "checkbox", "values": ["Yes", "No", "Unknown"]},
+      {"name": "Portfolio Size", "type": "dropdown", "values": ["<£250K", "£250K-£1M", "£1M-£5M", "£5M+"]},
+      {"name": "Call Outcome", "type": "dropdown", "values": ["Demo Booked", "Not Interested", "Call Back Later", "Wrong Number", "Voicemail"]},
+      {"name": "Demo Status", "type": "dropdown", "values": ["Scheduled", "Completed", "No-Show", "Rescheduled"]},
+      {"name": "Demo Feedback", "type": "text"},
+      {"name": "Pack 1 Sent", "type": "date"},
+      {"name": "Pack 2 Sent", "type": "date"},
+      {"name": "Expected Ticket Size", "type": "currency"},
+      {"name": "Instant Investment Close Date", "type": "date"}
+    ]
+  },
+  "decumulation_engine": {
+    "spec_file": "400_SPEC_Decumulation_Engine_V1_5_CURRENT.json",
+    "asset_classes": ["cash", "isa", "bonds", "vct", "aim_shares", "pension", "property_investment", "other", "eis"],
+    "drawdown_strategies": {
+      "tax_optimised": ["cash", "isa", "bonds", "vct", "aim_shares", "pension", "property_investment", "other", "eis"],
+      "iht_optimised": ["cash", "pension", "property_investment", "vct", "bonds", "other", "isa", "aim_shares", "eis"]
+    },
+    "data_confidence_levels": {
+      "HIGH": "All critical fields present: acquisition_date, acquisition_cost, wrapper_type confirmed, tfls_used_amount confirmed, is_iht_exempt confirmed",
+      "MEDIUM": "One or two estimation fields missing — outputs reliable but some calculations have uncertainty",
+      "LOW": "Core tax fields missing — outputs unreliable, LOW confidence banner required, iht_saving suppressed"
+    },
+    "output_schema": {
+      "per_year": [
+        "year", "total_portfolio_value", "iht_exempt_total", "estimated_iht_bill",
+        "income_tax_this_year", "cgt_this_year", "spend_target_nominal", "spend_met",
+        "shortfall", "baseline_income", "gifted_this_year", "clt_7yr_cumulative",
+        "tfls_remaining", "remaining_lsa", "draws_by_asset", "flags"
+      ],
+      "plan_summary": [
+        "funded_years", "fully_funded", "first_shortfall_year", "total_spent",
+        "total_income_tax_paid", "total_cgt_paid", "total_tax_paid", "total_gifted",
+        "estate_at_end", "iht_at_end", "net_estate_after_iht", "legacy_target",
+        "legacy_shortfall", "iht_no_plan_baseline", "iht_saving_vs_no_plan",
+        "shadow_35yr_funded_years", "iht_saving_suppressed"
+      ]
+    },
+    "warning_triggers": [
+      "BPR_NOT_YET_QUALIFYING", "BPR_APPROACHING_CAP", "BPR_LAST_REVIEWED_STALE",
+      "CLT_APPROACHING_LIMIT", "CLT_LIMIT_BREACHED",
+      "PENSION_IHT_RULE_CHANGE_YEAR", "BPR_CAP_RULE_CHANGE_YEAR",
+      "MISSING_ACQUISITION_DATE", "MISSING_ACQUISITION_COST",
+      "SHORTFALL_WITHIN_10_YEARS", "LONGEVITY_35_YEAR_WARNING",
+      "TFLS_NEARLY_EXHAUSTED", "EIS_DEFERRED_GAIN_MISSING",
+      "LEGACY_FLOOR_AT_RISK", "CASH_BUFFER_CONSTRAINING_DRAW",
+      "LIQUIDITY_RISK", "VCT_IHT_EXEMPT_FLAG_INCORRECT",
+      "ISA_GIFT_DESTROYS_SHELTER", "WRAPPER_TYPE_REVIEW_REQUIRED"
+    ]
+  },
+  "personas": {
+    "public_archetypes": ["Growth Seeker", "Preserver", "Legacy Builder"],
+    "operational_count": 19,
+    "reference_file": "520_GUIDE_Investor_Personas_19_V1_CURRENT.md",
+    "target_portfolio_range": "£250K–£5M",
+    "lifecycle_stages": ["accumulation", "decumulation"],
+    "tier_structure": {
+      "tier_1": "Highest priority — excellent fit and proven conversion",
+      "tier_2": "Strong fit — good conversion with right messaging",
+      "tier_3": "Marginal fit — lower priority, edge cases"
+    }
+  },
+  "round_details": {
+    "instrument": "Instant Investment via SeedLegals",
+    "pre_money_valuation": "£6,500,000",
+    "target_raise": "£1,200,000",
+    "target_investors": 25,
+    "ticket_range": {"min": 40000, "max": 500000, "currency": "GBP"},
+    "share_issuance_date": "2026-04-06",
+    "tax_schemes": ["SEIS", "EIS"],
+    "seis_advance_assurance": true,
+    "database_size": 30000
+  },
+  "compliance_constants": {
+    "bpr_cap": "£2,500,000",
+    "bpr_cap_effective": "April 2026 (subject to final enactment)",
+    "vct_income_tax_relief_rate": "20%",
+    "pension_iht_change": "April 2027 (subject to final enactment)",
+    "decumulation_planner_status": "Specification complete. Prototype build commencing.",
+    "access_framework": "Structured disclosure — not scoring, evaluation, or investment advice",
+    "product_tagline": "Clarity, without complexity"
+  },
+  "terminology": {
+    "use": "Instant Investment",
+    "not": "ASA",
+    "use_2": "Administration",
+    "not_2": "Execution",
+    "platform_name": "Unlock",
+    "access_service": "Unlock Access"
+  }
+}

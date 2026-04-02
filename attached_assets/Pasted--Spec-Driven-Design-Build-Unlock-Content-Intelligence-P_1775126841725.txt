@@ -1,0 +1,1074 @@
+# Spec-Driven Design Build
+# Unlock Content Intelligence Platform
+## Version 2.1 | 2 April 2026
+### Supersedes: SBDS_Unlock_Content_Intelligence_V1.md
+
+---
+
+# 1. Feature Overview
+
+## Feature Name
+Unlock Content Intelligence Platform
+
+## Summary
+
+A purpose-built internal platform with three integrated layers:
+
+**Layer 1 — Recommendation Engine (the product)**
+A call transcript is pasted in. The platform identifies the investor's persona, pipeline stage, and objections raised. It recommends which documents to send, in what order, with a rationale for each. It drafts a covering email. It checks what has already been sent to this investor and ensures nothing is duplicated.
+
+**Layer 2 — Lead History & Engagement Tracker (the memory)**
+Every content recommendation and send action is logged against a named lead. The platform maintains a complete history of every document sent to every investor, the date sent, and the call context that triggered it. This history informs every subsequent recommendation for that lead.
+
+**Layer 3 — Content Management Infrastructure (the quality control)**
+Document registry, propagation alert system, and compliance constants panel. Exists to ensure that whatever the recommendation engine surfaces is always the current, correct, compliant version. The user rarely interacts with this layer directly — it is what makes the recommendations trustworthy.
+
+**Layer 4 — Content Generation & QC Engine (the production capability)**
+Missing documents are generated from source — drawing on the Content Bank, persona guide, and relevant Tier 1 references. Every generated document is immediately evaluated by a second AI call acting as a compliance checker. The checker validates compliance constants, terminology, Content Bank alignment, and framing rules before the document is registered as DRAFT. No generated document can be marked CURRENT until it passes QC evaluation. This layer also serves as the primary test protocol for the platform: generating a missing document and evaluating it end-to-end validates that all four layers are working together.
+
+Without Layer 2, the recommendation engine is stateless — it cannot know what has already been sent. Without Layer 3, the recommendation engine surfaces stale or non-compliant content. Without Layer 4, missing documents must be produced outside the platform with no systematic compliance check. All four layers are required for the platform to work at full capability.
+
+---
+
+# 2. Problem Statement
+
+Unlock runs an active investor outreach campaign across a 30,000-contact database. Agents conduct calls, qualify prospects, and then send documents — but currently:
+
+**No intelligence between calls** — there is no record of what was sent to whom. An agent on a second call has no visibility of what the previous agent sent, creating duplication and inconsistency.
+
+**No content recommendation** — agents decide which documents to send based on instinct and training, not a structured system. The wrong document at the wrong stage damages trust and slows conversion.
+
+**No compliance check at the point of send** — there is no mechanism ensuring that the document being recommended is the current version, contains the correct compliance language, or is appropriate for this investor's profile.
+
+**Drift across the document library** — when foundational content changes (a regulatory figure, a product status description), the change must propagate to all dependent documents. This currently happens manually, creating fragile, error-prone maintenance.
+
+The platform solves all four problems in a single tool.
+
+---
+
+# 3. Users
+
+## Primary Users
+- **Tom King (Founder/CEO)** — reviews recommendations, manages document library, monitors lead engagement history, updates foundational content
+- **Outreach agents** — paste call transcripts, receive content recommendations, log send actions, prepare follow-up emails
+
+## Secondary Users
+- **Werner Snyman (Product)** — references the Decumulation Engine spec and product status descriptions
+- **Tony (Reviewer)** — audits document library against content bank; reviews changelog
+- **Designer** — references the document registry when formatting or updating documents
+
+---
+
+# 4. Desired Outcome
+
+- An agent completing a call can paste the transcript and receive a content recommendation in under 60 seconds
+- The recommendation is always informed by what has already been sent to that investor — no document is recommended twice
+- Every send action is logged against the lead and visible on subsequent calls
+- The document recommended is always the current, compliant version
+- When foundational content changes, downstream documents are flagged for review before they can be recommended
+- The platform can be demonstrated to an investor as evidence of operational rigour
+- A missing document can be generated, QC-evaluated, and registered in the platform in a single workflow — proving the full content production cycle works end-to-end
+
+---
+
+# 5. Scope
+
+## In Scope
+
+**Recommendation Engine**
+- Transcript input — paste raw call transcript text
+- Persona detection — identify investor type from transcript signals against the 19-persona framework
+- Pipeline stage assessment — determine current funnel stage (Outreach / Called / Demo Booked / Demo Complete / Decision)
+- Objection identification — surface objections raised in the call with suggested responses
+- Document recommendation — recommend documents in priority order with rationale for each
+- Deduplication — cross-reference lead history; exclude any document already sent to this investor
+- Email draft — generate a covering email using the appropriate template, personalised to the detected persona and call context
+- Recommendation review — user can accept, edit, or reject each recommended document before logging
+
+**Lead History & Engagement Tracker**
+- Lead record — name, company (if applicable), pipeline stage, first contact date
+- Send log — every document sent to a lead, the date sent, and the call/transcript that triggered it
+- Deduplication engine — flag any document in a recommendation that has already been sent to this lead
+- Stage progression — automatically suggest pipeline stage update based on documents sent and call outcome
+- Lead search — find a lead by name and see their full engagement history
+
+**Content Management Infrastructure**
+- Document registry — full list of all documents with: file code, tier, category, lifecycle status, review state, version, last reviewed date
+- Compliance constants panel — always-visible reference of non-negotiable values
+- Propagation alert system — when a Tier 1 or Tier 2 document is updated, flag all dependent documents as requiring review before they can be recommended
+- Content Bank browser — searchable, sectioned view of the Content Bank as the source of truth
+- Changelog — timestamped log of all status changes, review actions, and content updates
+- Document viewer — render markdown documents inline
+
+**Content Generation & QC Engine**
+- Document generation — generate a missing document from a brief, drawing on the Content Bank, persona guide, and relevant Tier 1 source documents
+- Generation brief — user specifies: document type, target persona(s), pipeline stage relevance, and any specific requirements
+- QC evaluation — every generated document is immediately passed to a second Claude API call (the evaluator) which checks it against compliance constants, approved terminology, Content Bank alignment, and framing rules
+- QC report — structured output listing: pass/fail per check, the offending text, the correct version, and the source it should trace to
+- DRAFT registration — on generation, the document is immediately added to the registry with `lifecycle_status: DRAFT` and `review_state: REQUIRES_REVIEW` pending QC clearance
+- CURRENT promotion — once QC passes and the user confirms, the document is promoted to `lifecycle_status: CURRENT` and becomes available in the recommendation engine
+- Generation test protocol — the platform can be instructed to generate any planned-but-missing document and run the full QC cycle, validating that all four platform layers are working together
+
+## Out of Scope (v1)
+
+- Native Pipedrive sync (lead history is managed within the platform; Pipedrive export is a planned v2 feature)
+- Live call transcription (transcript is pasted manually — real-time transcription is v2)
+- Multi-user authentication and role-based access
+- Mobile layout
+- Document editing within the platform
+- Export to Word / PDF
+- Automated email sending (email draft is produced; sending happens outside the platform)
+- Analytics and reporting dashboard
+
+---
+
+# 6. Functional Requirements
+
+## Recommendation Engine
+
+**FR-01**
+The system must accept a pasted call transcript as plain text input.
+
+**FR-02**
+The system must analyse the transcript and return: detected persona (from the 19-persona framework), detected pipeline stage, objections raised, and a confidence indicator for each detection.
+
+**FR-03**
+The system must recommend documents in priority order, with a one-sentence rationale for each recommendation.
+
+**FR-04**
+Before generating a recommendation, the system must check the lead's send history and exclude any document already sent to that investor. Excluded documents must be listed separately as "Already sent" — not silently dropped.
+
+**FR-05**
+The system must flag any recommended document that has a `review_state` of `REQUIRES_REVIEW` and prevent it from being recommended until the review is resolved, displaying the reason for the block.
+
+**FR-06**
+The system must generate a draft covering email using the appropriate email template for the detected pipeline stage and persona, pre-populated with the investor's name and the recommended documents.
+
+**FR-07**
+The user must be able to accept, remove, or reorder the recommended documents before confirming the send.
+
+**FR-08**
+On confirmation, the system must log the send action against the lead record: documents sent, date, transcript summary, detected persona, and pipeline stage at time of send.
+
+## Lead History & Engagement Tracker
+
+**FR-09**
+The system must maintain a lead record for each investor, containing: name, pipeline stage, first contact date, and a chronological send log.
+
+**FR-10**
+The system must allow a user to search for a lead by name and view their complete engagement history: every document sent, every call logged, and every stage change.
+
+**FR-11**
+The system must display a "next best action" suggestion on each lead record based on pipeline stage and documents already sent.
+
+**FR-12**
+The system must suggest a pipeline stage update when a send action is logged, based on which documents have now been sent (e.g. Pack 1 sent → suggest moving to Demo Complete).
+
+**FR-13**
+The system must display a clear indicator on the recommendation screen when a lead has an existing history — "Returning lead — [N] documents previously sent."
+
+## Content Management Infrastructure
+
+**FR-14**
+The system must display all documents in a registry with: file code, name, tier, category, lifecycle status, review state, version, and last reviewed date.
+
+**FR-15**
+When a Tier 1 document is marked as updated, the system must automatically flag all dependent Tier 2 and Tier 3 documents as `REQUIRES_REVIEW`.
+
+**FR-16**
+A document with `review_state = REQUIRES_REVIEW` must be blocked from appearing in recommendations until reviewed and cleared.
+
+**FR-17**
+The system must display a compliance constants panel at all times when a document is open.
+
+**FR-18**
+The system must maintain a changelog of all status changes and review actions with timestamps.
+
+**FR-19**
+The system must display the Content Bank in full with search that highlights matching terms.
+
+## Content Generation & QC Engine
+
+**FR-20**
+The system must accept a generation brief specifying: document type, target persona(s), pipeline stage relevance, and any specific requirements or constraints.
+
+**FR-21**
+The system must generate a document using a Claude API call that receives: the generation brief, the relevant sections of the Content Bank, the compliance constants, the persona guide signals for the target persona(s), and the approved terminology list.
+
+**FR-22**
+Immediately on generation, the system must pass the generated document to a second Claude API call (the QC evaluator). The evaluator must check:
+- All compliance constants are present and correctly stated
+- All required caveats are present (BPR "subject to final enactment", pension IHT "subject to final enactment", Decumulation Planner status exact wording)
+- No deprecated terminology is used (ASA, scoring language in Access content, etc.)
+- Claims are traceable to a named Tier 1 or Tier 2 source document
+- Framing rules are respected (Access = structured disclosure, not advice; product status not overstated)
+
+**FR-23**
+The QC evaluator must return a structured QC report:
+```json
+{
+  "overall": "pass" | "fail",
+  "checks": [
+    {
+      "check_id": "compliance_bpr_cap",
+      "label": "BPR cap value",
+      "result": "pass" | "fail",
+      "offending_text": null | "string from generated doc",
+      "correct_version": null | "what it should say",
+      "source": null | "Content Bank Section 7 / compliance_constants.json"
+    }
+  ],
+  "fail_count": 0,
+  "warnings": [],
+  "qc_attempt": 1
+}
+```
+
+QC attempt history must be stored per document:
+
+```json
+{
+  "qc_history": [
+    {
+      "attempt": 1,
+      "timestamp": "2026-04-02T11:00:00Z",
+      "overall": "fail",
+      "fail_count": 3,
+      "qc_report_id": "qc_001"
+    },
+    {
+      "attempt": 2,
+      "timestamp": "2026-04-02T11:08:00Z",
+      "overall": "pass",
+      "fail_count": 0,
+      "qc_report_id": "qc_002"
+    }
+  ]
+}
+```
+
+**FR-24**
+A generated document must be registered in the document registry immediately on generation with `lifecycle_status: DRAFT` and `review_state: REQUIRES_REVIEW`. It must not appear in recommendations until QC passes and the user promotes it to CURRENT.
+
+**FR-25**
+If QC fails, the system must display the QC report inline, highlighting the specific failures. The user must be able to trigger a regeneration with the QC failures provided as additional constraints to the generation prompt.
+
+The system enforces a hard cap of 2 regeneration attempts per document. After 2 failed attempts, the document is flagged `MANUAL_REVIEW_REQUIRED` and cannot be auto-promoted under any circumstance. The user must manually review and edit before promotion is available.
+
+**FR-26**
+Once QC passes, the user must explicitly confirm promotion to CURRENT. On confirmation, the system updates the registry, logs the action in the changelog, and the document becomes immediately available in the recommendation engine for the relevant personas and pipeline stages.
+
+**FR-27**
+The system must support a test protocol mode: given a list of planned-but-missing documents, generate each in sequence, run QC, and produce a summary test report showing which generated documents passed QC on first attempt, which required regeneration, and which failed.
+
+**FR-28 — Seed Validation**
+On application startup, the system must validate the seed data before any recommendation, generation, or QC operation is permitted. Validation must check:
+- All document IDs are unique
+- All `lifecycle_status` values are valid enum members
+- All `review_state` values are valid enum members
+- All `tier` values are 1, 2, or 3
+- All `upstream_dependencies` reference existing document IDs (no broken links)
+- No document lists itself as a dependency (no self-reference)
+- No circular dependencies exist in the dependency graph
+- All `pipeline_stage_relevance` values reference valid pipeline stages
+- All `persona_relevance` values reference valid persona names
+- All compliance constants are present in `compliance_constants.json`
+- Email templates exist for each pipeline stage referenced in the registry
+
+If validation fails, the application must surface a clear startup error listing every validation failure. It must not proceed to the main UI until all failures are resolved. Seed validation is not optional and cannot be bypassed.
+
+---
+
+# 7. Behaviour Rules
+
+**Recommendation engine**
+- The recommendation must always check lead history before generating — never skip deduplication
+- If a lead has no history, surface a clear "First contact" indicator — do not assume prior sends
+- If all appropriate documents for this stage have already been sent, the engine must say so explicitly rather than recommend inappropriate documents to fill the gap
+- A document blocked due to `REQUIRES_REVIEW` must show the blocking reason — never silently exclude
+- The AI analysis must return a numeric confidence score (0.0–1.0) for persona and stage detection — scores below 0.60 must block progression until the user explicitly confirms or overrides
+- Email drafts must pull from the email templates in the content library — do not generate free-form copy
+
+**Lead history**
+- A send action is only logged when the user explicitly confirms — never log on recommendation alone
+- A lead record cannot be deleted — only archived
+- Send log entries are immutable once confirmed — they cannot be edited in place. Errors are corrected by appending a corrective audit entry with `status: "entered_in_error"`. The original entry remains visible.
+- Pipeline stage can be updated manually or accepted from a system suggestion — both are logged
+
+**Content management**
+- Tier 1 document update cascades two levels: Tier 1 → Tier 2 → Tier 3
+- Tier 2 document update cascades one level: Tier 2 → Tier 3
+- Propagation alerts remain visible until explicitly resolved
+- Destructive status changes (CURRENT → SUPERSEDED) require a confirmation step with consequences stated
+
+**Content generation & QC**
+- Generation always produces DRAFT status — never CURRENT directly
+- The QC evaluator runs automatically on every generated document — it cannot be skipped
+- If QC fails, the failure report is shown in full — the user cannot dismiss it without taking action (regenerate or abandon)
+- Regeneration passes the previous QC failure report as additional constraints to the generation prompt — the model must address each failure explicitly
+- A document that fails QC twice on the same check must be escalated: surface a warning that manual review is required before promotion
+- The QC evaluator is a separate API call with a separate system prompt — it must not share context with the generation call to avoid self-validation bias
+- Generated documents are registered with an `is_generated: true` flag — this is permanent and visible in the registry
+- `source_trace` must be non-empty for any generated document that passes QC — an empty source trace is a QC failure
+- Maximum 2 regeneration attempts per document — after 2 failures the document is flagged `MANUAL_REVIEW_REQUIRED` and cannot be auto-promoted
+- Each regeneration call must explicitly include the previous QC failure report as constraints — the model must address each failure
+
+---
+
+# 8. UX / Design Requirements
+
+## Primary Workflow (must be obvious within 5 seconds)
+
+```
+New call → Find or create lead → Paste transcript →
+Review recommendation → Confirm send → History updated
+```
+
+This is the core loop. Every other view supports it — it must never require more than three clicks to reach the transcript input from anywhere in the platform.
+
+## Visual Consistency
+
+Purpose-built for Unlock. Must reflect the Unlock brand posture: institutional, calm, intelligence-forward.
+
+- Dark navy or deep charcoal primary colour
+- Minimal colour — reserved for status indicators, alerts, and confidence levels
+- Clear typographic hierarchy
+- Generous whitespace
+- Tables and lists optimised for scanning
+
+## Look and Feel
+
+The platform should feel like an internal intelligence tool used by a serious financial operator — not a generic SaaS product, not a startup dashboard.
+
+Avoid:
+- Generic rounded-corner SaaS aesthetics
+- Cluttered notification badges
+- Playful UI patterns
+- Unnecessary animation
+
+## Status and State Colour System
+
+| State | Indicator |
+|---|---|
+| CURRENT | Green |
+| DRAFT | Amber |
+| SUPERSEDED | Grey / de-emphasised |
+| REQUIRES_REVIEW | Orange alert |
+| Recommended | Blue highlight |
+| Already sent | Muted / struck through |
+| Blocked | Red / locked icon |
+| First contact | Neutral badge |
+| Returning lead | Distinct badge with send count |
+
+## Layout
+
+**Recommendation view (primary)**
+- Left: lead details + history summary
+- Centre: transcript input + AI analysis output
+- Right: document recommendations + email draft
+
+**Lead history view**
+- Full chronological timeline of sends, calls, and stage changes
+
+**Content management view**
+- Three-panel: navigation / registry list — document viewer — compliance sidebar
+
+---
+
+# 9. UX States That Must Exist
+
+**Default** — empty transcript input, lead search visible, compliance constants accessible
+
+**First contact** — lead not found in history; prompt to create new lead record before proceeding
+
+**Returning lead** — lead found; history summary displayed before transcript analysis begins
+
+**Analysing** — transcript submitted; loading state with progress indicator (persona detection → stage assessment → objection identification → recommendation generation)
+
+**Low confidence** — detected persona or stage has low confidence; prompt user to confirm before recommendations are finalised
+
+**All sent** — all appropriate documents for this stage already sent to this lead; platform says so explicitly and suggests next stage action
+
+**Blocked document** — recommended document has `REQUIRES_REVIEW` flag; shown with reason and blocked from send
+
+**Confirmation** — user reviews final recommendation before logging; shows exactly what will be recorded
+
+**Send logged** — success state; lead history updated; summary of what was logged
+
+**Error** — transcript analysis fails; plain-English explanation and retry option
+
+**No results** — lead search returns nothing; option to create new record
+
+**Generation states (Content Generation & QC Engine)**
+
+**Brief entry** — user specifies document type, persona, stage, and requirements
+
+**Generating** — Claude API call in progress; progress indicator showing generation stage
+
+**QC running** — generated document passed to evaluator; "Checking compliance..." indicator
+
+**QC passed** — all checks green; document preview shown; user prompted to confirm promotion to CURRENT or review first
+
+**QC failed** — failure report shown inline with specific issues highlighted; options to regenerate with fixes or abandon
+
+**Regenerating** — second generation attempt with QC failures as additional constraints
+
+**Promoted** — document registered as CURRENT; confirmation shown; document immediately available in recommendation engine
+
+**Test protocol running** — batch generation of multiple missing documents; progress shown per document; summary report at end
+
+---
+
+# 10. Data Requirements
+
+## Inputs
+
+- Call transcript — plain text, pasted by user
+- Lead identifier — name (searched or created)
+- Document registry — seeded from `SCHEMA_SUMMARY.json` and `registry.json`
+- Content Bank — loaded from `700_CONTENT_Bank_V4_CURRENT.md`
+- Persona guide — loaded from `520_GUIDE_Investor_Personas_19_V1_CURRENT.md`
+- Pipeline logic — loaded from `200_PLAN_Execution_30K_Database_V2_CURRENT.md`
+- Email templates — loaded from `230_EMAILS_Pack1_Templates_V2_CURRENT.txt`
+- Compliance constants — seeded from `SCHEMA_SUMMARY.json > compliance_constants`
+
+## Outputs
+
+- Persona detection result (persona name, confidence score, signal evidence from transcript)
+- Pipeline stage assessment (stage, confidence score)
+- Objection list (objection text, suggested response)
+- Document recommendation list (ordered, with rationale, deduplication applied)
+- Covering email draft
+- Send log entry (persisted to lead record on confirmation)
+- Pipeline stage suggestion
+- Generated document (markdown, registered as DRAFT on creation)
+- QC report (structured JSON, linked to generated document in registry)
+
+## Lead Record Schema
+
+```json
+{
+  "id": "lead_001",
+  "name": "Duncan Stewart",
+  "company": null,
+  "pipeline_stage": "Demo Complete",
+  "first_contact": "2026-03-15",
+  "last_contact": "2026-03-30",
+  "detected_persona": "Legacy Builder",
+  "send_log": [
+    {
+      "send_id": "send_001",
+      "date": "2026-03-15",
+      "documents_sent": ["100", "110"],
+      "pipeline_stage_at_send": "Called",
+      "transcript_summary": "Interested in IHT planning. Mentioned trust structures and property holdings. Asked about EIS.",
+      "email_sent": true
+    },
+    {
+      "send_id": "send_002",
+      "date": "2026-03-30",
+      "documents_sent": ["120", "170"],
+      "pipeline_stage_at_send": "Demo Complete",
+      "transcript_summary": "Post-demo follow-up. Asked about BPR cap changes and April deadline.",
+      "email_sent": true
+    }
+  ],
+  "stage_history": [
+    { "stage": "Outreach", "date": "2026-03-14" },
+    { "stage": "Called", "date": "2026-03-15" },
+    { "stage": "Demo Complete", "date": "2026-03-30" }
+  ],
+  "notes": []
+}
+```
+
+## Document Registry Schema
+
+```json
+{
+  "id": "120",
+  "file_code": "120_BRIEF_Pack1_Founding_Investor_V1_CURRENT",
+  "type": "BRIEF",
+  "name": "Pack1_Founding_Investor",
+  "filename": "120_BRIEF_Pack1_Founding_Investor_V1_CURRENT.md",
+  "tier": 3,
+  "category": "investor_docs",
+  "lifecycle_status": "CURRENT",
+  "review_state": "CLEAN",
+  "version": 1,
+  "last_reviewed": "2026-03-14",
+  "description": "Founding investor pack — sent post-demo",
+  "pipeline_stage_relevance": ["Demo Complete", "Decision"],
+  "persona_relevance": ["Preserver", "Legacy Builder", "Growth Seeker"],
+  "upstream_dependencies": ["700", "520", "400"],
+  "downstream_dependents": [],
+  "is_generated": false,
+  "generation_brief_id": null,
+  "generation_attempt": null,
+  "qc_report_id": null,
+  "source_trace": []
+}
+```
+
+For generated documents, `source_trace` must be populated with at least one entry per compliance-sensitive claim area:
+
+```json
+{
+  "source_trace": [
+    {
+      "claim_area": "BPR cap",
+      "source_document_id": "700",
+      "source_section": "Compliance Constants",
+      "source_excerpt_key": "bpr_cap"
+    },
+    {
+      "claim_area": "Decumulation Planner status",
+      "source_document_id": "700",
+      "source_section": "Product Status",
+      "source_excerpt_key": "decumulation_planner_status"
+    }
+  ]
+}
+```
+
+A generated document that passes QC must have `source_trace` populated — it cannot be empty. This is a hard requirement, not a nice-to-have. It provides auditability, makes QC deterministic, and gives the regeneration prompt concrete references when failures occur.
+
+Note: `pipeline_stage_relevance` and `persona_relevance` are the fields the recommendation engine uses to filter and rank documents. These must be populated in the seed data.
+
+## Compliance Constants
+
+| Constant | Value |
+|---|---|
+| BPR cap | £2,500,000 |
+| BPR effective date | April 2026 — "subject to final enactment" |
+| VCT income tax relief rate | 20% (post-2025 Budget — not 30%) |
+| Pension IHT change | April 2027 — "subject to final enactment" |
+| Decumulation Planner status | "Specification complete. Prototype build commencing." |
+| Access framework framing | Structured disclosure — not scoring, evaluation, or advice |
+| Product tagline | "Clarity, without complexity" |
+| Target portfolio range | £250K–£5M |
+| Pre-money valuation | £6,500,000 |
+| Instrument | Instant Investment (not ASA) |
+
+---
+
+# 11. Technical Guidelines
+
+## Architecture Principles
+
+- Three distinct layers with clean interfaces between them — recommendation engine, lead history store, content registry
+- The recommendation engine calls the content registry and lead history store — it never writes directly to them
+- Send logging is the only write operation available from the recommendation view — it writes to lead history only
+- AI analysis (transcript → persona / stage / recommendations) is a Claude API call with structured output — not embedded logic
+- All business rules (persona mapping, stage logic, deduplication) live in utility modules — not in UI components or API call prompts
+
+## AI Integration
+
+The recommendation engine uses the Claude API in two passes, not one. Combining persona detection, stage detection, and document selection in a single call produces inconsistent results — the model selects from too large a universe and can reason over documents outside the intended stage logic.
+
+**Pass 1 — Analysis**
+The Claude API call receives:
+- The transcript (user input)
+- Compact persona reference (signals and characteristics — not the full 19-persona guide)
+- Compact stage reference (stage definitions and signals)
+- The lead's existing send history summary
+
+It returns: detected persona, confidence score, stage, confidence score, objections, transcript summary.
+
+**Pass 2 — Ranking**
+Before this call, the system runs a deterministic eligibility filter locally:
+
+```
+eligibleDocuments = registry.filter(doc =>
+  doc.lifecycle_status === "CURRENT" &&
+  doc.review_state === "CLEAN" &&
+  doc.pipeline_stage_relevance.includes(detectedStage) &&
+  doc.persona_relevance.includes(detectedPersona) &&
+  !lead.send_log.flatMap(s => s.documents_sent).includes(doc.id)
+)
+```
+
+The Claude API call for Pass 2 receives only the eligible candidate list with rationale context. It ranks and explains only those candidates — it never selects from the full registry.
+
+**The AI does not choose which documents are eligible. The system does. The AI only ranks what the system has already approved.**
+
+## Confidence Thresholds
+
+Confidence scores must use hard numeric thresholds — not vague labels. Both persona and stage detection must return a numeric score.
+
+| Score | Label | Behaviour |
+|---|---|---|
+| ≥ 0.80 | High | Proceed automatically |
+| 0.60–0.79 | Medium | Display "Please review" — user can proceed without confirming |
+| < 0.60 | Low | User must explicitly confirm or override persona and/or stage before recommendations are finalised |
+
+The API output schema must use numeric scores, not string labels. Labels are derived in the UI from the threshold rules above — not from the model.
+
+The Pass 1 API call must request structured JSON output:
+
+```json
+{
+  "detected_persona": {
+    "name": "Legacy Builder",
+    "confidence_score": 0.87,
+    "evidence": ["mentioned trust structures", "asked about IHT", "has property holdings"]
+  },
+  "pipeline_stage": {
+    "stage": "Demo Complete",
+    "confidence_score": 0.71,
+    "rationale": "Call was post-demo follow-up; investor asked detailed questions about BPR"
+  },
+  "objections": [
+    {
+      "objection": "Concerned about April deadline",
+      "suggested_response": "The April 6 date is the share issuance date — the carry-back window for 2024/25 tax relief closes April 5."
+    }
+  ],
+  "transcript_summary": "Post-demo follow-up. Investor raised BPR timing and estate planning concerns. Mentioned accountant review.",
+  "pipeline_stage_suggestion": "Decision"
+}
+```
+
+**Pass 2 output schema (ranking only):**
+
+```json
+{
+  "ranked_documents": [
+    {
+      "document_id": "170",
+      "priority": 1,
+      "rationale": "IHT/EIS planning document directly addresses the BPR and estate planning questions raised"
+    },
+    {
+      "document_id": "160",
+      "priority": 2,
+      "rationale": "EIS case studies support the investment case with concrete worked examples"
+    }
+  ]
+}
+```
+
+Note: Pass 2 receives only the eligible candidate list (pre-filtered by the deterministic engine). It never receives the full registry. Pass 2 must never include documents not in the candidate list. To manage token limits, cap the candidate list at a maximum of 8 documents — if more than 8 are eligible, rank by `pipeline_stage_relevance` score first, then `persona_relevance`, before passing to the model.
+
+## Schema Adapter
+
+The UI must not depend directly on `SCHEMA_SUMMARY.json`. A `schemaAdapter` module transforms schema data into the application's internal registry shape. This keeps UI components clean and prevents breakage when the schema evolves.
+
+## State Split
+
+Document state is split across three independent concerns:
+
+- **Lifecycle status**: `CURRENT` | `DRAFT` | `SUPERSEDED`
+- **Review state**: `CLEAN` | `REQUIRES_REVIEW` | `REVIEWED`
+- **Audit events**: `STATUS_CHANGED` | `DOCUMENT_UPDATED` | `FLAGGED_FOR_REVIEW` | `REVIEW_COMPLETED` | `SEND_LOGGED`
+
+A document can be `CURRENT` (lifecycle) and `REQUIRES_REVIEW` (review) simultaneously. The recommendation engine checks both before including a document.
+
+## Propagation Logic
+
+```
+function onDocumentUpdated(documentId):
+  find all documents where upstream_dependencies contains documentId
+  for each dependent:
+    set review_state = "REQUIRES_REVIEW"
+    append to changelog: { timestamp, action: "FLAGGED_FOR_REVIEW", triggered_by: documentId }
+  if document.tier === 1:
+    recurse — flag Tier 3 documents that depend on any Tier 2 dependent
+```
+
+## Content Generation & QC API Pattern
+
+The generation and QC evaluation use two separate Claude API calls with separate system prompts. They must not share context — the evaluator must assess the generated document independently.
+
+**Generation call system prompt (key elements):**
+- You are producing an investor-facing document for Unlock, a UK portfolio intelligence platform
+- Draw only from the provided Content Bank sections and source documents
+- Every claim must be traceable to the provided source material
+- Use only approved terminology (provided list)
+- All compliance constants must appear exactly as specified (provided list)
+- Output format: clean markdown, structured with the Unlock 10-heading style
+
+**QC evaluator call system prompt (key elements):**
+- You are a compliance evaluator, not a content generator
+- You will be given a generated document and a checklist of rules
+- For each rule, return pass or fail with the exact offending text if failing
+- Do not suggest improvements — only evaluate and report
+- Output format: structured JSON matching the QC report schema exactly
+
+**The evaluator must never see the generation system prompt** — it evaluates output only, not intent.
+
+**claudeApiClient.ts** must expose two distinct methods:
+```
+generateDocument(brief, sources, constants, terminology) → string (markdown)
+evaluateDocument(document, checkRules, constants, terminology) → QCReport
+```
+
+## Portability
+
+- React + standard CSS — no framework lock-in
+- Lead history stored in local JSON in v1 — structured for Pipedrive export in v2
+- Registry and compliance data in JSON files
+- Claude API key via environment variable — never hardcoded
+- No other external dependencies in v1
+
+## File Structure
+
+```
+/src
+  /app
+    App.tsx
+    routes.tsx
+
+  /components
+    RecommendationEngine/
+      TranscriptInput.tsx
+      AnalysisResult.tsx
+      DocumentRecommendation.tsx
+      AlreadySentList.tsx
+      BlockedDocumentAlert.tsx
+      EmailDraft.tsx
+      ConfirmSendPanel.tsx
+    LeadHistory/
+      LeadSearch.tsx
+      LeadRecord.tsx
+      SendTimeline.tsx
+      StageProgression.tsx
+      NextBestAction.tsx
+    DocumentRegistry/
+      DocumentRegistry.tsx
+      DocumentTable.tsx
+      RegistryFilters.tsx
+      RegistrySummary.tsx
+    DocumentViewer/
+      DocumentViewer.tsx
+      DependencyChain.tsx
+      ReviewBanner.tsx
+    CompliancePanel/
+      CompliancePanel.tsx
+    PropagationMap/
+      PropagationMap.tsx
+    Changelog/
+      ChangelogList.tsx
+    Common/
+      EmptyState.tsx
+      ErrorState.tsx
+      LoadingState.tsx
+      ConfirmationModal.tsx
+      StatusPill.tsx
+      ConfidenceBadge.tsx
+      PageShell.tsx
+
+  /views
+    RecommendationView.tsx
+    LeadHistoryView.tsx
+    LeadRecordView.tsx
+    RegistryView.tsx
+    ContentBankView.tsx
+    PropagationMapView.tsx
+    ChangelogView.tsx
+
+  /data
+    registry.json
+    leads.json
+    compliance_constants.json
+    changelog.json
+
+  /lib
+    schemaAdapter.ts
+    recommendationEngine.ts
+    deduplicationEngine.ts
+    propagationEngine.ts
+    stageProgressionLogic.ts
+    registrySelectors.ts
+    leadSelectors.ts
+    search.ts
+    validation.ts
+    markdownLoader.ts
+    claudeApiClient.ts
+    date.ts
+
+  /hooks
+    useRecommendation.ts
+    useLeadHistory.ts
+    useRegistry.ts
+    useChangelog.ts
+    useDocumentActions.ts
+
+  /styles
+    tokens.css
+    globals.css
+```
+
+---
+
+# 12. Acceptance Criteria
+
+The build is complete when:
+
+**Recommendation engine**
+- A transcript can be pasted and analysed to produce persona, stage, and objection detection
+- Documents are recommended in priority order with rationale
+- Documents already sent to the lead are excluded from recommendations and listed separately
+- Documents with `REQUIRES_REVIEW` are blocked with a visible reason
+- A covering email draft is generated using the correct template
+- The user can accept / remove / reorder recommendations before confirming
+- Confirmed sends are logged to the lead record
+
+**Lead history**
+- A lead can be found by name search
+- A new lead can be created if not found
+- The full send history for a lead is visible in chronological order
+- Returning leads are clearly identified before the recommendation begins
+- Pipeline stage progression is suggested and logged on send confirmation
+
+**Content management**
+- Document registry displays all documents with correct status, tier, and review state
+- Updating a Tier 1 document cascades `REQUIRES_REVIEW` to all downstream documents
+- Blocked documents cannot appear in recommendations until reviewed and cleared
+- Compliance constants panel is always visible
+- Changelog records all actions with timestamps
+
+**Platform**
+- The full core workflow (find lead → paste transcript → confirm send → history updated) completes without assistance
+- All UX states exist: default, first contact, returning lead, analysing, low confidence, all sent, blocked, confirmation, success, error
+- The tool can be demonstrated reliably in a live session
+
+**Additional acceptance criteria**
+- Every recommended document has passed all deterministic eligibility checks before the AI ranking call — no document appears in recommendations unless it is CURRENT, CLEAN, stage-relevant, persona-relevant, and not already sent
+- If persona or stage confidence score is below 0.60, the user must explicitly confirm or override before the recommendation is finalised — the platform must not allow progression past this point automatically
+- Once a send is logged, it cannot be edited in place — errors are corrected only by appending a corrective audit entry; the original entry remains visible and intact
+- If no eligible documents remain after deterministic filtering and deduplication, the platform surfaces an explicit "All appropriate documents already sent" message and presents next best action — it does not fall back to recommending ineligible documents
+
+**Content generation & QC**
+- A generation brief produces a document that is immediately registered as DRAFT with `review_state: REQUIRES_REVIEW`
+- The QC evaluator runs automatically on every generated document — it cannot be bypassed
+- A QC failure report correctly identifies non-compliant compliance constants, deprecated terminology, and missing caveats
+- A document that passes QC and is confirmed by the user is promoted to CURRENT and immediately appears in the recommendation engine for the correct personas and pipeline stages
+- The test protocol successfully generates `196_MESSAGING_Post_April6` (the reference test case), passes QC, and registers it in the platform — this is the end-to-end validation test for all four platform layers
+- Every generated document that passes QC has a non-empty `source_trace` with at least one entry per compliance-sensitive claim area
+- A document that fails QC twice on the same check is flagged `MANUAL_REVIEW_REQUIRED` and the promote button is disabled
+- Seed validation runs on startup and blocks the UI if any validation failure is detected
+
+---
+
+# 13. Constraints
+
+- Lead history stored in local JSON in v1 — no Pipedrive sync until v2
+- Transcript is pasted manually — no live transcription in v1
+- Email draft is produced but sending happens outside the platform in v1
+- Document editing happens externally — the platform imports and displays only
+- No multi-user authentication in v1
+- Mobile layout not required in v1
+- Claude API key required — platform will not function without it
+- Content Bank search is client-side only in v1
+
+---
+
+# 14. Resolved Decisions
+
+The following questions are now closed. Answers are binding on the build.
+
+**1. Multiple contacts per organisation**
+Locked: one contact = one lead for v1. The `company` field is informational only — it does not imply shared history between leads at the same organisation. Multi-contact account support is a v2 feature.
+
+**2. Manual send logging**
+Explicitly out of scope for v1. A developer must not add this even if it seems simple. The logging path requires a transcript — this is enforced in the data model (no transcript = no send log entry). Manual logging without transcript creates an audit gap that undermines the history layer.
+
+**3. Email draft editability**
+Stage 1: email draft not generated (out of scope).
+Stage 2: email draft is generated and is editable within the platform before the user copies it. It is not read-only. The edited version is what gets referenced in the send log (note: the edit is not stored verbatim — only the fact that an email was sent and which template was used).
+
+**4. Next best action vs queue view**
+Next best action on the individual lead record is sufficient for v1. Queue view (all leads requiring action) is a v2 feature. Next best action logic follows these rules:
+- Stage: Outreach, no sends → suggest: call and send one-pager (100)
+- Stage: Called, one-pager sent → suggest: book demo, send three-pager (110)
+- Stage: Demo Booked → suggest: confirm attendance, prepare persona-matched talking points
+- Stage: Demo Complete, Pack 1 not sent → suggest: send Pack 1 (120) with persona cover email
+- Stage: Demo Complete, Pack 1 sent → suggest: follow up, send IHT planning doc if Legacy Builder (170), or case studies (160)
+- Stage: Decision → suggest: send Pack 2 (130), initiate Instant Investment via SeedLegals
+
+**5. Gone-cold flag**
+Out of scope for v1. Not implemented.
+
+**6. SUPERSEDED documents in lead history**
+Yes — SUPERSEDED documents must be visible in lead history exactly as sent. History reflects reality at time of send, not the current registry state. A document sent as V1 that is now V2 CURRENT must appear in history as the V1 version that was actually sent.
+
+---
+
+# 15. Project Stages
+
+## Stage 1 — Prototype
+
+**Objective:** Validate that the core loop works end-to-end. Transcript in → recommendation out → history logged.
+
+**Build focus:**
+- Transcript input with Claude API call
+- Persona and stage detection displayed as structured output
+- Document recommendation list with rationale
+- Basic lead search (name lookup in `leads.json`)
+- Deduplication — check lead history, exclude already-sent documents
+- Send confirmation and history logging
+- Compliance constants panel — visible, static
+- Flat layout — functionality over polish
+
+**What is not required at this stage:**
+- Email draft generation
+- Propagation alert system
+- Blocked document enforcement
+- Pipeline stage suggestion
+- Full UX state design
+- Content management views
+- Visual polish
+
+**Validation goals:**
+- Does the persona detection reliably identify the right type from a real Unlock call transcript?
+- Does the recommendation feel appropriate for the detected stage and persona?
+- Does deduplication correctly exclude already-sent documents?
+- Is the history log legible and useful on a returning lead?
+- What is missing that becomes obvious only in use?
+
+**Stage 1 is complete when:** a real call transcript produces a useful, deduplicated recommendation that is logged correctly against a named lead — without assistance.
+
+---
+
+## Stage 2 — MVP
+
+**Objective:** A reliable, demonstrable platform that agents can use daily and that can be shown to investors as evidence of operational rigour.
+
+**Build focus (additions to Stage 1):**
+- Email draft generation using correct template and persona
+- Blocked document enforcement (`REQUIRES_REVIEW` prevents recommendation)
+- Propagation alert system (Tier 1 update cascades downstream flags)
+- Full content management views: registry, Content Bank browser, propagation map, changelog
+- Pipeline stage suggestion and progression logging
+- Next best action on lead record
+- Full UX state design
+- Visual polish consistent with Unlock brand posture
+
+**Known technical challenges:**
+- **Context size** — the 19-persona guide, pipeline logic, email templates, and document registry together are large. Structure the Claude API call to pass only what is needed for each analysis, not everything at once. Use the schema adapter to select relevant documents by stage and persona before passing to the API.
+- **Deduplication edge cases** — a document sent in a prior version (V1) may have been superseded (V2 now current). The deduplication engine must check document ID, not filename, so version updates do not create false duplicates.
+- **Propagation completeness** — a Tier 1 change must cascade two levels. Test this explicitly: update the Content Bank and verify that Tier 3 investor documents are flagged, not just Tier 2.
+- **Lead history integrity** — send log entries are immutable once confirmed. Build the data layer to enforce this from the start.
+
+**Validation goals:**
+- Can an agent complete the full workflow without training?
+- Does the email draft require minimal editing before sending?
+- Does the propagation system correctly block non-compliant documents from recommendations?
+- Does the lead history give a complete, trustworthy picture of the investor relationship?
+- Does the platform feel like something that could be demonstrated live to a prospect as evidence of how Unlock operates?
+
+**Stage 2 is complete when:** all acceptance criteria in Section 12 are met and the platform can be demonstrated reliably in a live session.
+
+---
+
+## Stage 3 — Content Generation & QC
+
+**Objective:** Close the missing document gap and validate the full platform by generating, evaluating, and registering real Unlock content inside the tool.
+
+**Build focus:**
+- Generation brief UI — document type, persona, stage, requirements
+- Generation Claude API call with Content Bank and source document context
+- QC evaluator Claude API call with separate system prompt and checklist
+- QC report display — inline, with specific failures highlighted
+- Regeneration loop — QC failures passed as constraints to second generation attempt
+- DRAFT registration on generation, CURRENT promotion on QC pass + user confirm
+- Test protocol mode — batch generation of planned-but-missing documents with summary report
+
+**Reference test case — `196_MESSAGING_Post_April6`:**
+This is the first document to generate. It tests the full cycle because:
+- It has a clear brief (post-April 6 urgency framing shift)
+- It draws from identifiable Content Bank sections (valuation, round timeline, BPR framing)
+- It has multiple compliance checks that must pass (BPR caveat, pension IHT caveat, product status)
+- It is genuinely needed within 4 days — the test produces a real deliverable, not a synthetic one
+- Success means: generated document looks right, QC passes, document appears in recommendation engine for appropriate leads at Decision stage
+
+**Subsequent test cases (in order):**
+1. `196_MESSAGING_Post_April6` — post-deadline urgency (reference test)
+2. `145_EXPLAINER_Decumulation_Planner` — product explainer for new feature
+3. `195_PROMO_Growth_Capital_Pack` — Q2 round promo (tests different document type)
+4. `320_WHITEPAPER_IHT_Proof_Estate_Rolling_EIS` — long-form whitepaper (tests length and complexity)
+
+**Validation goals:**
+- Does the generated document read like it was written by Unlock, not generated by AI?
+- Does the QC evaluator correctly catch deliberate compliance errors when seeded into a test document?
+- Does a passing document immediately appear in the recommendation engine for the right leads?
+- Does the test protocol produce a useful summary report that shows platform health at a glance?
+
+**Stage 3 is complete when:** `196_MESSAGING_Post_April6` is generated, passes QC, is promoted to CURRENT, appears in the recommendation engine for Decision-stage leads, and the test protocol produces a clean summary report across all four test cases.
+
+---
+
+# 16. Non-Goals
+
+The following behaviours are explicitly forbidden — not just deferred. A builder must not implement these in any version without a spec change.
+
+- **The platform must never send emails directly.** It produces drafts only. Email delivery is always external.
+- **The platform must never write to Pipedrive or any external CRM** in v1. Lead data lives in `leads.json` only.
+- **The AI must never be the eligibility gate.** Eligibility is always deterministic. The model ranks only what the system has pre-approved.
+- **Generated documents must never be auto-promoted to CURRENT.** User confirmation is always required.
+- **The QC evaluator must never share context with the generator.** Separate prompts, separate calls, always.
+- **Send log entries must never be deleted or edited in place.** Corrections are appended entries only.
+- **The platform must never recommend a document with `review_state: REQUIRES_REVIEW`.** No exceptions, no overrides.
+
+---
+
+# 17. Performance Constraints
+
+- **Pass 1 + Pass 2 combined** must complete within 15 seconds for transcripts under 3,000 tokens. Transcripts over 3,000 tokens should be summarised client-side before submission.
+- **Seed validation** must complete within 2 seconds on startup regardless of registry size.
+- **Document registry load** must complete within 1 second for up to 100 documents.
+- **QC evaluation** must complete within 10 seconds for documents under 2,000 words.
+- **Pass 2 candidate cap**: maximum 8 documents passed to the ranking call. If more than 8 are eligible, rank by `pipeline_stage_relevance` score first, then `persona_relevance`, before passing to the model.
+
+These are hard constraints. If a build cannot meet them, the architecture must change — not the constraints.
+
+---
+
+# 18. Delivery Expectations
+
+The output should include:
+
+- Working prototype demonstrating the full recommendation → deduplication → send log workflow
+- Seed data files: `registry.json` (all current Unlock documents with stage and persona relevance), `leads.json` (sample lead records including Duncan Stewart), `compliance_constants.json`
+- Clean codebase with component and layer separation
+- README covering: setup, API key configuration, how to add leads, how to add documents, how to update compliance constants
+- List of assumptions made during build
+- List of known gaps or incomplete items
+
+---
+
+# 19. Build Rules
+
+1. Do not guess missing requirements — refer to this spec and `SCHEMA_SUMMARY.json`
+2. The recommendation engine is the product — everything else supports it
+3. Never recommend a document without checking lead history first — deduplication is not optional
+4. Never recommend a document with `review_state = REQUIRES_REVIEW` — compliance block is not optional
+5. AI output must be structured JSON — never parse free-form text for business logic
+6. Send logging is the only write path from the recommendation view
+7. Match Unlock brand posture: institutional, calm, intelligence-forward — not generic SaaS
+8. Prefer modular components over one-off code
+9. Always implement all UX states — especially "all sent" and "blocked document"
+10. Build so the prototype can evolve: Pipedrive sync, live transcription, and email sending are planned for later versions
+11. The QC evaluator must use a separate API call and separate system prompt from the generator — self-validation is not QC
+12. Generated documents are always DRAFT until QC passes and the user confirms — never auto-promote
+13. The test protocol is not a demo — it generates real documents that will be used. Build it to produce outputs worth keeping.
+
+---
+
+# 20. Standard Instruction for Replit Build
+
+When building from this spec:
+
+- The primary workflow is: find lead → paste transcript → analyse → review recommendation → confirm send → history logged. Build this first and make it work end-to-end before any other view.
+- Do not build content management views until the recommendation loop works
+- Seed `registry.json` with all current Unlock documents including `pipeline_stage_relevance` and `persona_relevance` fields
+- Seed `leads.json` with at least three sample leads at different pipeline stages including one returning lead with existing send history
+- The Claude API call must request structured JSON — include the output schema in the system prompt
+- Pass only relevant documents to the API (filtered by stage/persona) — do not pass the entire registry
+- The deduplication check runs before the API call, not after — exclude already-sent document IDs from the context passed to the model
+- Document every assumption in the README
+- Avoid platform lock-in — store all data in portable JSON structured for Pipedrive export in v2
+- Build the generation and QC layers only after Stage 2 is complete and passing — do not attempt all four layers simultaneously
+- The first generation test case is `196_MESSAGING_Post_April6` — use this as the reference build target for Stage 3
+- The QC evaluator system prompt must be stored separately from the generation system prompt — they must not reference each other
