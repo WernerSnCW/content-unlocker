@@ -173,6 +173,8 @@ export default function DocumentDetail() {
     URL.revokeObjectURL(url);
   };
 
+  const [gdocLink, setGdocLink] = useState<string | null>(null);
+
   const handleExportToGdocs = () => {
     if (!document) return;
     exportMutation.mutate(
@@ -182,16 +184,11 @@ export default function DocumentDetail() {
           refetch();
           refetchGdocs();
           if (data.gdoc_url) {
-            window.open(data.gdoc_url, "_blank");
+            setGdocLink(data.gdoc_url);
           }
         },
       }
     );
-  };
-
-  const handleOpenInGdocs = () => {
-    const url = gdocsStatus?.gdoc_url || document?.gdoc_url;
-    if (url) window.open(url, "_blank");
   };
 
   const requestImportFromGdocs = () => {
@@ -284,10 +281,15 @@ export default function DocumentDetail() {
           </Button>
           {isLinkedToGdocs ? (
             <>
-              <Button variant="outline" size="sm" onClick={handleOpenInGdocs} className="border-blue-200 text-blue-700 hover:bg-blue-50">
-                <ExternalLink className="w-4 h-4 mr-1.5" />
+              <a
+                href={gdocsStatus?.gdoc_url || document?.gdoc_url || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-blue-200 text-blue-700 bg-white hover:bg-blue-50 transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
                 Open in Google Docs
-              </Button>
+              </a>
               <Button
                 variant="outline"
                 size="sm"
@@ -327,6 +329,29 @@ export default function DocumentDetail() {
 
       <TierLockBanner tier={document.tier} onUnlock={() => setShowUnlockDialog(true)} isUnlocked={tier1Unlocked} />
       {isTier2 && editing && <Tier2Warning />}
+
+      {gdocLink && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <ExternalLink className="w-4 h-4" />
+            <span>Google Doc created successfully.</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href={gdocLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open Google Doc
+            </a>
+            <button onClick={() => setGdocLink(null)} className="text-blue-400 hover:text-blue-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {importMutation.isSuccess && (
         <div className="bg-green-50 border border-green-200 text-green-800 p-3 rounded-lg text-sm flex items-center gap-2">
@@ -454,10 +479,15 @@ export default function DocumentDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button size="sm" variant="outline" className="w-full border-blue-200 text-blue-700 hover:bg-blue-100" onClick={handleOpenInGdocs}>
-                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                <a
+                  href={gdocsStatus?.gdoc_url || document?.gdoc_url || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 text-sm font-medium rounded-md border border-blue-200 text-blue-700 bg-white hover:bg-blue-100 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
                   Open in Google Docs
-                </Button>
+                </a>
                 <Button size="sm" variant="outline" className="w-full border-green-200 text-green-700 hover:bg-green-100" onClick={requestImportFromGdocs} disabled={importMutation.isPending}>
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${importMutation.isPending ? "animate-spin" : ""}`} />
                   {importMutation.isPending ? "Pulling..." : "Pull changes back"}
