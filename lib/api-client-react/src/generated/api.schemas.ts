@@ -238,6 +238,9 @@ export interface Document {
 }
 
 export interface UpdateDocumentBody {
+  name?: string;
+  description?: string;
+  content?: string;
   lifecycle_status?: string;
   review_state?: string;
   version?: number;

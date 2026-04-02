@@ -1075,6 +1075,12 @@ components:
     UpdateDocumentBody:
       type: object
       properties:
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
         lifecycle_status:
           type: string
         review_state:

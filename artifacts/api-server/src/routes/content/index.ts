@@ -11,15 +11,35 @@ function parseSections(text: string): { title: string; content: string }[] {
   let currentTitle = "";
   let currentContent: string[] = [];
 
-  for (const line of lines) {
+  const isSectionHeader = (line: string): string | null => {
     if (line.startsWith("# ") || line.startsWith("## ")) {
-      if (currentTitle || currentContent.length > 0) {
-        sections.push({
-          title: currentTitle || "Introduction",
-          content: currentContent.join("\n").trim(),
-        });
+      return line.replace(/^#+\s*/, "").trim();
+    }
+    const trimmed = line.trim();
+    const boldMatch = trimmed.match(/^\*\*(\d+\.\s+.+?)\*\*\s*$/);
+    if (boldMatch) {
+      return boldMatch[1].replace(/\s*---\s*/g, " — ");
+    }
+    const topLevelBold = trimmed.match(/^\*\*([A-Z][^*]{3,60})\*\*\s*$/);
+    if (topLevelBold) {
+      const title = topLevelBold[1];
+      if (!/[-|]{3,}/.test(title)) {
+        return title.replace(/\s*---\s*/g, " — ");
       }
-      currentTitle = line.replace(/^#+\s*/, "");
+    }
+    return null;
+  };
+
+  for (const line of lines) {
+    const header = isSectionHeader(line);
+    if (header) {
+      if (currentTitle || currentContent.length > 0) {
+        const content = currentContent.join("\n").trim();
+        if (content) {
+          sections.push({ title: currentTitle || "Introduction", content });
+        }
+      }
+      currentTitle = header;
       currentContent = [];
     } else {
       currentContent.push(line);
@@ -27,10 +47,10 @@ function parseSections(text: string): { title: string; content: string }[] {
   }
 
   if (currentTitle || currentContent.length > 0) {
-    sections.push({
-      title: currentTitle || "Content",
-      content: currentContent.join("\n").trim(),
-    });
+    const content = currentContent.join("\n").trim();
+    if (content) {
+      sections.push({ title: currentTitle || "Content", content });
+    }
   }
 
   return sections;

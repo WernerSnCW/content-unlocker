@@ -375,6 +375,9 @@ export const UpdateDocumentParams = zod.object({
 });
 
 export const UpdateDocumentBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().optional(),
+  content: zod.string().optional(),
   lifecycle_status: zod.string().optional(),
   review_state: zod.string().optional(),
   version: zod.number().optional(),

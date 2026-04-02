@@ -79,14 +79,13 @@ router.patch("/documents/:id", async (req, res): Promise<void> => {
 
   const updates: any = {};
   if (parsed.data.lifecycle_status) {
-    if (parsed.data.lifecycle_status === "SUPERSEDED" && existing.lifecycle_status === "CURRENT") {
-      updates.lifecycle_status = parsed.data.lifecycle_status;
-    } else {
-      updates.lifecycle_status = parsed.data.lifecycle_status;
-    }
+    updates.lifecycle_status = parsed.data.lifecycle_status;
   }
   if (parsed.data.review_state) updates.review_state = parsed.data.review_state;
   if (parsed.data.version) updates.version = parsed.data.version;
+  if (parsed.data.name) updates.name = parsed.data.name;
+  if (parsed.data.description !== undefined) updates.description = parsed.data.description;
+  if (parsed.data.content !== undefined) updates.content = parsed.data.content;
 
   const [doc] = await db
     .update(documentsTable)
