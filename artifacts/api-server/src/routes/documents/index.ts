@@ -77,6 +77,19 @@ router.patch("/documents/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const isContentEdit = parsed.data.name !== undefined || parsed.data.description !== undefined || parsed.data.content !== undefined;
+  const hasEditOverride = parsed.data.edit_override === true;
+
+  if (isContentEdit && existing.tier === 1 && !hasEditOverride) {
+    res.status(403).json({
+      error: "TIER1_LOCKED",
+      message: "Tier 1 foundational documents are locked. Content edits require explicit authorisation. Resend with edit_override: true to confirm.",
+      tier: 1,
+      document_id: params.data.id,
+    });
+    return;
+  }
+
   const updates: any = {};
   if (parsed.data.lifecycle_status) {
     updates.lifecycle_status = parsed.data.lifecycle_status;

@@ -36,6 +36,7 @@ import type {
   GetContentBankParams,
   GetRecentActivityParams,
   HealthStatus,
+  ImportFromGoogleDocsBody,
   Lead,
   LeadDetail,
   ListChangelogParams,
@@ -1433,11 +1434,14 @@ export const getImportFromGoogleDocsUrl = (id: string) => {
 
 export const importFromGoogleDocs = async (
   id: string,
+  importFromGoogleDocsBody: ImportFromGoogleDocsBody,
   options?: RequestInit,
 ): Promise<GdocsImportResult> => {
   return customFetch<GdocsImportResult>(getImportFromGoogleDocsUrl(id), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importFromGoogleDocsBody),
   });
 };
 
@@ -1448,14 +1452,14 @@ export const getImportFromGoogleDocsMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof importFromGoogleDocs>>,
     TError,
-    { id: string },
+    { id: string; data: BodyType<ImportFromGoogleDocsBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof importFromGoogleDocs>>,
   TError,
-  { id: string },
+  { id: string; data: BodyType<ImportFromGoogleDocsBody> },
   TContext
 > => {
   const mutationKey = ["importFromGoogleDocs"];
@@ -1469,11 +1473,11 @@ export const getImportFromGoogleDocsMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof importFromGoogleDocs>>,
-    { id: string }
+    { id: string; data: BodyType<ImportFromGoogleDocsBody> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return importFromGoogleDocs(id, requestOptions);
+    return importFromGoogleDocs(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -1482,7 +1486,8 @@ export const getImportFromGoogleDocsMutationOptions = <
 export type ImportFromGoogleDocsMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFromGoogleDocs>>
 >;
-
+export type ImportFromGoogleDocsMutationBody =
+  BodyType<ImportFromGoogleDocsBody>;
 export type ImportFromGoogleDocsMutationError = ErrorType<unknown>;
 
 /**
@@ -1495,14 +1500,14 @@ export const useImportFromGoogleDocs = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof importFromGoogleDocs>>,
     TError,
-    { id: string },
+    { id: string; data: BodyType<ImportFromGoogleDocsBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof importFromGoogleDocs>>,
   TError,
-  { id: string },
+  { id: string; data: BodyType<ImportFromGoogleDocsBody> },
   TContext
 > => {
   return useMutation(getImportFromGoogleDocsMutationOptions(options));

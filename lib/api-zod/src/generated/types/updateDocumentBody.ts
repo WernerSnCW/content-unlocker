@@ -13,4 +13,6 @@ export interface UpdateDocumentBody {
   lifecycle_status?: string;
   review_state?: string;
   version?: number;
+  /** Set to true to confirm editing a Tier 1 foundational document */
+  edit_override?: boolean;
 }

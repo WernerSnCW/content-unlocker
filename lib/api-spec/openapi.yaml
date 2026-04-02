@@ -375,6 +375,15 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                edit_override:
+                  type: boolean
+                  description: Set to true to confirm importing into a Tier 1 foundational document
       responses:
         "200":
           description: Import result
@@ -1148,6 +1157,9 @@ components:
           type: string
         version:
           type: integer
+        edit_override:
+          type: boolean
+          description: Set to true to confirm editing a Tier 1 foundational document
 
     GdocsExportResult:
       type: object

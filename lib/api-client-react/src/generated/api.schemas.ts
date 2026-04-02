@@ -248,6 +248,8 @@ export interface UpdateDocumentBody {
   lifecycle_status?: string;
   review_state?: string;
   version?: number;
+  /** Set to true to confirm editing a Tier 1 foundational document */
+  edit_override?: boolean;
 }
 
 export interface GdocsExportResult {
@@ -396,6 +398,11 @@ export type ListDocumentsParams = {
   category?: string;
   lifecycle_status?: string;
   review_state?: string;
+};
+
+export type ImportFromGoogleDocsBody = {
+  /** Set to true to confirm importing into a Tier 1 foundational document */
+  edit_override?: boolean;
 };
 
 export type ListChangelogParams = {

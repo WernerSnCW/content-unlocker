@@ -385,6 +385,10 @@ export const UpdateDocumentBody = zod.object({
   lifecycle_status: zod.string().optional(),
   review_state: zod.string().optional(),
   version: zod.number().optional(),
+  edit_override: zod
+    .boolean()
+    .optional()
+    .describe("Set to true to confirm editing a Tier 1 foundational document"),
 });
 
 export const UpdateDocumentResponse = zod.object({
@@ -493,6 +497,15 @@ export const ExportToGoogleDocsResponse = zod.object({
  */
 export const ImportFromGoogleDocsParams = zod.object({
   id: zod.coerce.string(),
+});
+
+export const ImportFromGoogleDocsBody = zod.object({
+  edit_override: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Set to true to confirm importing into a Tier 1 foundational document",
+    ),
 });
 
 export const ImportFromGoogleDocsResponse = zod.object({

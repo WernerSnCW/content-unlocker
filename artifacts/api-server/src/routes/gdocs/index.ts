@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { ReplitConnectors } from "@replit/connectors-sdk";
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { documentsTable } from "@workspace/db/schema";
+import { documentsTable, changelogTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -99,6 +100,17 @@ router.post("/gdocs/import/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const hasEditOverride = req.body?.edit_override === true;
+  if (doc.tier === 1 && !hasEditOverride) {
+    res.status(403).json({
+      error: "TIER1_LOCKED",
+      message: "Pulling changes into a Tier 1 foundational document requires explicit authorisation.",
+      tier: 1,
+      document_id: docId,
+    });
+    return;
+  }
+
   const gdocId = (doc as any).gdoc_id;
   if (!gdocId) {
     res.status(400).json({ error: "No Google Doc linked to this document. Export it first." });
@@ -124,7 +136,13 @@ router.post("/gdocs/import/:id", async (req, res): Promise<void> => {
       .set({ content: newContent.trim() })
       .where(eq(documentsTable.id, docId));
 
-    const [updated] = await db.select().from(documentsTable).where(eq(documentsTable.id, docId));
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "CONTENT_IMPORTED",
+      document_id: docId,
+      details: `Content pulled from Google Docs (${newContent.trim().length} chars)${doc.tier === 1 ? " [Tier 1 override]" : ""}`,
+      triggered_by: "agent",
+    });
 
     res.json({
       document_id: docId,

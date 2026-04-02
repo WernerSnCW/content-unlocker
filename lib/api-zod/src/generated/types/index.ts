@@ -31,6 +31,7 @@ export * from "./generationResult";
 export * from "./getContentBankParams";
 export * from "./getRecentActivityParams";
 export * from "./healthStatus";
+export * from "./importFromGoogleDocsBody";
 export * from "./lead";
 export * from "./leadDetail";
 export * from "./listChangelogParams";
