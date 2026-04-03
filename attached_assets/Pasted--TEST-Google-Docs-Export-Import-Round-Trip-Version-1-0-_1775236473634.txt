@@ -1,0 +1,94 @@
+# TEST — Google Docs Export / Import Round-Trip
+Version: 1.0
+
+---
+
+This is a functional end-to-end test. Do not assess code only.
+Execute each step, report the actual result at each stage, and give
+a final PASS or FAIL verdict.
+
+---
+
+## Step 1 — Export a document to Google Docs
+
+Select any non-Tier-1 document that is currently CLEAN + CURRENT.
+Trigger the export via the app.
+
+**Report:**
+- The document ID and title used
+- Whether a Google Doc was created and a link returned
+- The URL of the created Google Doc
+
+If export fails, stop here and report the full error. Do not proceed.
+
+---
+
+## Step 2 — Confirm the Google Doc is accessible and contains the correct content
+
+Open the Google Doc URL. Confirm it is accessible and that the content
+matches the document as it exists in the registry.
+
+**Report:**
+- Whether the doc opened successfully
+- Whether the content matches the registry version (spot-check the
+  first paragraph and any headings)
+
+If the doc is inaccessible or content is wrong, stop here and report
+the full error. Do not proceed.
+
+---
+
+## Step 3 — Make a visible, traceable edit in Google Docs
+
+Add the following unique string to the end of the document in Google Docs:
+
+  `[ROUND-TRIP-TEST-{timestamp}]`
+
+Replace {timestamp} with the current date and time to the minute,
+e.g. `[ROUND-TRIP-TEST-2026-04-03-14:32]`.
+
+Save the document in Google Docs.
+
+**Report:**
+- The exact string inserted
+- Confirmation the edit was saved in Google Docs
+
+---
+
+## Step 4 — Trigger import back to the registry
+
+From the app, trigger the import for the same document.
+If Tier 1 confirmation is required, use edit_override.
+
+**Report:**
+- Whether the import endpoint returned a success response
+- The full response body
+
+---
+
+## Step 5 — Confirm the edit appears in the registry
+
+Fetch the document from GET /api/documents/:id and inspect the content field.
+
+**Report:**
+- Whether the unique string from Step 3 is present in the content field
+- If yes: PASS
+- If no: FAIL — report what the content field contains instead
+
+---
+
+## Final verdict
+
+| Step | Result |
+|---|---|
+| Export | PASS / FAIL |
+| Doc accessible + content correct | PASS / FAIL |
+| Edit saved in Google Docs | PASS / FAIL |
+| Import succeeded | PASS / FAIL |
+| Edit present in registry | PASS / FAIL |
+
+**Overall: PASS / FAIL**
+
+If any step is FAIL, provide the full error output and identify
+whether the failure is in the connector, the export endpoint,
+the import endpoint, or the registry write.

@@ -1,0 +1,84 @@
+# 050 — HEALTH CHECK PROMPT
+Version: 1.2
+
+---
+
+Assess the functional health of this project. Complete the template below
+exactly. Do not add prose before or after it. Replace every placeholder
+in square brackets.
+
+Assess every tool, feature, or user-facing workflow in the project.
+Do not skip anything because it seems minor.
+
+---
+
+## HEALTH CHECK OUTPUT
+
+### 1. Tools and features assessed
+
+For each significant tool, feature, or workflow in the project:
+
+#### `[Tool or feature name]`
+**Intended purpose:** [what it is supposed to do]
+**Current status:** [WORKING / PARTIAL / BROKEN / UNKNOWN]
+**Evidence:** [what in the code confirms this — specific function, file, or behaviour]
+**Gaps:** [what it fails to do, skips, or handles incorrectly — or "None identified"]
+
+**Evidence standard:**
+- For internal features (API endpoints, UI components, data logic): code
+  inspection and a live API test confirming the endpoint responds correctly.
+- For integration features (any feature that connects to an external
+  service — Google Docs, email, third-party APIs, connectors): a live
+  end-to-end test is required. Code inspection alone is not sufficient.
+  An end-to-end test means: trigger the full workflow, confirm the external
+  service received or returned the correct data, confirm the result is
+  correctly written back to the application. If a live end-to-end test
+  cannot be performed, status must be reported as UNKNOWN, not WORKING.
+
+[repeat for every significant tool or feature]
+
+---
+
+### 2. Silent failures
+
+Things that run without errors but produce wrong or incomplete results:
+
+- **[Function or feature]:** [what it does vs what it should do]
+
+If none identified: "None identified."
+
+---
+
+### 3. Unreachable or unwired code
+
+Code that exists but is not connected to anything — dead ends, unregistered
+routes, unused exports, disconnected UI components:
+
+- **[File or function]:** [why it is unreachable and what it was likely intended for]
+
+If none identified: "None identified."
+
+---
+
+### 4. Fragile areas
+
+Code that works now but is likely to break — missing error handling, hardcoded
+values, no input validation, single points of failure:
+
+- **[File or function]:**
+  - **Issue:** [the specific fragility and the condition that would trigger it]
+  - **Likelihood:** [LOW / MEDIUM / HIGH — how probable is this to cause a real problem]
+
+If none identified: "None identified."
+
+---
+
+### 5. Overall verdict
+
+| Area | Status | Notes |
+|---|---|---|
+| [Core feature or tool] | 🟢 / 🟡 / 🔴 | [one-line note] |
+
+[one row per significant area]
+
+**Recommendation:** [PROCEED TO BUILD / FIX BEFORE BUILDING / NEEDS SENIOR REVIEW]
