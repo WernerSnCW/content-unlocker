@@ -1,0 +1,214 @@
+# SESSION — Decumulation Cascade Review: Tier 1 Documents
+Version: 1.0
+
+18 documents are flagged REQUIRES_REVIEW from the Decumulation
+Planner feature update cascade. This session addresses the 3
+CRITICAL Tier 1 documents first. Tier 2 and 3 documents must
+not be updated until all Tier 1 documents are correct and
+promoted — otherwise downstream documents may be updated against
+incorrect foundational content.
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+Use detectPropagationTargets() or propagateFromDocument().
+Do not reimplement propagation logic.
+
+### Approved Decumulation Planner language — use exactly
+
+**Status phrase (mandatory):**
+"Specification complete. Prototype build commencing."
+Never say: live, available, launching soon, in beta, coming soon.
+
+**Asset classes covered:**
+Cash, ISA (including flexible ISA), pension (DC/SIPP/workplace),
+investment property, VCT, EIS, AIM shares.
+
+**Four drawdown strategies:**
+Tax-optimised (minimise income tax and CGT drag),
+IHT-optimised (maximise estate passed to heirs),
+Income-first, Growth-first.
+Each produces a different asset draw priority order. User selects
+strategy; platform models all four for comparison.
+
+**Key modelled scenarios (toggleable):**
+- Proposed April 2026 BPR cap (£2.5M at 100%, 50% above)
+- Proposed April 2027 pension IHT inclusion
+- Trust and gifting: NEFI, CLT 7-year rolling window with NRB
+  stacking, PET taper relief schedule
+- Year-indexed tax parameters for multi-decade plans
+- 35-year shadow projection always runs alongside user's selected
+  plan horizon
+
+**Why no incumbent has built this:**
+Requires lot-level data from the asset register — which platforms
+with product conflicts cannot provide without exposing competitor
+holdings. Structural independence is what makes the Decumulation
+Planner possible.
+
+**IFA advice gap this fills:**
+IFAs cannot advise on VCT/EIS drawdown sequencing — this is a
+structural advice gap Unlock fills.
+
+---
+
+## Step 0 — Confirm the review queue
+
+Before starting, call GET /api/content/feature-update/{update_id}/queue
+to confirm the current queue state.
+
+Identify the 3 CRITICAL Tier 1 documents. Report their document
+IDs, titles, and current review_state before proceeding.
+
+If any Tier 1 document is already CLEAN (was updated in a prior
+session), skip it and note this in the final report.
+
+---
+
+## Step 1 — Review and update each Tier 1 document
+
+For each CRITICAL Tier 1 document, follow this process:
+
+### 1a. Read the current content
+
+Call GET /api/documents/:id and read the full content field.
+
+Identify every section that references the Decumulation Planner,
+decumulation, drawdown sequencing, pension planning, or related
+topics.
+
+Report what you find before making any changes.
+
+### 1b. Identify what needs updating
+
+Compare the current content against the approved language in the
+SYSTEM REFERENCE above. Flag every instance of:
+
+- Incorrect status language (e.g. "in development", "coming",
+  "being built") → replace with approved status phrase
+- Missing asset classes → add the complete list
+- Missing or incomplete drawdown strategies → add all four
+- Missing modelled scenarios → add all four toggleable scenarios
+- Missing IFA advice gap angle → add where relevant
+- Missing "why no incumbent has built this" point → add where
+  relevant to the document's purpose
+- Any compliance figures that may have changed (BPR cap, VCT
+  relief, pension IHT dates) → verify against compliance
+  constants and correct if needed
+
+### 1c. Update the content
+
+PATCH /api/documents/:id with the corrected content.
+
+Rules:
+- Make the minimum changes necessary — do not rewrite sections
+  that are already correct
+- Preserve the document's existing structure and voice
+- Only change what references the Decumulation Planner or
+  related compliance figures
+- Do not change any section that does not reference the
+  Decumulation Planner or the flagged compliance topics
+
+### 1d. Re-run QC
+
+Call POST /api/generation/:id/qc-rerun on the updated document.
+
+If QC passes: proceed to Step 1e.
+If QC fails: report the specific failures, fix them, and
+re-run QC. Do not promote a document with QC failures.
+Do not attempt more than 3 QC fix cycles — if still failing
+after 3 attempts, flag for human review and move to the next
+document.
+
+### 1e. Promote to CURRENT
+
+Call POST /api/generation/:id/promote.
+
+Confirm:
+- lifecycle_status: CURRENT
+- review_state: CLEAN
+- DOCUMENT_PROMOTED changelog entry created
+
+### 1f. Report per document
+
+After completing each Tier 1 document:
+- Document ID and title
+- Sections changed (list each)
+- Specific language updated (before → after for key phrases)
+- QC attempts needed (1, 2, or 3)
+- QC result: PASS
+- Promoted: YES
+
+---
+
+## Step 2 — Run propagation after all Tier 1 documents are updated
+
+After all 3 Tier 1 documents are promoted to CURRENT, run
+propagation from each to update the downstream review queue.
+
+For each Tier 1 document that was updated:
+- Call POST /api/documents/:id/propagate
+- This re-flags dependent documents as REQUIRES_REVIEW if they
+  were not already flagged
+- Existing REQUIRES_REVIEW flags on downstream documents are
+  unchanged — this step ensures the queue is complete
+
+Do not update any Tier 2 or Tier 3 documents in this session.
+
+---
+
+## Step 3 — Save a gap snapshot
+
+After all Tier 1 promotions are complete, call:
+GET /api/content/gaps?save=true
+
+This saves a snapshot of the current gap state with the Tier 1
+documents updated. The snapshot marks the baseline before Tier 2
+and 3 updates begin.
+
+---
+
+## Step 4 — Final report
+
+TIER 1 DOCUMENT RESULTS:
+
+For each of the 3 Tier 1 documents:
+
+Document: [ID] — [Title]
+- Status before: REQUIRES_REVIEW
+- Sections changed: [list]
+- Key language updated: [list significant before/after changes]
+- QC attempts: [n]
+- QC result: PASS / FAIL
+- Promoted to CURRENT: YES / NO
+- Notes: [any issues encountered]
+
+PROPAGATION:
+- Propagation run on: [n] documents
+- New documents added to queue: [n]
+- Total documents remaining in review queue: [n]
+
+GAP SNAPSHOT:
+- Snapshot saved: YES / NO
+- Snapshot ID: [id]
+- Current gap count: [n]
+
+NEXT SESSION:
+- List the HIGH priority Tier 2 documents that should be
+  addressed next, in order
+- Confirm they are all still REQUIRES_REVIEW and in the queue
