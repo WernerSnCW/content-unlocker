@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getComplianceConstants } from "../../lib/dataManager";
 import contentBankText from "../../data/content/700_CONTENT_Bank_V4_CURRENT.md";
+import masterContextRaw from "../../data/content/065_MASTER_generation_context_v1.0.md";
 import {
   ARCHETYPES,
   PIPELINE_STAGES,
@@ -16,6 +17,13 @@ import {
 import { resolveArchetype } from "../../../../../lib/personas";
 
 const router: IRouter = Router();
+
+const masterGenerationContext: string = masterContextRaw || "";
+if (masterGenerationContext.length > 0) {
+  console.log(`Master generation context loaded: ${masterGenerationContext.length} characters`);
+} else {
+  console.warn("Warning: Master generation context is empty — proceeding without it.");
+}
 
 function normalizeDocType(t: string): string {
   return t.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -242,7 +250,7 @@ ${gapDescription}
 
 CONTENT BANK (source material available):
 ${contentBankText.slice(0, 8000)}
-${additional_context ? `\nADDITIONAL CONTEXT (supplementary source material):\n${additional_context}\n` : ""}
+${masterGenerationContext ? `\nMASTER GENERATION CONTEXT (Unlock platform reference — mandatory rules, personas, products, compliance):\n${masterGenerationContext}\n` : ""}${additional_context ? `\nADDITIONAL CONTEXT (supplementary source material):\n${additional_context}\n` : ""}
 COMPLIANCE CONSTANTS:
 ${complianceText}
 
