@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, documentsTable, changelogTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { propagateFromDocument } from "../../lib/propagation";
 import {
   ListDocumentsQueryParams,
   GetDocumentParams,
@@ -130,69 +131,20 @@ router.post("/documents/:id/propagate", async (req, res): Promise<void> => {
     return;
   }
 
-  const allDocs = await db.select().from(documentsTable);
-  const flagged: string[] = [];
-  const changelogEntries: string[] = [];
-
-  const directDependents = allDocs.filter((d) =>
-    (d.upstream_dependencies as string[])?.includes(params.data.id)
-  );
-
-  for (const dep of directDependents) {
-    await db
-      .update(documentsTable)
-      .set({ review_state: "REQUIRES_REVIEW" })
-      .where(eq(documentsTable.id, dep.id));
-    flagged.push(dep.id);
-
-    const entryId = randomUUID();
-    await db.insert(changelogTable).values({
-      id: entryId,
-      action: "FLAGGED_FOR_REVIEW",
-      document_id: dep.id,
-      details: `Flagged for review due to update in upstream document ${params.data.id}`,
-      triggered_by: params.data.id,
-    });
-    changelogEntries.push(entryId);
-
-    if (sourceDoc.tier === 1) {
-      const tier3Deps = allDocs.filter((d) =>
-        (d.upstream_dependencies as string[])?.includes(dep.id) && d.tier === 3
-      );
-      for (const t3 of tier3Deps) {
-        if (!flagged.includes(t3.id)) {
-          await db
-            .update(documentsTable)
-            .set({ review_state: "REQUIRES_REVIEW" })
-            .where(eq(documentsTable.id, t3.id));
-          flagged.push(t3.id);
-
-          const t3EntryId = randomUUID();
-          await db.insert(changelogTable).values({
-            id: t3EntryId,
-            action: "FLAGGED_FOR_REVIEW",
-            document_id: t3.id,
-            details: `Flagged for review (cascade from Tier 1 update: ${params.data.id} → ${dep.id} → ${t3.id})`,
-            triggered_by: params.data.id,
-          });
-          changelogEntries.push(t3EntryId);
-        }
-      }
-    }
-  }
+  const result = await propagateFromDocument(params.data.id, params.data.id);
 
   await db.insert(changelogTable).values({
     id: randomUUID(),
     action: "DOCUMENT_UPDATED",
     document_id: params.data.id,
-    details: `Document ${params.data.id} updated. ${flagged.length} downstream documents flagged for review.`,
+    details: `Document ${params.data.id} updated. ${result.flagged_document_ids.length} downstream documents flagged for review.`,
     triggered_by: "agent",
   });
 
   res.json({
     updated_document_id: params.data.id,
-    flagged_documents: flagged,
-    changelog_entries: changelogEntries,
+    flagged_documents: result.flagged_document_ids,
+    changelog_entries: result.changelog_entry_ids,
   });
 });
 

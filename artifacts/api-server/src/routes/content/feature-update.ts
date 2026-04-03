@@ -3,7 +3,7 @@ import { db, documentsTable, changelogTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { getComplianceConstants } from "../../lib/dataManager";
+import { detectPropagationTargets } from "../../lib/propagation";
 
 const router: IRouter = Router();
 
@@ -74,39 +74,24 @@ router.post("/content/feature-update", async (req, res): Promise<void> => {
           detection_method: "tier1_propagation",
           relevance_reason: `Tier 1 document directly affected by feature update: ${title}`,
           review_priority: "CRITICAL",
-          current_status: t1.lifecycle_status,
+          current_status: t1.review_state,
         });
 
-        const directDeps = allDocs.filter((d) => {
-          const upstream = (d.upstream_dependencies as string[]) || [];
-          return upstream.includes(t1.id);
-        });
-        for (const dep of directDeps) {
+        const targets = await detectPropagationTargets(t1.id);
+
+        for (const target of targets) {
+          const priority = target.cascade_level === "direct" ? "HIGH" as const : "MEDIUM" as const;
           addOrMerge({
-            document_id: dep.id,
-            title: dep.name,
-            tier: dep.tier,
+            document_id: target.document_id,
+            title: target.title,
+            tier: target.tier,
             detection_method: "tier1_propagation",
-            relevance_reason: `Direct dependent of Tier 1 document "${t1.name}"`,
-            review_priority: "HIGH",
-            current_status: dep.lifecycle_status,
+            relevance_reason: target.cascade_level === "direct"
+              ? `Direct dependent of Tier 1 document "${t1.name}"`
+              : `Second-order dependent via Tier 1 document "${t1.name}"`,
+            review_priority: priority,
+            current_status: target.pre_flag_review_state,
           });
-
-          const secondOrder = allDocs.filter((d) => {
-            const upstream = (d.upstream_dependencies as string[]) || [];
-            return upstream.includes(dep.id);
-          });
-          for (const so of secondOrder) {
-            addOrMerge({
-              document_id: so.id,
-              title: so.name,
-              tier: so.tier,
-              detection_method: "tier1_propagation",
-              relevance_reason: `Second-order dependent via "${dep.name}" ← "${t1.name}"`,
-              review_priority: "MEDIUM",
-              current_status: so.lifecycle_status,
-            });
-          }
         }
       }
     }
@@ -130,7 +115,7 @@ router.post("/content/feature-update", async (req, res): Promise<void> => {
           detection_method: "type_match",
           relevance_reason: `Compliance/pricing document automatically flagged due to compliance-affecting change`,
           review_priority: "CRITICAL",
-          current_status: cd.lifecycle_status,
+          current_status: cd.review_state,
         });
       }
 
@@ -149,7 +134,7 @@ router.post("/content/feature-update", async (req, res): Promise<void> => {
                 detection_method: "compliance_match",
                 relevance_reason: `Document references "${feature}" which was affected by this compliance change`,
                 review_priority: "HIGH",
-                current_status: doc.lifecycle_status,
+                current_status: doc.review_state,
               });
               break;
             }
@@ -226,7 +211,7 @@ Return ONLY the JSON. If no documents are affected, return {"matches": []}.`,
             detection_method: "semantic_match",
             relevance_reason: match.reason,
             review_priority: match.confidence === "HIGH" ? "HIGH" : "MEDIUM",
-            current_status: doc.lifecycle_status,
+            current_status: doc.review_state,
           });
         }
       }
