@@ -1,0 +1,111 @@
+# FIX 1 — Persona mapping: Analyze → Rank flow broken for 16 of 19 personas
+Version: 1.0
+Priority: HIGH — blocks the primary recommendation workflow
+File: recommendation/index.ts — Rank endpoint, plus new shared constants file
+
+---
+
+## The problem
+
+The Analyze endpoint returns one of 19 detailed investor personas. The Rank
+endpoint filters documents by exact persona_relevance match. Documents are
+tagged with only 3 public archetypes: "Growth Seeker", "Preserver",
+"Legacy Builder". Any of the 16 non-archetype personas returns zero
+recommendations.
+
+---
+
+## Step 1 — Create a shared persona mapping file
+
+Create a new file at lib/personas.ts (or the closest equivalent shared
+constants location in this project).
+
+Add the following mapping exactly as specified. Do not infer or alter
+the mappings — use this table verbatim:
+
+```typescript
+export const PERSONA_TO_ARCHETYPE: Record<string, string> = {
+  // Growth Seeker
+  "Crypto Enthusiast":          "Growth Seeker",
+  "Tech Worker":                "Growth Seeker",
+  "Young Professional":         "Growth Seeker",
+  "Entrepreneur":               "Growth Seeker",
+  "BTL Mogul":                  "Growth Seeker",
+  "Concentrated Stock Holder":  "Growth Seeker",
+
+  // Preserver
+  "Retirement Planner":         "Preserver",
+  "Old Fashioned Saver":        "Preserver",
+  "ISA/SIPP Maximiser":         "Preserver",
+  "DB Heavy":                   "Preserver",
+  "Cautious Accumulator":       "Preserver",
+  "Drawdown Specialist":        "Preserver",
+  "Ultra-Conservative Saver":   "Preserver",
+
+  // Legacy Builder
+  "Property Lover":             "Legacy Builder",
+  "Legacy Builder":             "Legacy Builder",
+  "Dividend Seeker":            "Legacy Builder",
+  "Global Nomad":               "Legacy Builder",
+  "Financial Advisor":          "Legacy Builder",
+  "HNW Inheritor":              "Legacy Builder",
+
+  // Direct archetype pass-through (already correct)
+  "Growth Seeker":              "Growth Seeker",
+  "Preserver":                  "Preserver",
+};
+
+export const VALID_ARCHETYPES = ["Growth Seeker", "Preserver", "Legacy Builder"];
+
+export function resolveArchetype(persona: string): string | null {
+  return PERSONA_TO_ARCHETYPE[persona] ?? null;
+}
+```
+
+---
+
+## Step 2 — Update the Rank endpoint
+
+In the Rank endpoint (POST /api/recommendation/rank), before filtering
+documents by persona_relevance:
+
+1. Import resolveArchetype and VALID_ARCHETYPES from the new file
+2. Call resolveArchetype(incomingPersona)
+3. If a match is found, use the returned archetype for the
+   persona_relevance filter
+4. If no match is found (resolveArchetype returns null), do not filter
+   by persona at all — return documents eligible for all archetypes
+   rather than returning zero results. Log a warning identifying the
+   unrecognised persona so it can be added to the mapping later.
+
+Do not change any other filtering logic in the Rank endpoint.
+Do not change the Analyze endpoint.
+Do not change how documents are tagged in the registry.
+
+---
+
+## Step 3 — Confirm with live tests
+
+Test 1 — Non-archetype persona resolves correctly:
+- Run POST /api/recommendation/analyze with a transcript that produces
+  persona "ISA/SIPP Maximiser"
+- Pass that persona to POST /api/recommendation/rank
+- Confirm at least one document is returned
+- Confirm the returned documents are tagged for "Preserver"
+
+Test 2 — Direct archetype still works:
+- Run POST /api/recommendation/rank with persona "Growth Seeker" directly
+- Confirm results are unchanged from before this fix
+
+Test 3 — Unknown persona falls back gracefully:
+- Run POST /api/recommendation/rank with persona "Unknown Type"
+- Confirm it returns documents rather than an empty array
+- Confirm a warning is logged identifying the unrecognised persona
+
+---
+
+## Note on future updates
+
+The mapping in lib/personas.ts is the single source of truth. When new
+personas are added or mappings need to change, update only that file.
+No other code should need to change.

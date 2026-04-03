@@ -32,6 +32,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ### Key Business Rules
 
+- **Persona mapping**: AI detects 19 detailed personas; documents tagged with 3 archetypes. `lib/personas.ts` maps all 19 → archetypes. Unknown personas skip persona filter (return all stage-eligible docs) with warning log.
 - **Confidence thresholds**: >=0.80 auto-proceed (green), 0.60-0.79 "please review" (amber), <0.60 must explicitly confirm (red)
 - **REQUIRES_REVIEW documents**: NEVER appear in recommendations
 - **Google Docs sync**: Export document to Google Docs, edit in Docs, pull changes back. Uses `@replit/connectors-sdk` proxy with `google-drive` connector. DB fields `gdoc_id`/`gdoc_url` track link.

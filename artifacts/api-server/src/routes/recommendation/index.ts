@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-zod";
 import personaGuide from "../../data/content/520_GUIDE_Investor_Personas_19_V1_CURRENT.md";
 import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt";
+import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
 
 const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "Decision"];
 
@@ -159,12 +160,22 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     }
   }
 
+  const resolvedArchetype = resolveArchetype(detected_persona);
+  if (!resolvedArchetype) {
+    req.log.warn({ detected_persona }, "Unrecognised persona — skipping persona filter. Add this persona to lib/personas.ts.");
+  }
+
+  const matchesPersona = (d: typeof allDocs[0]) => {
+    if (!resolvedArchetype) return true;
+    return (d.persona_relevance as string[])?.includes(resolvedArchetype);
+  };
+
   const blockedDocs = allDocs
     .filter(
       (d) =>
         d.review_state === "REQUIRES_REVIEW" &&
         (d.pipeline_stage_relevance as string[])?.includes(pipeline_stage) &&
-        (d.persona_relevance as string[])?.includes(detected_persona)
+        matchesPersona(d)
     )
     .map((d) => ({
       document_id: d.id,
@@ -178,7 +189,7 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       d.lifecycle_status === "CURRENT" &&
       d.review_state === "CLEAN" &&
       (d.pipeline_stage_relevance as string[])?.includes(pipeline_stage) &&
-      (d.persona_relevance as string[])?.includes(detected_persona) &&
+      matchesPersona(d) &&
       !sentDocIds.includes(d.id)
   );
 
