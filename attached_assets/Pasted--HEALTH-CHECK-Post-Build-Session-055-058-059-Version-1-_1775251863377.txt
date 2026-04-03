@@ -1,0 +1,111 @@
+# HEALTH CHECK — Post Build Session (055, 058, 059)
+Version: 1.2
+
+Assess the functional health of this project following the completion
+of three builds in a single session: batch transcript upload (055),
+call question framework and enhanced analysis (058), and gap analysis
+persistence (059).
+
+Complete the template below exactly. Do not add prose before or after
+it. Replace every placeholder in square brackets.
+
+Assess every tool, feature, or user-facing workflow in the project.
+Do not skip anything because it seems minor.
+
+---
+
+## HEALTH CHECK OUTPUT
+
+### 1. Tools and features assessed
+
+For each significant tool, feature, or workflow in the project:
+
+#### `[Tool or feature name]`
+**Intended purpose:** [what it is supposed to do]
+**Current status:** [WORKING / PARTIAL / BROKEN / UNKNOWN]
+**Evidence:** [what in the code confirms this — specific function,
+file, or behaviour. For integration features connecting to external
+services, a live end-to-end test is required — code inspection alone
+is not sufficient. If a live end-to-end test cannot be performed,
+status must be UNKNOWN.]
+**Gaps:** [what it fails to do, skips, or handles incorrectly —
+or "None identified"]
+
+[repeat for every significant tool or feature]
+
+Pay particular attention to the three new builds:
+
+- Batch transcript upload: parse endpoint, analyze-batch endpoint,
+  frontend batch upload tab, lead linking flow
+- Call question framework: questions endpoint, enhanced analyze
+  endpoint (all new fields), call prep page, enhanced recommend flow
+  with primary issue banner
+- Gap analysis persistence: auto-save on gap run, project file write,
+  manifest update, history endpoints, export endpoints, notes update,
+  frontend history panel
+
+---
+
+### 2. Silent failures
+
+Things that run without errors but produce wrong or incomplete results:
+
+- **[Function or feature]:** [what it does vs what it should do]
+
+If none identified: "None identified."
+
+---
+
+### 3. Unreachable or unwired code
+
+Code that exists but is not connected to anything — dead ends,
+unregistered routes, unused exports, disconnected UI components:
+
+- **[File or function]:** [why it is unreachable and what it was
+  likely intended for]
+
+If none identified: "None identified."
+
+---
+
+### 4. Fragile areas
+
+Code that works now but is likely to break — missing error handling,
+hardcoded values, no input validation, single points of failure:
+
+- **[File or function]:**
+  - **Issue:** [the specific fragility and the condition that would
+    trigger it]
+  - **Likelihood:** [LOW / MEDIUM / HIGH]
+
+If none identified: "None identified."
+
+---
+
+### 5. Overall verdict
+
+| Area | Status | Notes |
+|---|---|---|
+| Recommendation Engine — Analyze (single) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Batch Upload (055) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Rank | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Email Draft | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Confirm Send | 🟢 / 🟡 / 🔴 | |
+| Call Question Framework (058) | 🟢 / 🟡 / 🔴 | |
+| Enhanced Analysis — Primary Issue (058) | 🟢 / 🟡 / 🔴 | |
+| Call Prep Page (058) | 🟢 / 🟡 / 🔴 | |
+| Lead Management | 🟢 / 🟡 / 🔴 | |
+| Next Best Action | 🟢 / 🟡 / 🔴 | |
+| Document Registry | 🟢 / 🟡 / 🔴 | |
+| Content Bank | 🟢 / 🟡 / 🔴 | |
+| Content Generation & QC Engine | 🟢 / 🟡 / 🔴 | |
+| Content Gap Analysis | 🟢 / 🟡 / 🔴 | |
+| Gap Analysis Persistence (059) | 🟢 / 🟡 / 🔴 | |
+| Feature Update Cascade | 🟢 / 🟡 / 🔴 | |
+| Google Docs Integration | 🟢 / 🟡 / 🔴 | |
+| Dashboard | 🟢 / 🟡 / 🔴 | |
+| Changelog | 🟢 / 🟡 / 🔴 | |
+| Compliance Constants | 🟢 / 🟡 / 🔴 | |
+
+**Recommendation:** [PROCEED TO BUILD / FIX BEFORE BUILDING /
+NEEDS SENIOR REVIEW]
