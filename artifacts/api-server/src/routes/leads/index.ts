@@ -109,6 +109,7 @@ router.get("/leads/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const sendLog = (lead.send_log || []) as any[];
   res.json({
     id: lead.id,
     name: lead.name,
@@ -120,7 +121,8 @@ router.get("/leads/:id", async (req, res): Promise<void> => {
     archived: lead.archived,
     created_at: lead.created_at.toISOString(),
     updated_at: lead.updated_at.toISOString(),
-    send_log: lead.send_log || [],
+    send_log: sendLog,
+    send_count: sendLog.length,
     stage_history: lead.stage_history || [],
     notes: lead.notes || [],
   });
@@ -196,7 +198,7 @@ router.get("/leads/:id/next-action", async (req, res): Promise<void> => {
     return;
   }
 
-  const nextAction = getNextBestAction(lead);
+  const nextAction = await getNextBestAction(lead);
   res.json(nextAction);
 });
 

@@ -1,0 +1,83 @@
+# FIX INSTRUCTIONS — from Health Check v1.0 output
+Priority order: Fix 2 first, then Fix 1, then Fix 3.
+
+---
+
+## Fix 1 — send_count missing from lead detail API response
+**Priority:** Low — UI only, no data loss
+**File:** The route handling GET /api/leads/:id
+
+Add send_count to the response object. Derive it from the length of the
+lead's send_log array.
+
+The send_log data is already present in the response — do not make an
+additional database query. Calculate send_count as send_log.length and
+include it as a top-level field in the returned lead object.
+
+Confirm with a live API test that GET /api/leads/:id for any lead now
+returns a send_count field with the correct integer value. Confirm the
+"Total Sends" stat card on the lead detail page renders the number, not
+undefined.
+
+Do not change any other part of the lead detail page or API.
+
+---
+
+## Fix 2 — Regenerate button unwired + Promote endpoint has no UI
+**Priority:** High — blocks the content generation workflow end-to-end
+**Files:** generate.tsx, and wherever is most appropriate for a Promote action
+
+This is two missing UI connections to working backend endpoints:
+
+**A. Wire the Regenerate button**
+The Regenerate button in generate.tsx (line 124) renders correctly but
+has no onClick handler. Wire it to POST /api/generation/:id/regenerate.
+
+On click:
+- Call the regenerate endpoint with the current generation ID
+- Show a loading state on the button while the request is in flight
+- On success, refresh the generation result shown on the page
+- On failure or MANUAL_REVIEW_REQUIRED status, display the returned
+  error or status message clearly to the user
+- Do not allow the button to be clicked again while a request is in flight
+
+**B. Add a Promote button**
+POST /api/generation/:id/promote exists and is fully implemented but has
+no UI. Add a Promote button that appears when a generated document has
+passed QC (status is not REQUIRES_REVIEW and not MANUAL_REVIEW_REQUIRED).
+
+On click:
+- Call POST /api/generation/:id/promote
+- On success, show confirmation and update the displayed document status
+- On failure, show the error
+
+Place the Promote button in the most logical position relative to the
+existing QC result display. Do not redesign the page — add the button only.
+
+Confirm both buttons work end-to-end with a live test. Confirm the
+Regenerate button is disabled during loading. Confirm the Promote button
+only appears in the correct state.
+
+---
+
+## Fix 3 — Next Best Action engine uses hardcoded document IDs
+**Priority:** Low — works correctly with current data, becomes a problem
+when new documents are added
+**File:** dataManager.ts — getNextBestAction function
+
+Replace the hardcoded document ID strings ("100", "110", "120", "170" etc.)
+with lookups against the live document registry.
+
+The function should:
+- Query the document registry for documents matching the relevant
+  tier, category, or tag for each pipeline stage decision
+- Filter to CLEAN + CURRENT status only
+- Select from that filtered set rather than from a hardcoded list
+
+Do not change the rule logic or the pipeline stage decision tree — only
+replace the hardcoded IDs with dynamic lookups. The output shape of
+getNextBestAction must not change.
+
+Confirm with a live test on lead_001 that the function still returns a
+valid action and suggested_documents, and that the returned document IDs
+exist in the current registry.

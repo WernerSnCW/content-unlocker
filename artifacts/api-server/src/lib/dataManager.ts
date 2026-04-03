@@ -142,17 +142,32 @@ export function validateSeedData(): { valid: boolean; errors: string[]; warnings
   return { valid: errors.length === 0, errors, warnings };
 }
 
-export function getNextBestAction(lead: any): { action: string; rationale: string; suggested_documents: string[] } {
+export async function getNextBestAction(lead: any): Promise<{ action: string; rationale: string; suggested_documents: string[] }> {
   const stage = lead.pipeline_stage;
   const sentDocIds = ((lead.send_log || []) as any[]).flatMap((s: any) => s.documents_sent || []);
 
+  const allDocs = await db.select().from(documentsTable).orderBy(documentsTable.id);
+  const eligible = allDocs.filter(
+    (d) => d.lifecycle_status === "CURRENT" && d.review_state === "CLEAN"
+  );
+
+  function findUnsent(filter: (d: typeof eligible[0]) => boolean): string[] {
+    return eligible
+      .filter((d) => filter(d) && !sentDocIds.includes(d.id))
+      .map((d) => d.id);
+  }
+
   switch (stage) {
-    case "Outreach":
-      if (!sentDocIds.includes("100")) {
+    case "Outreach": {
+      const promos = findUnsent((d) =>
+        d.category === "investor_docs" && d.type === "PROMO" &&
+        (d.pipeline_stage_relevance as string[])?.includes("Outreach")
+      );
+      if (promos.length > 0) {
         return {
           action: "Call and send one-pager",
-          rationale: "First contact — send the one-page overview to introduce Unlock",
-          suggested_documents: ["100"],
+          rationale: "First contact — send a promotional overview to introduce Unlock",
+          suggested_documents: [promos[0]],
         };
       }
       return {
@@ -160,13 +175,18 @@ export function getNextBestAction(lead: any): { action: string; rationale: strin
         rationale: "One-pager sent — follow up to book a call",
         suggested_documents: [],
       };
+    }
 
-    case "Called":
-      if (!sentDocIds.includes("110")) {
+    case "Called": {
+      const promos = findUnsent((d) =>
+        d.category === "investor_docs" && d.type === "PROMO" &&
+        (d.pipeline_stage_relevance as string[])?.includes("Called")
+      );
+      if (promos.length > 0) {
         return {
           action: "Book demo and send three-pager",
-          rationale: "Post-call follow-up — send the three-page founding investor promo",
-          suggested_documents: ["110"],
+          rationale: "Post-call follow-up — send detailed promotional material",
+          suggested_documents: [promos[0]],
         };
       }
       return {
@@ -174,6 +194,7 @@ export function getNextBestAction(lead: any): { action: string; rationale: strin
         rationale: "Key documents sent — focus on booking the demo",
         suggested_documents: [],
       };
+    }
 
     case "Demo Booked":
       return {
@@ -182,26 +203,42 @@ export function getNextBestAction(lead: any): { action: string; rationale: strin
         suggested_documents: [],
       };
 
-    case "Demo Complete":
-      if (!sentDocIds.includes("120")) {
+    case "Demo Complete": {
+      const briefs = findUnsent((d) =>
+        d.category === "investor_docs" && d.type === "BRIEF" &&
+        (d.pipeline_stage_relevance as string[])?.includes("Demo Complete")
+      );
+      if (briefs.length > 0) {
         return {
           action: "Send Pack 1 with persona cover email",
           rationale: "Demo complete — send the founding investor brief",
-          suggested_documents: ["120"],
+          suggested_documents: [briefs[0]],
         };
       }
-      if (lead.detected_persona === "Legacy Builder" && !sentDocIds.includes("170")) {
-        return {
-          action: "Send IHT planning document",
-          rationale: "Legacy Builder persona — IHT planning document directly addresses their concerns",
-          suggested_documents: ["170"],
-        };
+
+      if (lead.detected_persona === "Legacy Builder") {
+        const planning = findUnsent((d) =>
+          d.category === "investor_docs" && d.type === "PLANNING" &&
+          (d.pipeline_stage_relevance as string[])?.includes("Demo Complete")
+        );
+        if (planning.length > 0) {
+          return {
+            action: "Send IHT planning document",
+            rationale: "Legacy Builder persona — IHT planning document directly addresses their concerns",
+            suggested_documents: [planning[0]],
+          };
+        }
       }
-      if (!sentDocIds.includes("160")) {
+
+      const cases = findUnsent((d) =>
+        d.category === "investor_docs" && d.type === "CASE" &&
+        (d.pipeline_stage_relevance as string[])?.includes("Demo Complete")
+      );
+      if (cases.length > 0) {
         return {
           action: "Send EIS case studies",
           rationale: "Follow up with concrete worked examples to support the investment case",
-          suggested_documents: ["160"],
+          suggested_documents: [cases[0]],
         };
       }
       return {
@@ -209,13 +246,18 @@ export function getNextBestAction(lead: any): { action: string; rationale: strin
         rationale: "All key Demo Complete documents sent — advance the conversation",
         suggested_documents: [],
       };
+    }
 
-    case "Decision":
-      if (!sentDocIds.includes("130")) {
+    case "Decision": {
+      const memos = findUnsent((d) =>
+        d.category === "investor_docs" && d.type === "IIM" &&
+        (d.pipeline_stage_relevance as string[])?.includes("Decision")
+      );
+      if (memos.length > 0) {
         return {
           action: "Send Pack 2 and initiate Instant Investment via SeedLegals",
           rationale: "Decision stage — send the full Information Memorandum",
-          suggested_documents: ["130"],
+          suggested_documents: [memos[0]],
         };
       }
       return {
@@ -223,6 +265,7 @@ export function getNextBestAction(lead: any): { action: string; rationale: strin
         rationale: "All documents sent — proceed to investment execution",
         suggested_documents: [],
       };
+    }
 
     default:
       return {
