@@ -52,6 +52,7 @@ import type {
   NextAction,
   Persona,
   PropagationResult,
+  QcRerunDocument200,
   RankDocumentsBody,
   RecommendationResult,
   SeedValidation,
@@ -2539,6 +2540,90 @@ export const useRegenerateDocument = <
   TContext
 > => {
   return useMutation(getRegenerateDocumentMutationOptions(options));
+};
+
+/**
+ * @summary Re-run QC evaluation on existing document content
+ */
+export const getQcRerunDocumentUrl = (id: string) => {
+  return `/api/generation/${id}/qc-rerun`;
+};
+
+export const qcRerunDocument = async (
+  id: string,
+  options?: RequestInit,
+): Promise<QcRerunDocument200> => {
+  return customFetch<QcRerunDocument200>(getQcRerunDocumentUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getQcRerunDocumentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof qcRerunDocument>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof qcRerunDocument>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["qcRerunDocument"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof qcRerunDocument>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return qcRerunDocument(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type QcRerunDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof qcRerunDocument>>
+>;
+
+export type QcRerunDocumentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Re-run QC evaluation on existing document content
+ */
+export const useQcRerunDocument = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof qcRerunDocument>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof qcRerunDocument>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getQcRerunDocumentMutationOptions(options));
 };
 
 /**

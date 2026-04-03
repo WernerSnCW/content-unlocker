@@ -297,6 +297,60 @@ Return ONLY the JSON.`,
   }
 });
 
+router.post("/generation/:id/qc-rerun", async (req, res): Promise<void> => {
+  const params = PromoteDocumentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [doc] = await db.select().from(documentsTable).where(eq(documentsTable.id, params.data.id));
+  if (!doc) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+  if (!doc.content) {
+    res.status(400).json({ error: "Document has no content to evaluate" });
+    return;
+  }
+
+  const compliance = getComplianceConstants();
+  const complianceText = compliance.constants
+    .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
+    .join("\n");
+
+  const previousQcHistory = (doc.qc_history as any[]) || [];
+  const newAttempt = previousQcHistory.length + 1;
+
+  const qcReport = await runQC(doc.content, complianceText, doc.type, newAttempt);
+
+  const newQcHistory = [...previousQcHistory, qcReport];
+
+  const [updated] = await db
+    .update(documentsTable)
+    .set({
+      qc_history: newQcHistory,
+      qc_report_id: qcReport.overall,
+      review_state: qcReport.overall === "pass" ? "CLEAN" : "REQUIRES_REVIEW",
+    })
+    .where(eq(documentsTable.id, params.data.id))
+    .returning();
+
+  await db.insert(changelogTable).values({
+    id: randomUUID(),
+    action: "QC_RERUN",
+    document_id: params.data.id,
+    details: `QC re-run (attempt ${newAttempt}). Result: ${qcReport.overall}. Failures: ${qcReport.fail_count}.`,
+    triggered_by: "agent",
+  });
+
+  res.json({
+    document_id: updated.id,
+    review_state: updated.review_state,
+    qc_report: qcReport,
+  });
+});
+
 router.post("/generation/:id/promote", async (req, res): Promise<void> => {
   const params = PromoteDocumentParams.safeParse(req.params);
   if (!params.success) {
@@ -402,19 +456,19 @@ Return ONLY the JSON.`,
       return JSON.parse(cleaned);
     } catch {
       return {
-        overall: "pass",
+        overall: "fail",
         checks: [],
-        fail_count: 0,
-        warnings: ["QC response could not be parsed — defaulting to pass"],
+        fail_count: 1,
+        warnings: ["QC response could not be parsed — failing closed for safety"],
         qc_attempt: attempt,
       };
     }
   } catch {
     return {
-      overall: "pass",
+      overall: "fail",
       checks: [],
-      fail_count: 0,
-      warnings: ["QC evaluation unavailable — defaulting to pass"],
+      fail_count: 1,
+      warnings: ["QC evaluation unavailable — failing closed for safety"],
       qc_attempt: attempt,
     };
   }

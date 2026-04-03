@@ -68,6 +68,8 @@ export * from "./persona";
 export * from "./propagationResult";
 export * from "./qCCheck";
 export * from "./qCReport";
+export * from "./qcRerunDocument200";
+export * from "./qcRerunDocument200QcReport";
 export * from "./rankDocumentsBody";
 export * from "./rankedDocument";
 export * from "./readinessStatus";

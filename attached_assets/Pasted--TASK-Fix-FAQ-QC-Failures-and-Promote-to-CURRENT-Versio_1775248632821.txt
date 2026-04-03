@@ -1,0 +1,127 @@
+# TASK — Fix FAQ QC Failures and Promote to CURRENT
+Version: 1.0
+
+The FAQ document (gap_d53fa534) has two QC failures. Both are
+editorial framing issues — the loss relief figures are arithmetically
+correct but missing required caveat language per Content Bank V4
+Section 19 compliance rules.
+
+This task fixes both failures, re-runs QC, and promotes the document
+to CURRENT if QC passes.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Approved loss relief framing (Content Bank V4 Section 19)
+EIS loss relief: "~38.5p per £ (additional rate)"
+  — must include "subject to adviser confirmation" after the figure
+
+SEIS loss relief: "~27.5p per £ (additional rate)"
+  — must include "subject to adviser confirmation" after the figure
+
+Never state these as universal figures. Always qualify with
+the applicable tax bracket AND the adviser confirmation caveat.
+
+---
+
+## Step 1 — Fetch the current FAQ content
+
+Call GET /api/documents/gap_d53fa534
+
+Confirm:
+- Document exists and is DRAFT / REQUIRES_REVIEW
+- Content field is non-null and contains the full FAQ text
+- qc_history contains the previous QC evaluation with the 2 failures
+
+Report the exact text of each failed QC check from qc_history
+so we know precisely what needs changing.
+
+---
+
+## Step 2 — Identify and fix the two failing passages
+
+In the document content, find every instance where EIS or SEIS
+loss relief figures appear (~38.5p or ~27.5p or equivalent phrasing).
+
+For each instance:
+
+**Before (example):**
+"For an additional-rate taxpayer, the effective downside on a failed
+EIS investment is approximately 38.5p per pound invested"
+
+**After:**
+"For an additional-rate taxpayer, the effective downside on a failed
+EIS investment is approximately 38.5p per pound invested — subject
+to adviser confirmation."
+
+Apply the same fix to SEIS loss relief figures.
+
+Do not change any other content. Do not rewrite surrounding sentences.
+Do not alter any other compliance figures, headings, or sections.
+The fix is additive — append the caveat, do not restructure.
+
+---
+
+## Step 3 — Update the document via PATCH
+
+Call PATCH /api/documents/gap_d53fa534 with the corrected content.
+
+Confirm the PATCH returns 200 and the content field is updated.
+
+---
+
+## Step 4 — Re-run QC evaluation
+
+The existing QC endpoint or generation pipeline should allow a QC
+re-run on an existing document. Use whichever mechanism is available
+to re-evaluate the corrected content against the full QC checklist.
+
+If a standalone QC re-run endpoint exists: use it.
+If not: use the regenerate endpoint with the corrected content
+as the brief, or run QC manually by passing the content to the
+QC evaluator function directly.
+
+Report:
+- Total QC checks run: [n]
+- Checks passed: [n]
+- Checks failed: [n]
+- If any failures remain: the exact failure reason for each
+
+---
+
+## Step 5 — Promote to CURRENT if QC passes
+
+If all QC checks pass:
+- Call POST /api/generation/gap_d53fa534/promote
+- Confirm lifecycle_status changes to CURRENT
+- Confirm review_state changes to CLEAN
+- Confirm a DOCUMENT_PROMOTED changelog entry is created
+- Confirm Gap 2 (FAQ / Objection Handler type gap) no longer
+  appears in GET /api/content/gaps (it should now be covered)
+
+If any QC checks still fail:
+- Do not promote
+- Report the remaining failures in full
+- Do not attempt further fixes — report back for review
+
+---
+
+## Step 6 — Final report
+
+Document ID: gap_d53fa534
+Passages fixed: [n] (list each location in the document)
+QC result after fix: PASS / FAIL
+QC checks passed: [n of n]
+Promoted to CURRENT: YES / NO
+Gap 2 resolved in coverage matrix: YES / NO
+Changelog entry: [entry ID]
+
+If promoted: confirm the document now appears in GET /api/documents
+with lifecycle_status: CURRENT and review_state: CLEAN.

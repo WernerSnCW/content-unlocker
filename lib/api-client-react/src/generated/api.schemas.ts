@@ -650,6 +650,14 @@ export type GetContentBankParams = {
   search?: string;
 };
 
+export type QcRerunDocument200QcReport = { [key: string]: unknown };
+
+export type QcRerunDocument200 = {
+  document_id?: string;
+  review_state?: string;
+  qc_report?: QcRerunDocument200QcReport;
+};
+
 export type GetRecentActivityParams = {
   limit?: number;
 };

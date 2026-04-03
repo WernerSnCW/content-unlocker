@@ -987,6 +987,19 @@ export const RegenerateDocumentResponse = zod.object({
 });
 
 /**
+ * @summary Re-run QC evaluation on existing document content
+ */
+export const QcRerunDocumentParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const QcRerunDocumentResponse = zod.object({
+  document_id: zod.string().optional(),
+  review_state: zod.string().optional(),
+  qc_report: zod.object({}).passthrough().optional(),
+});
+
+/**
  * @summary Promote a DRAFT document to CURRENT
  */
 export const PromoteDocumentParams = zod.object({
