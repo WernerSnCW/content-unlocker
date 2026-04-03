@@ -384,49 +384,28 @@ router.patch("/content/gaps/history/:snapshotId", async (req, res): Promise<void
   }
 });
 
-router.post("/content/generate-brief", async (req, res): Promise<void> => {
-  try {
-    const { gap, information_readiness, additional_context } = req.body;
+export async function generateBriefFromGap(gap: any, additional_context?: string): Promise<{ brief: any; ready_to_generate: boolean }> {
+  const compliance = getComplianceConstants();
+  const complianceText = compliance.constants
+    .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
+    .join("\n");
 
-    if (!gap || !gap.gap_type) {
-      res.status(400).json({ error: "gap object with gap_type is required" });
-      return;
-    }
+  let gapDescription = "";
+  if (gap.gap_type === "matrix") {
+    gapDescription = `Missing document for archetype "${gap.archetype}" at pipeline stage "${gap.stage}". This is a coverage matrix gap — no CLEAN+CURRENT document exists for this combination.`;
+  } else if (gap.gap_type === "type") {
+    gapDescription = `Missing document of type "${gap.document_type}". This document type is required in the registry regardless of persona/stage coverage.`;
+  } else if (gap.gap_type === "recommendation_failure") {
+    gapDescription = `Recommendation engine returned zero results for persona "${gap.archetype || gap.persona}" at stage "${gap.stage}". Reason: ${gap.reason || "No matching documents found."}`;
+  }
 
-    if (
-      information_readiness?.overall === "INSUFFICIENT_TO_GENERATE"
-    ) {
-      res.status(422).json({
-        error: "Insufficient information to generate a brief",
-        missing: {
-          content_bank: information_readiness.content_bank,
-          compliance_constants: information_readiness.compliance_constants,
-        },
-      });
-      return;
-    }
-
-    const compliance = getComplianceConstants();
-    const complianceText = compliance.constants
-      .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
-      .join("\n");
-
-    let gapDescription = "";
-    if (gap.gap_type === "matrix") {
-      gapDescription = `Missing document for archetype "${gap.archetype}" at pipeline stage "${gap.stage}". This is a coverage matrix gap — no CLEAN+CURRENT document exists for this combination.`;
-    } else if (gap.gap_type === "type") {
-      gapDescription = `Missing document of type "${gap.document_type}". This document type is required in the registry regardless of persona/stage coverage.`;
-    } else if (gap.gap_type === "recommendation_failure") {
-      gapDescription = `Recommendation engine returned zero results for persona "${gap.archetype || gap.persona}" at stage "${gap.stage}". Reason: ${gap.reason || "No matching documents found."}`;
-    }
-
-    const briefMessage = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      messages: [
-        {
-          role: "user",
-          content: `You are a content strategist for Unlock, a UK portfolio intelligence platform for sophisticated investors.
+  const briefMessage = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: `You are a content strategist for Unlock, a UK portfolio intelligence platform for sophisticated investors.
 
 A content gap has been identified:
 ${gapDescription}
@@ -461,29 +440,46 @@ Return ONLY valid JSON:
 
 If all information is available, return an empty array for information_needed.
 Return ONLY the JSON.`,
-        },
-      ],
-    });
+      },
+    ],
+  });
 
-    const block = briefMessage.content[0];
-    const text = block.type === "text" ? block.text : "";
+  const block = briefMessage.content[0];
+  const text = block.type === "text" ? block.text : "";
 
-    let brief;
-    try {
-      const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      brief = JSON.parse(cleaned);
-    } catch {
-      res.status(500).json({ error: "Failed to parse AI-generated brief" });
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const brief = JSON.parse(cleaned);
+
+  const readyToGenerate =
+    !brief.information_needed || brief.information_needed.length === 0;
+
+  return { brief, ready_to_generate: readyToGenerate };
+}
+
+router.post("/content/generate-brief", async (req, res): Promise<void> => {
+  try {
+    const { gap, information_readiness, additional_context } = req.body;
+
+    if (!gap || !gap.gap_type) {
+      res.status(400).json({ error: "gap object with gap_type is required" });
       return;
     }
 
-    const readyToGenerate =
-      !brief.information_needed || brief.information_needed.length === 0;
+    if (
+      information_readiness?.overall === "INSUFFICIENT_TO_GENERATE"
+    ) {
+      res.status(422).json({
+        error: "Insufficient information to generate a brief",
+        missing: {
+          content_bank: information_readiness.content_bank,
+          compliance_constants: information_readiness.compliance_constants,
+        },
+      });
+      return;
+    }
 
-    res.json({
-      brief,
-      ready_to_generate: readyToGenerate,
-    });
+    const result = await generateBriefFromGap(gap, additional_context);
+    res.json(result);
   } catch (err: any) {
     req.log.error({ err }, "Brief generation failed");
     res.status(500).json({ error: "Brief generation failed" });

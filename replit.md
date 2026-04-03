@@ -98,6 +98,8 @@ artifacts-monorepo/
 - Dashboard summary includes `coverage_gaps` array and `coverage_gap_count`
 - Batch analyze returns full signal set (readiness_score, primary_issue, blocking_objections, information_gaps, call_completeness, recommended_next_action, questions_answered)
 - Confirm-send now persists persona_confidence and stage_confidence to leads table
+- `POST /api/recommendation/gap-brief` — inline brief generation from recommendation gap context (archetype, stage, persona, transcript_summary); calls shared `generateBriefFromGap()` logic internally
+- Rank prompt now explicitly requests `relevance_score` (0.0-1.0) per document for reliable low-relevance gap detection
 
 ## Key Libraries
 

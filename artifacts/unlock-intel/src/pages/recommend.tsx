@@ -93,6 +93,11 @@ export default function Recommend() {
 
   const [detailPanels, setDetailPanels] = useState<Record<string, boolean>>({});
   const [batchDetailPanels, setBatchDetailPanels] = useState<Record<string, boolean>>({});
+  const [gapBrief, setGapBrief] = useState<any>(null);
+  const [gapBriefLoading, setGapBriefLoading] = useState(false);
+  const [gapBriefError, setGapBriefError] = useState<string | null>(null);
+  const [gapDocGenerating, setGapDocGenerating] = useState(false);
+  const [gapDocResult, setGapDocResult] = useState<any>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -587,7 +592,159 @@ export default function Recommend() {
                         ))}
                       </div>
                     )}
-                    <Button variant="outline" size="sm" className="w-full mt-2 gap-1" onClick={() => window.location.href = `${import.meta.env.BASE_URL}gaps`}>
+
+                    {!gapBrief && !gapBriefLoading && (
+                      <Button variant="default" size="sm" className="w-full mt-2 gap-1" onClick={async () => {
+                        setGapBriefLoading(true);
+                        setGapBriefError(null);
+                        setGapBrief(null);
+                        setGapDocResult(null);
+                        try {
+                          const res = await fetch(`${API_BASE}/recommendation/gap-brief`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              archetype: rankData.recommendation_gap.archetype || rankData.recommendation_gap.persona,
+                              stage: rankData.recommendation_gap.pipeline_stage,
+                              persona: rankData.recommendation_gap.persona,
+                              transcript_summary: analysisData?.transcript_summary || "",
+                            }),
+                          });
+                          if (!res.ok) throw new Error((await res.json()).error || "Brief generation failed");
+                          const data = await res.json();
+                          setGapBrief(data);
+                        } catch (err: any) {
+                          setGapBriefError(err.message);
+                        } finally {
+                          setGapBriefLoading(false);
+                        }
+                      }}>
+                        <FileText className="w-3 h-3" />
+                        Generate Brief
+                      </Button>
+                    )}
+
+                    {gapBriefLoading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating brief...
+                      </div>
+                    )}
+
+                    {gapBriefError && (
+                      <div className="text-sm text-red-400 py-1">Error: {gapBriefError}</div>
+                    )}
+
+                    {gapBrief && (
+                      <div className="mt-3 space-y-3 border-t border-amber-500/20 pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-sm">{gapBrief.brief.title}</span>
+                          <Badge variant="outline" className="text-xs">{gapBrief.brief.document_type}</Badge>
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Key Messages</div>
+                          <ul className="text-sm space-y-1">
+                            {gapBrief.brief.key_messages?.map((m: string, i: number) => (
+                              <li key={i} className="text-muted-foreground">• {m}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="flex gap-2 flex-wrap">
+                          {gapBrief.brief.archetypes?.map((a: string, i: number) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{a}</Badge>
+                          ))}
+                          {gapBrief.brief.stages?.map((s: string, i: number) => (
+                            <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
+                          ))}
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tone & Length</div>
+                          <p className="text-xs text-muted-foreground">{gapBrief.brief.tone} — {gapBrief.brief.length_guidance}</p>
+                        </div>
+
+                        {gapBrief.brief.compliance_considerations?.length > 0 && (
+                          <div>
+                            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Compliance</div>
+                            <ul className="text-xs space-y-0.5">
+                              {gapBrief.brief.compliance_considerations.map((c: string, i: number) => (
+                                <li key={i} className="text-muted-foreground">• {c}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {gapBrief.brief.source_material_pointers?.length > 0 && (
+                          <div>
+                            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Source Material</div>
+                            <ul className="text-xs space-y-0.5">
+                              {gapBrief.brief.source_material_pointers.map((s: string, i: number) => (
+                                <li key={i} className="text-muted-foreground">• {s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {gapBrief.brief.information_needed?.length > 0 && (
+                          <div>
+                            <div className="text-xs text-red-400 uppercase tracking-wider mb-1">Information Needed</div>
+                            {gapBrief.brief.information_needed.map((info: any, i: number) => (
+                              <div key={i} className="text-xs border border-red-500/30 rounded p-2 mb-1 bg-red-500/5">
+                                <span className="font-medium text-red-400">{info.field}</span>
+                                <span className="text-muted-foreground"> — {info.description}</span>
+                                <span className="text-muted-foreground italic"> (source: {info.source})</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {!gapDocResult && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="w-full gap-1"
+                            disabled={gapDocGenerating}
+                            onClick={async () => {
+                              setGapDocGenerating(true);
+                              try {
+                                const res = await fetch(`${API_BASE}/content/generate-from-brief`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ brief: gapBrief.brief, override_information_gaps: true }),
+                                });
+                                if (!res.ok) throw new Error((await res.json()).error || "Generation failed");
+                                const data = await res.json();
+                                setGapDocResult(data);
+                              } catch (err: any) {
+                                setGapBriefError(err.message);
+                              } finally {
+                                setGapDocGenerating(false);
+                              }
+                            }}
+                          >
+                            {gapDocGenerating ? <><Loader2 className="w-3 h-3 animate-spin" /> Generating Document...</> : <><FileText className="w-3 h-3" /> Generate Document</>}
+                          </Button>
+                        )}
+
+                        {gapDocResult && (
+                          <div className="p-3 rounded border border-emerald-500/30 bg-emerald-500/10">
+                            <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+                              <CheckCircle className="w-4 h-4" />
+                              Document generated — {gapDocResult.qc_result?.overall || "QC pending"}
+                            </div>
+                            {gapDocResult.document_id && (
+                              <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => window.location.href = `${import.meta.env.BASE_URL}registry/${gapDocResult.document_id}`}>
+                                View in Document Registry →
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <Button variant="outline" size="sm" className="w-full gap-1 text-xs" onClick={() => window.location.href = `${import.meta.env.BASE_URL}gaps`}>
                       <FileText className="w-3 h-3" />
                       View Content Gap Analysis
                     </Button>

@@ -12,6 +12,7 @@ import {
 import personaGuide from "../../data/content/520_GUIDE_Investor_Personas_19_V1_CURRENT.md";
 import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt";
 import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
+import { generateBriefFromGap } from "../content/gaps";
 import multer from "multer";
 import mammoth from "mammoth";
 
@@ -761,10 +762,19 @@ Return ONLY valid JSON matching this schema:
     {
       "document_id": "<id>",
       "priority": <1-based>,
-      "rationale": "<one sentence why this document is relevant>"
+      "rationale": "<one sentence why this document is relevant>",
+      "relevance_score": <number between 0.0 and 1.0>
     }
   ]
 }
+
+For each document in your ranking, return exactly these fields:
+- document_id: string (the document's ID)
+- priority: number (1 = highest priority)
+- rationale: string (one sentence explaining why this document fits this investor at this stage)
+- relevance_score: number between 0.0 and 1.0 (how relevant this document is to the investor's current situation — 1.0 = perfect fit, 0.5 = moderate fit, 0.1 = weak fit)
+
+A relevance_score below 0.4 means the document is a poor fit and should be used with caution. Return relevance_score honestly — do not inflate it.
 
 Rank by relevance to the transcript context and objections. Return ONLY the JSON.`,
         },
@@ -1005,6 +1015,31 @@ Return ONLY the JSON.`,
   } catch (err: any) {
     req.log.error({ err }, "Email draft generation failed");
     res.status(500).json({ error: "Email draft generation failed. Please try again." });
+  }
+});
+
+router.post("/recommendation/gap-brief", async (req, res): Promise<void> => {
+  try {
+    const { archetype, stage, persona, transcript_summary } = req.body;
+
+    if (!archetype || !stage) {
+      res.status(400).json({ error: "archetype and stage are required" });
+      return;
+    }
+
+    const gap = {
+      archetype,
+      stage,
+      persona: persona || archetype,
+      gap_type: "recommendation_failure",
+      reason: `Recommendation engine found no suitable content for "${persona || archetype}" at "${stage}" stage`,
+    };
+
+    const result = await generateBriefFromGap(gap, transcript_summary || undefined);
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Gap brief generation failed");
+    res.status(500).json({ error: "Gap brief generation failed" });
   }
 });
 

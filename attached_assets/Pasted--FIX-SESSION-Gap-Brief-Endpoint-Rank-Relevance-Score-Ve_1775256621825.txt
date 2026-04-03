@@ -1,0 +1,221 @@
+# FIX SESSION — Gap Brief Endpoint + Rank Relevance Score
+Version: 1.0
+
+Two small fixes. Complete both in this session.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+---
+
+## Fix 1 — Add standalone /recommendation/gap-brief endpoint
+**Priority:** MEDIUM — broken flow for agents mid-call
+**File:** recommendation/index.ts
+
+### The problem
+When the rank endpoint detects a content gap, the gap panel in
+the recommend flow shows a "View Content Gap Analysis" button
+that navigates to /gaps. This breaks the agent's context — they
+have to leave the recommend flow, navigate to a different page,
+and find the right gap manually.
+
+The spec called for POST /api/recommendation/gap-brief — a
+dedicated endpoint that generates a brief inline within the
+recommend flow without navigation.
+
+### The fix
+
+Create a new endpoint: POST /api/recommendation/gap-brief
+
+This wraps the existing POST /api/content/generate-brief endpoint
+internally, passing the recommendation context as the gap source.
+
+Request body:
+```typescript
+{
+  archetype: string          // from the failed recommendation
+  stage: string              // canonical stage value
+  persona: string            // detected persona (more specific
+                             // than archetype)
+  transcript_summary: string // context from the current call
+}
+```
+
+Implementation:
+- Construct a gap object in the format expected by generate-brief:
+  ```typescript
+  {
+    archetype: archetype,
+    stage: stage,
+    gap_type: "recommendation_failure"
+  }
+  ```
+- Pass transcript_summary as additional_context alongside the
+  master generation context (which auto-loads)
+- Call the generate-brief logic internally (not via HTTP — import
+  and call the function directly to avoid internal HTTP overhead)
+- Return the brief in the same shape as POST /api/content/generate-brief
+
+Response body (same as generate-brief):
+```typescript
+{
+  brief: {
+    title: string
+    document_type: string
+    archetypes: string[]
+    stages: string[]
+    key_messages: string[]
+    tone: string
+    length_guidance: string
+    compliance_considerations: string[]
+    source_material_pointers: string[]
+    information_needed: Array<{
+      field: string
+      description: string
+      source: string
+    }>
+  }
+  ready_to_generate: boolean
+}
+```
+
+---
+
+### Update the gap panel UI
+
+Update the gap panel in recommend.tsx to use the new endpoint.
+
+Replace the "View Content Gap Analysis" button with a
+"Generate Brief" button that:
+1. Calls POST /api/recommendation/gap-brief with the current
+   archetype, stage, persona, and transcript_summary
+2. Shows a loading state: "Generating brief..."
+3. On success: displays the brief inline in the gap panel
+   (same layout as the content gaps page brief review panel)
+4. Shows all brief fields — key messages, source material
+   pointers, information_needed items highlighted in red
+5. Adds a "Generate Document" button that calls
+   POST /api/content/generate-from-brief
+6. On document generation success: shows a success message
+   with a link to the new document in the registry
+
+Keep the "View Content Gap Analysis" link as a secondary option
+below the "Generate Brief" button — do not remove it.
+
+---
+
+### Confirm with live tests
+
+Test 1 — Endpoint exists and responds:
+- POST /api/recommendation/gap-brief with valid archetype,
+  stage, persona, and a short transcript_summary
+- Confirm 200 response with brief object
+- Confirm ready_to_generate is true (master context provides
+  sufficient information)
+- Confirm key_messages reference the persona and stage
+
+Test 2 — UI flow:
+- Navigate to recommend flow for a lead whose archetype/stage
+  has no documents
+- Confirm gap panel appears with "Generate Brief" button
+- Click "Generate Brief"
+- Confirm brief appears inline without page navigation
+- Confirm key messages and source pointers are visible
+
+Test 3 — Full inline pipeline:
+- From the gap panel, click "Generate Document"
+- Confirm a document is generated and QC runs
+- Confirm success message with link to the new document
+- Confirm the gap is now covered (run GET /api/content/gaps
+  to verify)
+
+---
+
+## Fix 2 — Add relevance_score to rank prompt response schema
+**Priority:** MEDIUM — low-relevance gap detection may never trigger
+**File:** recommendation/index.ts — the rank endpoint Claude prompt
+
+### The problem
+The rank prompt asks Claude to return document_id, priority, and
+rationale. It does not explicitly request relevance_score.
+
+The low-relevance gap detection added in build 078 checks whether
+all ranked results have relevance_score < 0.4. If Claude doesn't
+return relevance_score (because it's not in the requested schema),
+the check will never trigger — the gap goes undetected even when
+all documents are weakly matched.
+
+### The fix
+
+Update the rank Claude prompt to explicitly request relevance_score
+as a required field in the response schema.
+
+Add to the existing rank prompt's response format instruction:
+
+```
+For each document in your ranking, return exactly these fields:
+- document_id: string (the document's ID)
+- priority: number (1 = highest priority)
+- rationale: string (one sentence explaining why this document
+  fits this investor at this stage)
+- relevance_score: number between 0.0 and 1.0 (how relevant
+  this document is to the investor's current situation —
+  1.0 = perfect fit, 0.5 = moderate fit, 0.1 = weak fit)
+
+A relevance_score below 0.4 means the document is a poor fit
+and should be used with caution. Return relevance_score honestly
+— do not inflate it.
+```
+
+Do not change any other part of the rank prompt, the endpoint
+logic, or the response shape. The relevance_score field is already
+handled by the low-relevance detection code — this fix ensures
+Claude actually returns it.
+
+---
+
+### Confirm with live tests
+
+Test 1 — relevance_score present in rank response:
+- POST /api/recommendation/rank with a valid request
+- Confirm every document in ranked_documents has a
+  relevance_score field (number, not undefined)
+- Confirm scores are between 0.0 and 1.0
+
+Test 2 — Low-relevance gap detection triggers:
+- POST /api/recommendation/rank with a persona/stage
+  combination where documents exist but are a weak fit
+  (e.g., wrong tier or category)
+- Confirm recommendation_gap.detected is true if all scores
+  are below 0.4
+- Confirm ranked_documents is still returned (do not hide
+  weak results — surface the gap alongside them)
+
+Test 3 — High-relevance documents unaffected:
+- POST /api/recommendation/rank with a persona/stage that
+  has well-matched documents
+- Confirm recommendation_gap is absent from response
+- Confirm relevance_scores are ≥ 0.4 for good matches
+
+---
+
+## Final report
+
+Fix 1 — Gap brief endpoint:
+- POST /api/recommendation/gap-brief: WORKING / NOT IMPLEMENTED
+- Brief returned with 0 information_needed: YES / NO
+- "Generate Brief" button in gap panel: WORKING / NOT IMPLEMENTED
+- Inline brief display without navigation: YES / NO
+- Full inline pipeline (brief → generate → success): YES / NO
+
+Fix 2 — Relevance score in rank prompt:
+- relevance_score present in every ranked result: YES / NO
+- Low-relevance gap detection triggers correctly: YES / NO
+- High-relevance recommendations unaffected: YES / NO
