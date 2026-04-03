@@ -1,0 +1,233 @@
+# SESSION — Clear Tier 1 Queue: Promote 700 + 520, Populate 400
+Version: 1.0
+
+Three tasks. Complete in order.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Approved Decumulation Planner status phrase
+"Specification complete. Prototype build commencing."
+Never say: live, available, launching soon, in beta.
+
+---
+
+## Task 1 — Promote Doc 700 (Content Bank) to CURRENT
+
+Doc 700 already contains the fully approved Decumulation Planner
+language. No content changes needed.
+
+### Step 1 — Re-run QC to confirm clean state
+Call POST /api/generation/700/qc-rerun
+
+If QC passes: proceed to Step 2.
+If QC fails: report the specific failures — do not attempt
+fixes in this session. Flag for human review.
+
+### Step 2 — Promote
+Call POST /api/generation/700/promote
+
+Confirm:
+- lifecycle_status: CURRENT
+- review_state: CLEAN
+- DOCUMENT_PROMOTED changelog entry created
+
+Report: Doc 700 promoted — YES / NO / QC FAILED
+
+---
+
+## Task 2 — Promote Doc 520 (Investor Personas) to CURRENT
+
+Doc 520 contains only persona characteristic references to estate
+planning and IHT — no direct Decumulation Planner product claims.
+No content changes needed.
+
+### Step 1 — Re-run QC
+Call POST /api/generation/520/qc-rerun
+
+If QC passes: proceed to Step 2.
+If QC fails: report the specific failures.
+
+### Step 2 — Promote
+Call POST /api/generation/520/promote
+
+Confirm:
+- lifecycle_status: CURRENT
+- review_state: CLEAN
+- DOCUMENT_PROMOTED changelog entry created
+
+Report: Doc 520 promoted — YES / NO / QC FAILED
+
+---
+
+## Task 3 — Populate Doc 400 (Decumulation Engine Spec)
+
+Doc 400 has NULL content. This document IS the Decumulation
+Engine specification — it needs its content populated before
+it can be reviewed or promoted.
+
+### Step 1 — Write the spec content
+
+The Decumulation Engine spec content should be written to
+doc 400's content field via PATCH /api/documents/400.
+
+Use the following canonical description as the content.
+This is the authoritative product specification derived from
+the Content Bank V4 and the approved feature set:
+
+```
+# Unlock Decumulation Engine — Technical Specification
+Version: 1.2 | March 2026
+
+## Purpose
+
+The Decumulation Engine answers the question every investor
+approaching retirement needs to ask: given my assets, how long
+will my money last if I spend £X per year — and what is the
+optimal sequence to draw from those assets to minimise tax and
+maximise what I pass to my heirs?
+
+## Build Status
+
+Specification complete. Prototype build commencing.
+
+## Asset Classes Covered
+
+The engine models full UK tax treatment per asset class including
+wrapper override rules:
+
+- Cash
+- ISA (including flexible ISA)
+- Pension (DC/SIPP/workplace)
+- Investment property
+- VCT (Venture Capital Trust)
+- EIS (Enterprise Investment Scheme shares)
+- AIM shares
+
+IFAs cannot advise on VCT/EIS drawdown sequencing — this is a
+structural advice gap that the Decumulation Engine fills.
+
+## Four Drawdown Strategies
+
+The user selects a strategy; the platform models all four for
+comparison. Each produces a different asset draw priority order.
+
+1. Tax-optimised — minimise income tax and CGT drag across the
+   full drawdown horizon
+2. IHT-optimised — maximise the estate passed to heirs by
+   preserving BPR-qualifying assets for as long as possible
+3. Income-first — prioritise immediate income stability over
+   tax optimisation
+4. Growth-first — preserve higher-growth assets longer,
+   drawing from lower-growth assets first
+
+## Key Modelled Scenarios (Toggleable)
+
+- Proposed April 2026 BPR cap: £2.5M at 100% relief, 50%
+  relief above that threshold
+- Proposed April 2027 pension IHT inclusion — models both
+  current rules and proposed rules simultaneously for comparison
+- Trust and gifting mechanics: NEFI, CLT 7-year rolling window
+  with NRB stacking, PET taper relief schedule
+- Year-indexed tax parameters for multi-decade plans
+- 35-year shadow projection always runs alongside the user's
+  selected plan horizon
+
+## Why No Incumbent Has Built This
+
+The Decumulation Engine requires lot-level data from the asset
+register — which platforms with product conflicts cannot provide
+without exposing competitor holdings. A platform that earns from
+recommending products cannot model "draw from your ISA before
+your pension to preserve BPR exemption on your VCT" without
+undermining its own revenue model. Structural independence is
+what makes the Decumulation Engine possible.
+
+## Compliance Notes
+
+All modelled scenarios carrying legislative uncertainty must
+include the following caveats where presented to investors:
+
+- BPR cap: "Subject to final enactment"
+- Pension IHT: "Subject to final legislation"
+- All tax figures must match compliance_constants.json values
+  and include appropriate adviser confirmation caveats
+
+## Target Personas
+
+Most relevant to:
+- Preserver (late accumulation and decumulation phases)
+- Legacy Builder (late accumulation through decumulation)
+
+Most valuable at pipeline stages:
+- Demo Complete
+- Decision
+```
+
+### Step 2 — Run QC on doc 400
+
+Call POST /api/generation/400/qc-rerun
+
+Report:
+- QC result: PASS / FAIL
+- Any failed checks with specific reasons
+
+If QC passes: proceed to Step 3.
+If QC fails: report failures. Do not promote.
+
+### Step 3 — Promote doc 400
+
+Call POST /api/generation/400/promote
+
+Confirm:
+- lifecycle_status: CURRENT
+- review_state: CLEAN
+- DOCUMENT_PROMOTED changelog entry created
+
+Report: Doc 400 promoted — YES / NO / QC FAILED
+
+---
+
+## Task 4 — Save gap snapshot and report queue state
+
+After all three documents are resolved, call:
+GET /api/content/gaps?save=true
+
+Then call GET /api/content/feature-update/{update_id}/queue
+to confirm the updated queue state after the Tier 1 promotions.
+
+---
+
+## Final Report
+
+DOC 700 — Content Bank:
+- QC result: PASS / FAIL
+- Promoted: YES / NO
+- Notes: [any issues]
+
+DOC 520 — Investor Personas:
+- QC result: PASS / FAIL
+- Promoted: YES / NO
+- Notes: [any issues]
+
+DOC 400 — Decumulation Engine:
+- Content written: YES / NO
+- QC result: PASS / FAIL
+- Promoted: YES / NO
+- Notes: [any issues]
+
+QUEUE STATE:
+- Tier 1 documents remaining in queue: [n]
+- Total documents remaining in queue: [n]
+- Next priority documents (Tier 2/3): [list titles]
+
+GAP SNAPSHOT:
+- Snapshot ID: [id]
+- Current gap count: [n]
