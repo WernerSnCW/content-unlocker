@@ -195,7 +195,7 @@ router.get("/content/gaps", async (req, res): Promise<void> => {
 
 router.post("/content/generate-brief", async (req, res): Promise<void> => {
   try {
-    const { gap, information_readiness } = req.body;
+    const { gap, information_readiness, additional_context } = req.body;
 
     if (!gap || !gap.gap_type) {
       res.status(400).json({ error: "gap object with gap_type is required" });
@@ -242,7 +242,7 @@ ${gapDescription}
 
 CONTENT BANK (source material available):
 ${contentBankText.slice(0, 8000)}
-
+${additional_context ? `\nADDITIONAL CONTEXT (supplementary source material):\n${additional_context}\n` : ""}
 COMPLIANCE CONSTANTS:
 ${complianceText}
 

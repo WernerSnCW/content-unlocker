@@ -1,0 +1,95 @@
+# TASK — Generate Gap 2 + Retry Gaps 1 and 5 with Full Persona Context
+Version: 1.0
+
+Two tasks in this session. Complete Task 1 first, then Task 2.
+
+---
+
+## Task 1 — Generate content for Gap 2 (FAQ / Objection Handler)
+
+Gap 2 was confirmed ready to generate with no missing information.
+Proceed directly to content generation.
+
+Call POST /api/content/generate-from-brief using the brief already
+generated for Gap 2 (FAQ / Objection Handler).
+
+If the brief is not cached, regenerate it first via
+POST /api/content/generate-brief with the Gap 2 type gap, then
+immediately pass it to generate-from-brief.
+
+After generation:
+- Confirm the document was created and assigned an ID
+- Confirm QC evaluation ran and report the result (PASS / FAIL / MANUAL_REVIEW_REQUIRED)
+- Confirm a changelog entry was created noting gap-driven generation
+- Confirm the Gap 2 type gap no longer appears in GET /api/content/gaps
+- Report the first 200 characters of the generated content so the
+  quality can be assessed
+
+Do not promote to CURRENT yet — leave as DRAFT for review.
+
+---
+
+## Task 2 — Retry Gaps 1 and 5 with full Doc 520 context
+
+Gaps 1 and 5 were flagged as missing the Preserver archetype definition,
+Preserver-specific demo flow, and Decumulation Planner demo visibility.
+Doc 520 (Investor Personas, 42,982 chars) is loaded in the database and
+likely contains this information. The briefs were generated without its
+full content in context.
+
+**Step 1 — Read Doc 520 in full**
+Fetch the complete content of Doc 520 from the database. Confirm the
+full content is loaded before proceeding.
+
+**Step 2 — Regenerate the brief for Gap 1**
+Call POST /api/content/generate-brief for Gap 1
+(Matrix: Preserver × Demo Booked), but this time include the full
+text of Doc 520 as additional context in the Claude prompt.
+
+Update the generate-brief endpoint temporarily to accept an optional
+additional_context field in the request body:
+```typescript
+{
+  gap: { ... }
+  information_readiness: { ... }
+  additional_context?: string    // injected into the Claude prompt
+}
+```
+
+Pass the full Doc 520 content as additional_context.
+
+Report the updated brief, specifically:
+- Whether information_needed is now empty or reduced
+- Whether ready_to_generate has changed to true
+- Any items that are still flagged as missing
+
+**Step 3 — Regenerate the brief for Gap 5**
+Repeat Step 2 for Gap 5 (Recommendation failure: Preserver at Demo Booked),
+passing the same Doc 520 content as additional_context.
+
+Report the same fields.
+
+**Step 4 — Consolidated update**
+After both briefs are regenerated, report:
+
+GAP 1 UPDATE
+- Was: [original information_needed count] items missing
+- Now: [updated information_needed count] items missing
+- Resolved by Doc 520: [list what was resolved]
+- Still missing: [list what remains]
+- Ready to generate: YES / NO
+
+GAP 5 UPDATE
+- Was: [original information_needed count] items missing
+- Now: [updated information_needed count] items missing
+- Resolved by Doc 520: [list what was resolved]
+- Still missing: [list what remains]
+- Ready to generate: YES / NO
+
+OVERALL
+- Gaps now ready to generate: [n]
+- Gaps still blocked: [n]
+- Remaining external information needed: [consolidated list]
+
+Do not generate content for Gaps 1 or 5 in this session regardless
+of whether ready_to_generate becomes true. Report only.
