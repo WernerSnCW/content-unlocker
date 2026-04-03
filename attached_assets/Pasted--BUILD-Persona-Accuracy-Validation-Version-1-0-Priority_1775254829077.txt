@@ -1,0 +1,244 @@
+# BUILD — Persona Accuracy Validation
+Version: 1.0
+Priority: HIGH
+Area: Recommendation Engine — Analytics
+Depends on: None (uses existing analyze data)
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+Use detectPropagationTargets() or propagateFromDocument().
+Do not reimplement propagation logic.
+
+---
+
+## Overview
+
+The 19 personas and 3 archetypes were defined upfront based on
+research. As real call transcripts accumulate, the actual
+distribution of investor profiles may differ from the model.
+There is currently no feedback loop — a persona is detected,
+logged, and never reviewed.
+
+This build adds two capabilities:
+
+1. A persona analytics view showing the distribution and
+   confidence of detected personas across all analysed transcripts,
+   surfacing which personas are detected with consistently low
+   confidence (a signal the model may need updating)
+
+2. A persona validation workflow allowing agents to confirm or
+   correct the detected persona on a lead after the call, creating
+   ground truth data that can be used to improve detection over time
+
+---
+
+## Step 1 — Backend: Persona analytics endpoint
+
+Create a new endpoint: GET /api/analytics/personas
+
+This endpoint aggregates persona detection data across all leads
+and their analysis history.
+
+Response body:
+```typescript
+{
+  summary: {
+    total_leads_analysed: number
+    leads_with_confirmed_persona: number
+    leads_with_detected_only: number
+    average_persona_confidence: number
+  }
+  archetype_distribution: Array<{
+    archetype: string              // Growth Seeker | Preserver | Legacy Builder
+    count: number
+    percentage: number
+    average_confidence: number
+    low_confidence_count: number   // detections below 0.6 confidence
+  }>
+  persona_distribution: Array<{
+    persona: string                // one of the 19 detailed personas
+    archetype: string              // mapped archetype
+    count: number
+    average_confidence: number
+    confirmed_count: number        // times agent confirmed this persona
+    corrected_count: number        // times agent corrected away from this
+    accuracy_rate: number | null   // confirmed / (confirmed + corrected)
+  }>
+  low_confidence_alerts: Array<{
+    persona: string
+    archetype: string
+    average_confidence: number
+    detection_count: number
+    message: string    // e.g. "Detected 8 times with avg 0.42 confidence
+                       //       — consider reviewing persona definition"
+  }>
+  stage_distribution: Array<{
+    stage: string
+    count: number
+    percentage: number
+    average_confidence: number
+  }>
+}
+```
+
+Low confidence threshold: 0.6. Any persona with average confidence
+below 0.6 across 3 or more detections should appear in
+low_confidence_alerts.
+
+---
+
+## Step 2 — Backend: Persona confirmation endpoint
+
+Add a new endpoint: POST /api/leads/:id/confirm-persona
+
+This allows agents to confirm or correct the detected persona
+on a lead after reviewing the analysis.
+
+Request body:
+```typescript
+{
+  confirmed_persona: string      // one of the 19 personas or 3 archetypes
+  confirmed_archetype: string    // one of the 3 archetypes
+  was_correct: boolean           // was the detected persona correct?
+  notes?: string                 // optional agent notes on why
+}
+```
+
+This endpoint:
+- Updates the lead record with confirmed_persona and
+  confirmed_archetype fields
+- Logs a PERSONA_CONFIRMED or PERSONA_CORRECTED changelog entry
+  depending on was_correct
+- Does not change detected_persona — preserves the original
+  detection for accuracy tracking
+
+Add confirmed_persona and confirmed_archetype fields to the
+leads table if they do not exist.
+
+---
+
+## Step 3 — Backend: Store confidence scores on leads
+
+The current leads table stores detected_persona but not the
+confidence score from the analysis. Update the lead update flow
+(when a transcript is analysed and linked to a lead) to also
+store persona_confidence and stage_confidence on the lead record.
+
+Add persona_confidence (float) and stage_confidence (float)
+fields to the leads table.
+
+When confirm-send or lead linking is called with analysis data,
+store the confidence scores alongside the detected persona.
+
+---
+
+## Step 4 — Frontend: Persona Analytics page
+
+Add a new page: /analytics/personas
+Link from the main navigation as "Persona Analytics" or add
+to an Analytics section.
+
+**Summary row:**
+Show 4 stat cards:
+- Total leads analysed
+- Average persona confidence (colour-coded: green ≥0.75,
+  amber 0.6–0.74, red <0.6)
+- Leads with confirmed persona
+- Leads with low-confidence detections
+
+**Archetype distribution:**
+A horizontal bar chart showing Growth Seeker / Preserver /
+Legacy Builder distribution with average confidence per archetype.
+If any archetype's average confidence is below 0.6, show an
+amber warning badge.
+
+**Low confidence alerts panel:**
+If any personas appear in low_confidence_alerts, show a prominent
+panel:
+"⚠️ [n] personas detected with consistently low confidence"
+List each persona with its average confidence, detection count,
+and a note: "Consider reviewing the persona definition or the
+call framework questions for this profile."
+
+**Persona breakdown table:**
+| Persona | Archetype | Detections | Avg Confidence | Confirmed | Corrected | Accuracy |
+|---|---|---|---|---|---|---|
+
+Sort by detection count descending. Highlight rows where
+accuracy_rate < 0.7 in amber.
+
+**Stage distribution:**
+A simple breakdown of detected pipeline stages with confidence
+averages. Flag any stage with average confidence below 0.6.
+
+---
+
+## Step 5 — Frontend: Persona confirmation on lead detail page
+
+Update the lead detail page to add a persona confirmation
+section below the detected persona display.
+
+If confirmed_persona exists: show "Confirmed: [persona] ✓"
+in green with the confirming agent and timestamp.
+
+If not yet confirmed: show a "Confirm persona" button that
+opens an inline form:
+- Detected persona shown for reference
+- Dropdown to select the correct persona (all 19 options
+  grouped by archetype)
+- "Was this detection correct?" toggle (Yes/No)
+- Optional notes field
+- Submit calls POST /api/leads/:id/confirm-persona
+
+After confirmation, the button changes to the confirmed display.
+
+---
+
+## Step 6 — Confirm with live tests
+
+Test 1 — Analytics endpoint:
+- Call GET /api/analytics/personas
+- Confirm all response fields present
+- Confirm archetype_distribution covers all 3 archetypes
+- Confirm low_confidence_alerts is an array (may be empty
+  with limited data)
+- Confirm stage_distribution covers all 5 canonical stages
+
+Test 2 — Persona confirmation:
+- POST /api/leads/lead_001/confirm-persona with
+  was_correct: true and a valid persona/archetype
+- Confirm 200 response
+- Confirm PERSONA_CONFIRMED changelog entry
+- Confirm confirmed_persona appears on GET /api/leads/lead_001
+
+Test 3 — Persona correction:
+- POST /api/leads/lead_001/confirm-persona with
+  was_correct: false and a different persona from detected
+- Confirm PERSONA_CORRECTED changelog entry
+- Confirm detected_persona unchanged, confirmed_persona updated
+
+Test 4 — Analytics page renders:
+- Open /analytics/personas
+- Confirm 4 stat cards render with correct values
+- Confirm archetype distribution chart renders
+- Confirm persona breakdown table renders with at least the
+  seed lead data
+
+Test 5 — Confidence scores stored:
+- After linking a batch transcript result to a lead, call
+  GET /api/leads/:id
+- Confirm persona_confidence and stage_confidence fields present
+  and non-null

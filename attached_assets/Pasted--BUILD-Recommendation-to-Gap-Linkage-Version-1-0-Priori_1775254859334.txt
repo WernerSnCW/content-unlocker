@@ -1,0 +1,208 @@
+# BUILD — Recommendation-to-Gap Linkage
+Version: 1.0
+Priority: HIGH
+Area: Recommendation Engine — Rank + Content Gap Analysis
+Depends on: Build A (056) must be complete
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+---
+
+## Overview
+
+When the rank endpoint returns zero or very low-relevance results,
+the tool currently shows an empty list with no guidance. The agent
+has no way to know whether the gap is a data problem, a persona
+mismatch, or a genuine content gap — and no path to fix it.
+
+This build closes the loop between a failed recommendation and
+the gap analysis system. When a recommendation fails, the tool
+surfaces the gap, links to the gap analysis for that
+archetype/stage, and pre-populates a generation brief so the
+missing document can be created in one flow.
+
+---
+
+## Step 1 — Backend: Detect failed recommendations in the rank endpoint
+
+Update POST /api/recommendation/rank to detect when it cannot
+produce a useful recommendation.
+
+A recommendation is considered failed when:
+- Zero documents are returned, OR
+- All returned documents have relevance_score below 0.4
+
+When a recommendation fails, add a recommendation_gap object
+to the response:
+
+```typescript
+{
+  ranked_documents: [],    // empty or low-relevance
+  recommendation_gap: {
+    detected: true
+    archetype: string      // the archetype from the request
+    stage: string          // the stage from the request
+    reason: string         // e.g. "No documents tagged for
+                           //   Preserver at Demo Booked stage"
+    gap_exists_in_matrix: boolean   // true if this cell is
+                                    // already in gap_snapshots
+    suggested_action: "GENERATE_BRIEF" | "REVIEW_EXISTING" |
+                      "CHECK_DOCUMENT_STATUS"
+  }
+}
+```
+
+suggested_action logic:
+- GENERATE_BRIEF: no documents exist for this archetype/stage
+- REVIEW_EXISTING: documents exist but all are REQUIRES_REVIEW
+  or ARCHIVED (correct status would fix the recommendation)
+- CHECK_DOCUMENT_STATUS: documents exist but have wrong
+  persona_relevance tags
+
+When a recommendation succeeds (documents returned with score
+≥ 0.4), omit recommendation_gap from the response entirely.
+
+---
+
+## Step 2 — Backend: Pre-populate gap brief from recommendation context
+
+Create a new endpoint:
+POST /api/recommendation/gap-brief
+
+This accepts the recommendation failure context and generates a
+pre-populated brief for the missing document without requiring
+the user to navigate to the gap analysis page.
+
+Request body:
+```typescript
+{
+  archetype: string
+  stage: string
+  persona: string           // the specific persona (e.g. ISA/SIPP
+                            // Maximiser) — more specific than archetype
+  transcript_summary: string  // context from the call
+}
+```
+
+This endpoint:
+- Constructs a gap object matching the coverage matrix format
+- Calls the existing POST /api/content/generate-brief with that
+  gap and the transcript_summary as additional_context
+- Returns the brief in the same format as generate-brief
+
+The master context auto-loads (as in all generate-brief calls).
+The transcript_summary adds call-specific context so the brief
+is tailored to the actual investor rather than generic.
+
+---
+
+## Step 3 — Frontend: Failed recommendation UI
+
+Update the Recommend page rank step to handle the
+recommendation_gap response.
+
+**When recommendation_gap.detected is true:**
+
+Replace the empty results panel with a gap panel:
+
+```
+⚠️  No documents found for [Archetype] at [Stage]
+
+[reason from recommendation_gap.reason]
+
+What to do:
+[If GENERATE_BRIEF:]
+  → Generate a brief for this gap now
+  [Generate Brief button]
+
+[If REVIEW_EXISTING:]
+  → [n] documents exist but need review before they can be sent
+  [View documents needing review button → links to registry
+   filtered by this archetype/stage and REQUIRES_REVIEW status]
+
+[If CHECK_DOCUMENT_STATUS:]
+  → Documents exist but may be tagged incorrectly
+  [View document registry button → filtered by archetype/stage]
+```
+
+**On "Generate Brief" click:**
+- Call POST /api/recommendation/gap-brief with the archetype,
+  stage, persona, and transcript_summary from the current session
+- Show the brief in a panel (same layout as the gap analysis
+  brief review panel)
+- Allow the agent to edit the brief before generating
+- "Generate Document" button calls generate-from-brief
+- On success: navigate to the new document detail page
+- A "Back to recommendation" link returns to the recommend flow
+  where the agent can re-run rank once the document is promoted
+
+**When recommendation_gap is absent (success):**
+Normal ranked document display — no change.
+
+---
+
+## Step 4 — Frontend: Gap indicator on dashboard
+
+Add a small indicator to the Dashboard that shows when any
+archetype/stage combination currently has no CURRENT documents.
+
+Show a "Coverage gaps" card:
+- If 0 gaps: green "Full coverage" badge
+- If gaps exist: amber "[n] coverage gaps" badge with a link
+  to /gaps
+
+This gives agents visibility of the gap state without requiring
+them to run the gap analysis manually.
+
+---
+
+## Step 5 — Confirm with live tests
+
+Test 1 — Failed recommendation detection:
+- POST /api/recommendation/rank with an archetype/stage
+  combination that has no documents (use a combination currently
+  in the gap matrix)
+- Confirm recommendation_gap.detected is true in response
+- Confirm archetype, stage, and reason are correctly populated
+- Confirm suggested_action is GENERATE_BRIEF
+
+Test 2 — Successful recommendation unchanged:
+- POST /api/recommendation/rank with an archetype/stage that
+  has CURRENT documents
+- Confirm recommendation_gap is absent from response
+- Confirm ranked_documents contains results as before
+
+Test 3 — Gap brief pre-population:
+- POST /api/recommendation/gap-brief with a valid archetype,
+  stage, persona, and a short transcript_summary
+- Confirm a brief is returned with information_needed: []
+- Confirm the brief's key_messages reference the persona
+  and stage correctly
+
+Test 4 — Gap panel renders on failed recommendation:
+- Run the recommend flow for a lead where the detected
+  archetype/stage has no documents
+- Confirm the gap panel appears instead of empty results
+- Confirm "Generate Brief" button is present
+- Click "Generate Brief" and confirm the brief panel opens
+  pre-populated
+
+Test 5 — Dashboard coverage indicator:
+- Open the Dashboard
+- Confirm a "Coverage gaps" card is present
+- Confirm the count matches GET /api/content/gaps summary
+- Confirm clicking the badge navigates to /gaps

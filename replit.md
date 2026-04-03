@@ -74,7 +74,7 @@ artifacts-monorepo/
 
 ## Database Schema
 
-- **leads**: id, name, company, pipeline_stage, first_contact, last_contact, detected_persona, archived, send_log (JSONB), stage_history (JSONB), notes (JSONB)
+- **leads**: id, name, company, pipeline_stage, first_contact, last_contact, detected_persona, confirmed_persona, confirmed_archetype, persona_confidence, stage_confidence, source, transcript_filename, archived, send_log (JSONB), stage_history (JSONB), notes (JSONB)
 - **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, last_reviewed, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, generation_brief_id, generation_attempt, qc_report_id, source_trace (JSONB), content, qc_history (JSONB), gdoc_id, gdoc_url
 - **changelog**: id, timestamp, action, document_id, lead_id, details, triggered_by
 - **gap_snapshots**: id (text PK with random suffix), total_gaps, matrix_gaps, type_gaps, rec_failures, snapshot_data (JSONB), file_path, notes, created_at
@@ -82,12 +82,22 @@ artifacts-monorepo/
 ## Additional API Routes (Builds 055/058/059)
 
 - `POST /api/recommendation/parse-transcripts` — multipart file upload (.txt/.docx, max 20 files, 500KB each); auto-extracts `investor_name` from Aircall-style filenames; detects Aircall timestamped format (`[HH:MM:SS] Speaker:`) and normalises speaker labels to Agent/Investor with header block
-- `POST /api/recommendation/analyze-batch` — sequential Claude analysis of multiple transcripts (max 20); accepts `investor_name` per transcript, prepends CALL METADATA block, returns `investor_name` in results; Aircall-aware prompt focuses on investor signals only
+- `POST /api/recommendation/analyze-batch` — sequential Claude analysis of multiple transcripts (max 20); accepts `investor_name` per transcript, prepends CALL METADATA block, returns `investor_name` in results; Aircall-aware prompt focuses on investor signals only; auto-matches each result against existing leads (returns `lead_match` with status matched/partial/none)
 - `GET /api/call-framework/questions` — returns 4 call framework questions with purpose/signals/listen_for
 - `GET /api/content/gaps/history` — list saved gap snapshots
 - `GET /api/content/gaps/history/:id` — retrieve specific snapshot
 - `GET /api/content/gaps/history/:id/export?format=json|markdown` — download snapshot
 - `PATCH /api/content/gaps/history/:id` — update notes on a snapshot
+
+## Additional API Routes (Builds 075/077)
+
+- `GET /api/leads/match?name=` — fuzzy lead matching (confidence: 1.0 exact, 0.85 all words, 0.5 first name, 0.4 last name)
+- `POST /api/leads/:id/confirm-persona` — confirm or correct AI-detected persona (logs PERSONA_CONFIRMED or PERSONA_CORRECTED)
+- `GET /api/analytics/personas` — persona accuracy analytics (summary, distributions, corrections, unconfirmed leads)
+- Rank endpoint now returns `recommendation_gap` when no eligible docs found OR all results have relevance_score < 0.4
+- Dashboard summary includes `coverage_gaps` array and `coverage_gap_count`
+- Batch analyze returns full signal set (readiness_score, primary_issue, blocking_objections, information_gaps, call_completeness, recommended_next_action, questions_answered)
+- Confirm-send now persists persona_confidence and stage_confidence to leads table
 
 ## Key Libraries
 
@@ -126,7 +136,7 @@ Express 5 API server. Routes in `src/routes/`. Uses `@workspace/api-zod` for val
 
 React + Vite frontend. Uses generated React Query hooks from `@workspace/api-client-react`.
 
-- 13 pages: Dashboard, Recommend (Single + Batch Upload tabs), CallPrep, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis (with snapshot persistence + history), FeatureUpdates
+- 14 pages: Dashboard, Recommend (Single + Batch Upload tabs), CallPrep, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis (with snapshot persistence + history), FeatureUpdates, PersonaAnalytics
 - Routing: wouter with base path from `import.meta.env.BASE_URL`
 - Design: Dark navy sidebar, institutional styling, status color system
 

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { useListLeads, useAnalyzeTranscript, useRankDocuments, useConfirmSend, useGenerateEmailDraft } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Search, Loader2, User, FileText, Send, AlertTriangle, Upload, X, CheckCircle, XCircle, ChevronDown, ChevronRight, Circle } from "lucide-react";
+import { Search, Loader2, User, FileText, Send, AlertTriangle, Upload, X, CheckCircle, XCircle, ChevronDown, ChevronRight, Circle, Plus, Link2, UserPlus } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
@@ -24,19 +24,42 @@ function extractNameFromFilename(filename: string): string | null {
   return result.length >= 3 ? result : null;
 }
 
+type BatchAnalysis = {
+  persona: string;
+  persona_confidence: number;
+  stage: string;
+  stage_confidence: number;
+  objections: Array<{ objection: string; severity: string; suggested_response: string }> | string[];
+  blocking_objections?: string[];
+  evidence: string[];
+  readiness_score?: number;
+  primary_issue?: string;
+  recommended_next_action?: string;
+  information_gaps?: Array<{ gap: string; impact: string; suggested_document_type: string }>;
+  questions_answered?: { Q1: boolean; Q2: boolean; Q3: boolean; Q4: boolean };
+  call_completeness?: { questions_covered: number; questions_total: number; missing_signals: string[]; confidence_impact: string };
+  transcript_summary?: string;
+  pipeline_stage_suggestion?: string | null;
+};
+
+type LeadMatch = {
+  lead_id: string;
+  name: string;
+  company: string;
+  pipeline_stage: string;
+  detected_persona: string;
+  confidence: number;
+};
+
 type BatchResult = {
   filename: string;
   investor_name?: string | null;
   status: "success" | "error";
-  analysis?: {
-    persona: string;
-    persona_confidence: number;
-    stage: string;
-    stage_confidence: number;
-    objections: string[];
-    evidence: string[];
-  };
+  analysis?: BatchAnalysis;
   error?: string;
+  lead_match?: { matches: LeadMatch[]; status: "matched" | "partial" | "none" };
+  linked_lead_id?: string;
+  created_lead_id?: string;
 };
 
 const PRIMARY_ISSUE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: string }> = {
@@ -66,8 +89,10 @@ export default function Recommend() {
   const [linkSearch, setLinkSearch] = useState("");
   const [parsedNames, setParsedNames] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [creatingLeadIndex, setCreatingLeadIndex] = useState<number | null>(null);
 
   const [detailPanels, setDetailPanels] = useState<Record<string, boolean>>({});
+  const [batchDetailPanels, setBatchDetailPanels] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -213,25 +238,71 @@ export default function Recommend() {
       });
       if (!analyzeRes.ok) { setBatchError((await analyzeRes.json()).error || "Analysis failed"); setBatchProcessing(false); return; }
       const { results } = await analyzeRes.json();
-      setBatchResults([...results, ...errorResults]);
+
+      const enrichedResults: BatchResult[] = results.map((r: any) => {
+        const enriched: BatchResult = { ...r };
+        if (r.lead_match) {
+          enriched.lead_match = r.lead_match;
+          if (r.lead_match.status === "matched" && r.lead_match.matches.length > 0) {
+            enriched.linked_lead_id = r.lead_match.matches[0].lead_id;
+          }
+        }
+        return enriched;
+      });
+
+      setBatchResults([...enrichedResults, ...errorResults]);
       setBatchProgress({ current: validTranscripts.length, total: validTranscripts.length });
     } catch (err: any) { setBatchError(err.message || "Batch processing failed"); } finally { setBatchProcessing(false); }
   };
 
-  const handleLinkToLead = (resultIndex: number, leadId: string) => {
-    const result = batchResults?.[resultIndex];
+  const handleCreateLeadFromBatch = async (index: number) => {
+    const result = batchResults?.[index];
     if (!result || result.status !== "success" || !result.analysis) return;
-    setSelectedLeadId(leadId);
-    setMode("single");
+    setCreatingLeadIndex(index);
+    try {
+      const res = await fetch(`${API_BASE}/leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: result.investor_name || "Unknown",
+          detected_persona: result.analysis.persona,
+          pipeline_stage: result.analysis.stage,
+          source: "batch_transcript",
+          transcript_filename: result.filename,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to create lead");
+      const lead = await res.json();
+      setBatchResults((prev) => {
+        if (!prev) return prev;
+        const updated = [...prev];
+        updated[index] = { ...updated[index], created_lead_id: lead.id, linked_lead_id: lead.id };
+        return updated;
+      });
+    } catch (err: any) {
+      setBatchError(err.message);
+    } finally {
+      setCreatingLeadIndex(null);
+    }
+  };
+
+  const handleLinkToLead = (resultIndex: number, leadId: string) => {
+    setBatchResults((prev) => {
+      if (!prev) return prev;
+      const updated = [...prev];
+      updated[resultIndex] = { ...updated[resultIndex], linked_lead_id: leadId };
+      return updated;
+    });
     setLinkingIndex(null);
     setLinkSearch("");
-    setTranscript(`[Batch-analyzed transcript from ${result.filename}]`);
   };
 
   const togglePanel = (key: string) => setDetailPanels((p) => ({ ...p, [key]: !p[key] }));
+  const toggleBatchPanel = (key: string) => setBatchDetailPanels((p) => ({ ...p, [key]: !p[key] }));
 
   const selectedLead = leads?.find((l) => l.id === selectedLeadId);
   const analysisData = analyzeMutation.data as any;
+  const rankData = rankMutation.data as any;
 
   const QUESTION_LABELS: Record<string, string> = {
     Q1: "Investment goals and time horizon",
@@ -483,7 +554,7 @@ export default function Recommend() {
 
           <div className="w-full lg:w-[400px] flex flex-col gap-4 border-l pl-6 overflow-y-auto">
             <h2 className="font-semibold text-lg">Recommendations</h2>
-            {!rankMutation.data && !rankMutation.isPending && (
+            {!rankData && !rankMutation.isPending && (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed rounded-lg text-muted-foreground">
                 <FileText className="w-8 h-8 mb-4 opacity-50" />
                 <p className="text-sm">Run analysis to see recommended documents and draft an email.</p>
@@ -495,12 +566,38 @@ export default function Recommend() {
                 <p className="text-sm text-muted-foreground">Ranking repository...</p>
               </div>
             )}
-            {rankMutation.data && (
+            {rankData && (
               <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-                {rankMutation.data.ranked_documents.length > 0 ? (
+                {rankData.recommendation_gap && (
+                  <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                      <span className="font-semibold text-amber-400">Content Coverage Gap</span>
+                    </div>
+                    <ul className="text-sm space-y-1">
+                      {rankData.recommendation_gap.gap_reasons.map((r: string, i: number) => (
+                        <li key={i} className="text-muted-foreground">• {r}</li>
+                      ))}
+                    </ul>
+                    {rankData.recommendation_gap.content_needed?.length > 0 && (
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1 mt-2">Content Needed</div>
+                        {rankData.recommendation_gap.content_needed.map((c: string, i: number) => (
+                          <Badge key={i} variant="outline" className="mr-1 mb-1 text-xs">{c}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <Button variant="outline" size="sm" className="w-full mt-2 gap-1" onClick={() => window.location.href = `${import.meta.env.BASE_URL}gaps`}>
+                      <FileText className="w-3 h-3" />
+                      View Content Gap Analysis
+                    </Button>
+                  </div>
+                )}
+
+                {rankData.ranked_documents.length > 0 ? (
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Suggested Documents</h3>
-                    {rankMutation.data.ranked_documents.slice(0, 3).map((doc, i) => (
+                    {rankData.ranked_documents.slice(0, 3).map((doc: any, i: number) => (
                       <Card key={doc.document_id} className={`bg-card ${i === 0 ? "border-primary shadow-sm" : ""}`}>
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-2">
@@ -512,11 +609,12 @@ export default function Recommend() {
                       </Card>
                     ))}
                   </div>
-                ) : (
+                ) : !rankData.recommendation_gap ? (
                   <div className="p-4 bg-muted/50 rounded-lg text-center text-sm">
-                    {rankMutation.data.all_sent_message || "No suitable documents found."}
+                    {rankData.all_sent_message || "No suitable documents found."}
                   </div>
-                )}
+                ) : null}
+
                 {emailMutation.data && (
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Draft Email</h3>
@@ -534,7 +632,7 @@ export default function Recommend() {
                     </Card>
                   </div>
                 )}
-                <Button className="w-full gap-2" size="lg" onClick={handleConfirm} disabled={confirmMutation.isPending || !selectedLeadId || rankMutation.data.ranked_documents.length === 0}>
+                <Button className="w-full gap-2" size="lg" onClick={handleConfirm} disabled={confirmMutation.isPending || !selectedLeadId || rankData.ranked_documents.length === 0}>
                   {confirmMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   Log Send & Copy Email
                 </Button>
@@ -606,6 +704,7 @@ export default function Recommend() {
                 <h2 className="font-semibold text-lg">Batch Results ({batchResults.length} transcripts)</h2>
                 <Button variant="outline" size="sm" onClick={() => { setBatchResults(null); setBatchFiles([]); setBatchError(null); setParsedNames({}); }}>New Batch</Button>
               </div>
+              {batchError && <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-md text-sm text-red-400">{batchError}</div>}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {batchResults.map((result, i) => (
                   <Card key={i} className={result.status === "error" ? "border-red-500/30" : ""}>
@@ -625,7 +724,48 @@ export default function Recommend() {
                     <CardContent className="space-y-3">
                       {result.status === "success" && result.analysis ? (
                         <>
-                          <div className="grid grid-cols-2 gap-2">
+                          {result.lead_match && (
+                            <div className={`p-2 rounded-md text-xs ${
+                              result.linked_lead_id ? "bg-green-500/10 border border-green-500/30" :
+                              result.lead_match.status === "partial" ? "bg-amber-500/10 border border-amber-500/30" :
+                              "bg-blue-500/10 border border-blue-500/30"
+                            }`}>
+                              {result.linked_lead_id ? (
+                                <div className="flex items-center gap-1.5">
+                                  <Link2 className="w-3 h-3 text-green-400" />
+                                  <span className="text-green-400 font-medium">
+                                    {result.created_lead_id ? "Lead created" : "Linked to lead"}
+                                  </span>
+                                </div>
+                              ) : result.lead_match.status === "partial" ? (
+                                <div className="flex items-center gap-1.5">
+                                  <User className="w-3 h-3 text-amber-400" />
+                                  <span className="text-amber-400">Possible match: {result.lead_match.matches[0]?.name}</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <UserPlus className="w-3 h-3 text-blue-400" />
+                                  <span className="text-blue-400">New investor — no matching lead</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {result.analysis.primary_issue && (
+                            <div className={`p-2 rounded-md border ${PRIMARY_ISSUE_CONFIG[result.analysis.primary_issue]?.bg || ""} ${PRIMARY_ISSUE_CONFIG[result.analysis.primary_issue]?.border || ""}`}>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span>{PRIMARY_ISSUE_CONFIG[result.analysis.primary_issue]?.icon}</span>
+                                <span className={`font-bold ${PRIMARY_ISSUE_CONFIG[result.analysis.primary_issue]?.color || ""}`}>
+                                  {PRIMARY_ISSUE_CONFIG[result.analysis.primary_issue]?.label}
+                                </span>
+                              </div>
+                              {result.analysis.recommended_next_action && (
+                                <p className="text-xs mt-1 text-muted-foreground">{result.analysis.recommended_next_action}</p>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-3 gap-2">
                             <div>
                               <div className="text-xs text-muted-foreground">Persona</div>
                               <div className="text-sm font-medium">{result.analysis.persona}</div>
@@ -636,32 +776,103 @@ export default function Recommend() {
                               <div className="text-sm font-medium">{result.analysis.stage}</div>
                               <Badge variant="secondary" className="text-xs mt-1">{Math.round(result.analysis.stage_confidence * 100)}%</Badge>
                             </div>
-                          </div>
-                          {result.analysis.objections.length > 0 && (
                             <div>
-                              <div className="text-xs text-muted-foreground mb-1">Objections</div>
-                              <ul className="text-xs space-y-0.5">{result.analysis.objections.slice(0, 3).map((obj, j) => <li key={j} className="truncate">• {obj}</li>)}</ul>
+                              <div className="text-xs text-muted-foreground">Readiness</div>
+                              <div className="text-sm font-medium">{result.analysis.readiness_score != null ? `${Math.round(result.analysis.readiness_score * 100)}%` : "N/A"}</div>
+                            </div>
+                          </div>
+
+                          {((result.analysis.blocking_objections && result.analysis.blocking_objections.length > 0) || (result.analysis.information_gaps && result.analysis.information_gaps.length > 0) || result.analysis.call_completeness) && (
+                            <div className="border rounded-md">
+                              <button className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium hover:bg-muted/50" onClick={() => toggleBatchPanel(`detail-${i}`)}>
+                                <span>Details</span>
+                                {batchDetailPanels[`detail-${i}`] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                              </button>
+                              {batchDetailPanels[`detail-${i}`] && (
+                                <div className="px-3 pb-3 border-t pt-2 space-y-3">
+                                  {result.analysis.blocking_objections && result.analysis.blocking_objections.length > 0 && (
+                                    <div>
+                                      <div className="text-xs font-medium text-amber-400 mb-1 flex items-center gap-1">
+                                        <AlertTriangle className="w-3 h-3" />Blocking Objections
+                                      </div>
+                                      <ul className="text-xs space-y-0.5">
+                                        {result.analysis.blocking_objections.map((obj, j) => <li key={j} className="truncate">• {obj}</li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {result.analysis.information_gaps && result.analysis.information_gaps.length > 0 && (
+                                    <div>
+                                      <div className="text-xs font-medium text-red-400 mb-1 flex items-center gap-1">
+                                        <FileText className="w-3 h-3" />Information Gaps
+                                      </div>
+                                      <ul className="text-xs space-y-1">
+                                        {result.analysis.information_gaps.map((gap, j) => (
+                                          <li key={j}>
+                                            <span className="font-medium">{gap.gap}</span>
+                                            <span className="text-muted-foreground"> — {gap.impact}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {result.analysis.call_completeness && (
+                                    <div>
+                                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                                        Call Completeness: {result.analysis.call_completeness.questions_covered}/{result.analysis.call_completeness.questions_total}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">{result.analysis.call_completeness.confidence_impact}</p>
+                                      {result.analysis.call_completeness.missing_signals.length > 0 && (
+                                        <ul className="text-xs text-muted-foreground mt-1">
+                                          {result.analysis.call_completeness.missing_signals.map((s, j) => <li key={j}>• {s}</li>)}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  )}
+                                  {result.analysis.transcript_summary && (
+                                    <div>
+                                      <div className="text-xs font-medium text-muted-foreground mb-1">Summary</div>
+                                      <p className="text-xs text-muted-foreground">{result.analysis.transcript_summary}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
-                          <div className="relative">
-                            <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => { setLinkingIndex(linkingIndex === i ? null : i); setLinkSearch(result.investor_name || ""); }}>
-                              <User className="w-3 h-3" />Link to Lead
-                            </Button>
-                            {linkingIndex === i && (
-                              <div className="absolute top-full left-0 right-0 mt-1 z-10 bg-popover border rounded-md shadow-lg p-2 space-y-2">
-                                <Input placeholder="Search leads..." className="h-8 text-xs" value={linkSearch} onChange={(e) => setLinkSearch(e.target.value)} autoFocus />
-                                {linkLeads && linkLeads.length > 0 && (
-                                  <div className="max-h-32 overflow-y-auto space-y-1">
-                                    {linkLeads.map((lead) => (
-                                      <button key={lead.id} className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted rounded transition-colors" onClick={() => handleLinkToLead(i, lead.id)}>
-                                        <div className="font-medium">{lead.name}</div>
-                                        <div className="text-muted-foreground">{lead.company}</div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                                <button className="w-full text-left px-2 py-1.5 text-xs text-primary hover:bg-muted rounded" onClick={() => { setLinkingIndex(null); setLinkSearch(""); }}>Cancel</button>
-                              </div>
+
+                          <div className="flex gap-2">
+                            {!result.linked_lead_id && (
+                              <>
+                                <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={() => handleCreateLeadFromBatch(i)} disabled={creatingLeadIndex === i || !result.investor_name}>
+                                  {creatingLeadIndex === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                                  Create Lead
+                                </Button>
+                                <div className="relative flex-1">
+                                  <Button size="sm" variant="outline" className="w-full gap-1 text-xs" onClick={() => { setLinkingIndex(linkingIndex === i ? null : i); setLinkSearch(result.investor_name || ""); }}>
+                                    <Link2 className="w-3 h-3" />Link
+                                  </Button>
+                                  {linkingIndex === i && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 z-10 bg-popover border rounded-md shadow-lg p-2 space-y-2 min-w-[200px]">
+                                      <Input placeholder="Search leads..." className="h-8 text-xs" value={linkSearch} onChange={(e) => setLinkSearch(e.target.value)} autoFocus />
+                                      {linkLeads && linkLeads.length > 0 && (
+                                        <div className="max-h-32 overflow-y-auto space-y-1">
+                                          {linkLeads.map((lead) => (
+                                            <button key={lead.id} className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted rounded transition-colors" onClick={() => handleLinkToLead(i, lead.id)}>
+                                              <div className="font-medium">{lead.name}</div>
+                                              <div className="text-muted-foreground">{lead.company}</div>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <button className="w-full text-left px-2 py-1.5 text-xs text-primary hover:bg-muted rounded" onClick={() => { setLinkingIndex(null); setLinkSearch(""); }}>Cancel</button>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            {result.linked_lead_id && (
+                              <Button size="sm" variant="outline" className="w-full gap-1 text-xs" onClick={() => window.location.href = `${import.meta.env.BASE_URL}leads/${result.linked_lead_id}`}>
+                                <User className="w-3 h-3" />View Lead
+                              </Button>
                             )}
                           </div>
                         </>

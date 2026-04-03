@@ -1,17 +1,67 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { useGetLead, useGetLeadNextAction } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Clock, FileText, Phone, Target, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Clock, FileText, Phone, Target, AlertCircle, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+
+const PERSONAS = [
+  "Crypto Enthusiast", "Tech Worker", "Young Professional", "Entrepreneur", "BTL Mogul", "Concentrated Stock Holder",
+  "Retirement Planner", "Old Fashioned Saver", "ISA/SIPP Maximiser", "DB Heavy", "Cautious Accumulator", "Drawdown Specialist", "Ultra-Conservative Saver",
+  "Property Lover", "Legacy Builder", "Dividend Seeker", "Global Nomad", "Financial Advisor", "HNW Inheritor",
+  "Growth Seeker", "Preserver",
+];
+
+const PERSONA_TO_ARCHETYPE: Record<string, string> = {
+  "Crypto Enthusiast": "Growth Seeker", "Tech Worker": "Growth Seeker", "Young Professional": "Growth Seeker",
+  "Entrepreneur": "Growth Seeker", "BTL Mogul": "Growth Seeker", "Concentrated Stock Holder": "Growth Seeker",
+  "Retirement Planner": "Preserver", "Old Fashioned Saver": "Preserver", "ISA/SIPP Maximiser": "Preserver",
+  "DB Heavy": "Preserver", "Cautious Accumulator": "Preserver", "Drawdown Specialist": "Preserver", "Ultra-Conservative Saver": "Preserver",
+  "Property Lover": "Legacy Builder", "Legacy Builder": "Legacy Builder", "Dividend Seeker": "Legacy Builder",
+  "Global Nomad": "Legacy Builder", "Financial Advisor": "Legacy Builder", "HNW Inheritor": "Legacy Builder",
+  "Growth Seeker": "Growth Seeker", "Preserver": "Preserver",
+};
 
 export default function LeadDetail() {
   const params = useParams();
   const id = params.id as string;
 
-  const { data: lead, isLoading: isLeadLoading } = useGetLead(id, { query: { enabled: !!id } });
+  const { data: lead, isLoading: isLeadLoading, refetch } = useGetLead(id, { query: { enabled: !!id } });
   const { data: nextAction, isLoading: isNextActionLoading } = useGetLeadNextAction(id, { query: { enabled: !!id } });
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState("");
+  const [confirmNotes, setConfirmNotes] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [confirmResult, setConfirmResult] = useState<string | null>(null);
+
+  const handleConfirmPersona = async (wasCorrect: boolean) => {
+    const persona = wasCorrect ? (lead as any)?.detected_persona : selectedPersona;
+    if (!persona) return;
+    const archetype = PERSONA_TO_ARCHETYPE[persona] || "Growth Seeker";
+    setConfirming(true);
+    try {
+      const res = await fetch(`${API_BASE}/leads/${id}/confirm-persona`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed_persona: persona, confirmed_archetype: archetype, was_correct: wasCorrect, notes: confirmNotes }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      setConfirmResult(data.action === "PERSONA_CONFIRMED" ? "Persona confirmed" : "Persona corrected");
+      setConfirmOpen(false);
+      refetch();
+    } catch (err: any) {
+      setConfirmResult(`Error: ${err.message}`);
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   if (isLeadLoading) {
     return (
@@ -144,6 +194,84 @@ export default function LeadDetail() {
                   </Badge>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Persona Validation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(lead as any).confirmed_persona ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400" />
+                    <span className="text-sm font-medium text-green-400">Confirmed</span>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Confirmed Persona</div>
+                    <div className="text-sm font-medium">{(lead as any).confirmed_persona}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Archetype</div>
+                    <div className="text-sm font-medium">{(lead as any).confirmed_archetype}</div>
+                  </div>
+                  {(lead as any).detected_persona !== (lead as any).confirmed_persona && (
+                    <div className="text-xs text-amber-400 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Originally detected: {(lead as any).detected_persona}
+                    </div>
+                  )}
+                </div>
+              ) : lead.detected_persona ? (
+                <div className="space-y-3">
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Detected: </span>
+                    <span className="font-medium">{lead.detected_persona}</span>
+                  </div>
+                  {confirmResult && (
+                    <div className={`text-xs p-2 rounded ${confirmResult.startsWith("Error") ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>
+                      {confirmResult}
+                    </div>
+                  )}
+                  {!confirmOpen ? (
+                    <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => setConfirmOpen(true)}>
+                      <CheckCircle className="w-3 h-3" />Validate Persona
+                    </Button>
+                  ) : (
+                    <div className="space-y-3 border rounded-md p-3">
+                      <p className="text-xs text-muted-foreground">Is "{lead.detected_persona}" correct?</p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="default" className="flex-1 gap-1" onClick={() => handleConfirmPersona(true)} disabled={confirming}>
+                          {confirming ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                          Correct
+                        </Button>
+                        <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={() => setSelectedPersona("")}>
+                          <XCircle className="w-3 h-3" />Wrong
+                        </Button>
+                      </div>
+                      {selectedPersona !== undefined && !confirming && (
+                        <div className="space-y-2">
+                          <select className="w-full text-sm bg-background border rounded-md px-2 py-1.5" value={selectedPersona} onChange={(e) => setSelectedPersona(e.target.value)}>
+                            <option value="">Select correct persona...</option>
+                            {PERSONAS.filter((p) => p !== lead.detected_persona).map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                          <textarea className="w-full text-xs bg-background border rounded-md px-2 py-1.5 h-16 resize-none" placeholder="Optional notes..." value={confirmNotes} onChange={(e) => setConfirmNotes(e.target.value)} />
+                          <Button size="sm" className="w-full" disabled={!selectedPersona || confirming} onClick={() => handleConfirmPersona(false)}>
+                            {confirming ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                            Submit Correction
+                          </Button>
+                        </div>
+                      )}
+                      <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setConfirmOpen(false)}>Cancel</button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No persona detected yet</p>
+              )}
             </CardContent>
           </Card>
 

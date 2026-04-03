@@ -240,7 +240,13 @@ No prior history — first contact.
 PERSONA REFERENCE (compact):
 ${compactPersonaRef}
 
-PIPELINE STAGES: ${PIPELINE_STAGES.join(", ")}
+PIPELINE STAGES (canonical — use exactly one): ${PIPELINE_STAGES.join(", ")}
+
+PRIMARY ISSUE CATEGORIES (use exactly one):
+- READY_TO_CLOSE — investor shows clear buying signals, no blocking objections
+- OBJECTION_TO_RESOLVE — specific objection identified that blocks progress
+- INFORMATION_GAP — investor lacks key information needed to decide
+- NEEDS_NURTURING — not ready yet, requires longer-term engagement
 
 You must return ONLY valid JSON matching this exact schema:
 {
@@ -250,16 +256,34 @@ You must return ONLY valid JSON matching this exact schema:
     "evidence": ["<signal from transcript>", ...]
   },
   "pipeline_stage": {
-    "stage": "<one of: Outreach, Called, Demo Booked, Demo Complete, Decision>",
+    "stage": "<EXACTLY one of: Outreach, Called, Demo Booked, Demo Complete, Decision>",
     "confidence_score": <0.0-1.0>,
     "rationale": "<why this stage>"
   },
+  "readiness_score": <0.0-1.0>,
   "objections": [
     {
       "objection": "<what the investor objected to>",
+      "severity": "<blocking | significant | minor>",
       "suggested_response": "<how to address it>"
     }
   ],
+  "blocking_objections": ["<list only blocking-severity objections>"],
+  "information_gaps": [
+    {
+      "gap": "<what information is missing>",
+      "impact": "<how this gap affects the decision>",
+      "suggested_document_type": "<type of document that would fill this gap>"
+    }
+  ],
+  "primary_issue": "<EXACTLY one of: READY_TO_CLOSE, OBJECTION_TO_RESOLVE, INFORMATION_GAP, NEEDS_NURTURING>",
+  "recommended_next_action": "<one specific, actionable sentence>",
+  "questions_answered": {
+    "Q1": <true/false — was the investor's goals/motivation discussed?>,
+    "Q2": <true/false — was prior investment experience discussed?>,
+    "Q3": <true/false — were hesitations or objections surfaced?>,
+    "Q4": <true/false — were other decision-makers discussed?>
+  },
   "transcript_summary": "<2-3 sentence summary>",
   "pipeline_stage_suggestion": "<suggested next stage or null>"
 }
@@ -282,6 +306,21 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
         stage.confidence_score = 0;
       }
 
+      const validPrimaryIssues = ["READY_TO_CLOSE", "OBJECTION_TO_RESOLVE", "INFORMATION_GAP", "NEEDS_NURTURING"];
+      const primaryIssue = validPrimaryIssues.includes(analysis.primary_issue) ? analysis.primary_issue : "NEEDS_NURTURING";
+
+      const qa = analysis.questions_answered || { Q1: false, Q2: false, Q3: false, Q4: false };
+      const questionsCovered = [qa.Q1, qa.Q2, qa.Q3, qa.Q4].filter(Boolean).length;
+      const missingSignals: string[] = [];
+      if (!qa.Q1) missingSignals.push("Investment goals and time horizon");
+      if (!qa.Q2) missingSignals.push("Prior EIS/startup investing experience");
+      if (!qa.Q3) missingSignals.push("Hesitations or deal-breakers");
+      if (!qa.Q4) missingSignals.push("Other decision-makers involved");
+
+      let confidenceImpact = "Full coverage — high confidence analysis";
+      if (questionsCovered <= 2) confidenceImpact = "Low coverage — analysis confidence may be reduced";
+      else if (questionsCovered === 3) confidenceImpact = "Good coverage — one signal area missing";
+
       results.push({
         filename: item.filename,
         investor_name: investorName,
@@ -291,8 +330,30 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
           persona_confidence: persona.confidence_score,
           stage: stage.stage,
           stage_confidence: stage.confidence_score,
-          objections: (analysis.objections || []).map((o: any) => o.objection || o),
+          objections: (analysis.objections || []).map((o: any) => ({
+            objection: o.objection || o,
+            severity: o.severity || "minor",
+            suggested_response: o.suggested_response || "",
+          })),
+          blocking_objections: analysis.blocking_objections || [],
           evidence: persona.evidence || [],
+          readiness_score: typeof analysis.readiness_score === "number" ? analysis.readiness_score : 0.5,
+          primary_issue: primaryIssue,
+          recommended_next_action: analysis.recommended_next_action || "Follow up with relevant materials.",
+          information_gaps: (analysis.information_gaps || []).map((g: any) => ({
+            gap: g.gap || "",
+            impact: g.impact || "",
+            suggested_document_type: g.suggested_document_type || "",
+          })),
+          questions_answered: qa,
+          call_completeness: {
+            questions_covered: questionsCovered,
+            questions_total: 4,
+            missing_signals: missingSignals,
+            confidence_impact: confidenceImpact,
+          },
+          transcript_summary: analysis.transcript_summary || "",
+          pipeline_stage_suggestion: analysis.pipeline_stage_suggestion || null,
         },
       });
     } catch (err: any) {
@@ -305,7 +366,51 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
     }
   }
 
-  res.json({ results });
+  const allLeads = await db.select().from(leadsTable);
+  const enrichedResults = results.map((r: any) => {
+    if (r.investor_name && r.status === "success") {
+      const qLower = r.investor_name.toLowerCase().trim();
+      const qWords = qLower.split(/\s+/);
+      const matches: Array<{ lead_id: string; name: string; company: string; pipeline_stage: string; detected_persona: string; confidence: number }> = [];
+
+      for (const lead of allLeads) {
+        const nameLower = lead.name.toLowerCase();
+        const nameWords = nameLower.split(/\s+/);
+        let confidence = 0;
+
+        if (nameLower === qLower) {
+          confidence = 1.0;
+        } else if (qWords.every((w: string) => nameWords.includes(w))) {
+          confidence = 0.85;
+        } else if (qWords.length > 0 && nameWords.length > 0 && nameWords[nameWords.length - 1] === qWords[qWords.length - 1]) {
+          confidence = 0.4;
+        } else if (qWords.length > 0 && nameWords.length > 0 && nameWords[0] === qWords[0]) {
+          confidence = 0.5;
+        }
+
+        if (confidence >= 0.4) {
+          matches.push({
+            lead_id: lead.id, name: lead.name, company: lead.company || "",
+            pipeline_stage: lead.pipeline_stage, detected_persona: lead.detected_persona || "", confidence,
+          });
+        }
+      }
+
+      matches.sort((a, b) => b.confidence - a.confidence);
+      const topMatches = matches.slice(0, 3);
+
+      if (topMatches.length > 0 && topMatches[0].confidence >= 0.85) {
+        r.lead_match = { matches: topMatches, status: "matched" };
+      } else if (topMatches.length > 0) {
+        r.lead_match = { matches: topMatches, status: "partial" };
+      } else {
+        r.lead_match = { matches: [], status: "none" };
+      }
+    }
+    return r;
+  });
+
+  res.json({ results: enrichedResults });
 });
 
 router.post("/recommendation/analyze", async (req, res): Promise<void> => {
@@ -574,10 +679,48 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
   );
 
   if (eligible.length === 0) {
+    const gapReasons: string[] = [];
+    const totalForStage = allDocs.filter((d) => (d.pipeline_stage_relevance as string[])?.includes(pipeline_stage));
+    const totalForPersona = allDocs.filter((d) => matchesPersona(d));
+    const totalCurrent = allDocs.filter((d) => d.lifecycle_status === "CURRENT" && d.review_state === "CLEAN");
+
+    if (totalForStage.length === 0) {
+      gapReasons.push(`No documents tagged for pipeline stage "${pipeline_stage}"`);
+    }
+    if (totalForPersona.length === 0 && resolvedArchetype) {
+      gapReasons.push(`No documents tagged for archetype "${resolvedArchetype}" (persona: ${detected_persona})`);
+    }
+    if (blockedDocs.length > 0) {
+      gapReasons.push(`${blockedDocs.length} document(s) require review before recommendation`);
+    }
+    if (sentDocIds.length > 0) {
+      const eligibleBeforeExclusion = totalCurrent.filter(
+        (d) => (d.pipeline_stage_relevance as string[])?.includes(pipeline_stage) && matchesPersona(d)
+      );
+      if (eligibleBeforeExclusion.length > 0 && eligibleBeforeExclusion.every((d) => sentDocIds.includes(d.id))) {
+        gapReasons.push(`All ${eligibleBeforeExclusion.length} matching document(s) already sent to this lead`);
+      }
+    }
+
+    const recommendation_gap = {
+      gap_detected: true,
+      gap_reasons: gapReasons.length > 0 ? gapReasons : ["No eligible documents found for this combination of stage and persona"],
+      persona: detected_persona,
+      archetype: resolvedArchetype,
+      pipeline_stage,
+      content_needed: [
+        ...(totalForStage.length === 0 ? [`Documents for "${pipeline_stage}" stage`] : []),
+        ...(totalForPersona.length === 0 && resolvedArchetype ? [`Documents for "${resolvedArchetype}" archetype`] : []),
+      ],
+      blocked_count: blockedDocs.length,
+      already_sent_count: sentDocIds.length,
+    };
+
     res.json({
       ranked_documents: [],
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      recommendation_gap,
       all_sent_message:
         "All appropriate documents for this stage and persona have already been sent to this investor. Consider advancing to the next pipeline stage.",
     });
@@ -662,12 +805,37 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       };
     });
 
-    res.json({
+    const LOW_RELEVANCE_THRESHOLD = 0.4;
+    const scoredResults = rankedWithDetails.filter((r: any) => r.relevance_score !== null && r.relevance_score !== undefined);
+    const allLowRelevance = scoredResults.length > 0 && scoredResults.every((r: any) => r.relevance_score < LOW_RELEVANCE_THRESHOLD);
+
+    const response: any = {
       ranked_documents: rankedWithDetails,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
       all_sent_message: null,
-    });
+    };
+
+    if (allLowRelevance) {
+      const resolvedArchetype = detected_persona ? {
+        "Wealth Preserver": "Preserver", "Tax Optimizer": "Growth Seeker",
+        "Legacy Planner": "Legacy Builder", "Growth Investor": "Growth Seeker",
+        "Cautious Explorer": "Preserver", "Impact Investor": "Legacy Builder",
+      }[detected_persona] || detected_persona : null;
+
+      response.recommendation_gap = {
+        gap_detected: true,
+        gap_reasons: ["All recommended documents have low relevance scores — existing content may not adequately address this investor's specific situation"],
+        persona: detected_persona,
+        archetype: resolvedArchetype,
+        pipeline_stage,
+        content_needed: [`Higher-relevance content for "${detected_persona}" investors at "${pipeline_stage}" stage`],
+        blocked_count: blockedDocs.length,
+        already_sent_count: alreadySent.length,
+      };
+    }
+
+    res.json(response);
   } catch (err: any) {
     req.log.error({ err }, "Claude ranking call failed");
     const fallbackRanked = eligible.slice(0, 8).map((d, i) => ({
@@ -736,10 +904,15 @@ router.post("/recommendation/confirm-send", async (req, res): Promise<void> => {
 
   const sendLog = [...((lead.send_log as any[]) || []), sendEntry];
 
+  const personaConfidence = typeof analysis_confidence?.persona === "number" ? analysis_confidence.persona : null;
+  const stageConfidence = typeof analysis_confidence?.stage === "number" ? analysis_confidence.stage : null;
+
   const updates: any = {
     send_log: sendLog,
     last_contact: now,
     detected_persona,
+    persona_confidence: personaConfidence,
+    stage_confidence: stageConfidence,
   };
 
   if (stage_suggestion && stage_suggestion !== lead.pipeline_stage) {

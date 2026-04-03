@@ -1,0 +1,171 @@
+# BUILD — Batch Analysis Depth Parity
+Version: 1.0
+Priority: HIGH
+Area: Recommendation Engine — Batch Upload
+Depends on: 058 (enhanced single analysis) must be complete
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+---
+
+## Overview
+
+The single transcript analyze endpoint returns 7 signal types:
+persona, stage, readiness, blocking objections, information gaps,
+primary issue, and recommended next action.
+
+The batch analyze endpoint currently returns only 2: persona and
+stage.
+
+This means batch-processed transcripts from the Aircall campaign
+give less intelligence than single-processed ones. Agents using
+batch upload see persona and stage only — missing the readiness
+score, blocking objections, and primary issue that would tell
+them what to do with each lead next.
+
+This build brings the batch endpoint to full parity with the
+single endpoint.
+
+---
+
+## Step 1 — Update the analyze-batch Claude prompt
+
+Update POST /api/recommendation/analyze-batch to use the same
+enhanced prompt as POST /api/recommendation/analyze.
+
+The enhanced prompt additions (from build 058) must be included
+in every transcript analysis in the batch:
+- Readiness to close (READY / WARM / NURTURING / COLD)
+- Blocking objections with severity (CRITICAL / SIGNIFICANT / MINOR)
+- Information gaps with suggested document type
+- Primary issue classification (READY_TO_CLOSE /
+  OBJECTION_TO_RESOLVE / INFORMATION_GAP / NEEDS_NURTURING)
+- Recommended next action (one sentence)
+- Call completeness (questions_covered, missing_signals)
+
+The batch prompt must also include the Aircall speaker label
+instructions from build 072 — analyse only the Investor speaker
+turns for signals.
+
+---
+
+## Step 2 — Update the analyze-batch response shape
+
+Update the response to match the single analyze endpoint:
+
+```typescript
+{
+  results: Array<{
+    filename: string
+    investor_name: string | null
+    status: "success" | "error"
+    lead_match?: { ... }           // from build 075
+    analysis?: {
+      // existing fields
+      persona: string
+      persona_confidence: number
+      stage: string
+      stage_confidence: number
+      objections: string[]
+      evidence: string[]
+
+      // new fields — parity with single endpoint
+      readiness: "READY" | "WARM" | "NURTURING" | "COLD"
+      readiness_evidence: string[]
+      blocking_objections: Array<{
+        name: string
+        evidence: string
+        severity: "CRITICAL" | "SIGNIFICANT" | "MINOR"
+      }>
+      information_gaps: Array<{
+        topic: string
+        description: string
+        suggested_document_type: string
+      }>
+      primary_issue: "READY_TO_CLOSE" | "OBJECTION_TO_RESOLVE" |
+                     "INFORMATION_GAP" | "NEEDS_NURTURING"
+      recommended_next_action: string
+      call_completeness: {
+        questions_covered: number
+        questions_total: 4
+        missing_signals: string[]
+        confidence_impact: string
+      }
+    }
+    error?: string
+  }>
+}
+```
+
+---
+
+## Step 3 — Update the batch result cards
+
+Update the frontend batch result cards to display the full
+analysis signal set — not just persona and stage.
+
+Each result card should show (in order):
+
+**1. Primary issue banner** — colour-coded, same as single flow:
+- 🟢 READY TO CLOSE
+- 🟡 OBJECTION TO RESOLVE — show the top blocking objection
+- 🔴 INFORMATION GAP — show the top gap topic
+- ⚪ NEEDS NURTURING
+
+**2. Recommended next action** — one sentence below the banner
+
+**3. Investor profile row** — persona, stage, readiness rating
+
+**4. Collapsible detail section:**
+- Blocking objections (with severity badges)
+- Information gaps (with suggested document types)
+- Call completeness indicator (X/4 questions covered)
+
+Keep the card compact by default — detail section collapsed.
+The primary issue banner and next action are always visible.
+
+---
+
+## Step 4 — Confirm with live tests
+
+Test 1 — Full signal set in batch response:
+- POST /api/recommendation/analyze-batch with 2 transcripts
+- Confirm each result in the response contains:
+  readiness, blocking_objections, information_gaps,
+  primary_issue, recommended_next_action, call_completeness
+- Confirm primary_issue is one of the 4 valid values
+- Confirm recommended_next_action is a specific sentence
+
+Test 2 — Parity with single endpoint:
+- Analyse the same transcript via both endpoints
+- Confirm primary_issue matches between the two responses
+  (may not be identical word-for-word but should agree on
+  the classification)
+- Confirm blocking_objections covers the same issues
+
+Test 3 — Aircall speaker focus in batch:
+- Analyse an Aircall-format transcript via batch
+- Confirm analysis signals come from Investor speaker only
+- Confirm agent's sales language is not treated as investor signal
+
+Test 4 — Frontend card display:
+- Upload 3 transcripts via batch UI
+- Confirm each result card shows a colour-coded primary issue
+  banner
+- Confirm recommended next action is visible
+- Confirm detail section is collapsible and shows objections
+  and gaps when expanded
+
+Test 5 — Error isolation:
+- Include 1 invalid transcript in a batch of 3
+- Confirm the 2 valid results still show full signal sets
+- Confirm the errored result shows an error card without
+  affecting the others

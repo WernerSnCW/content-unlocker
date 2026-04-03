@@ -1,8 +1,9 @@
 import { useGetDashboardSummary, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Link } from "wouter";
-import { ArrowRight, FileText, Users, AlertCircle, Clock, CheckCircle2 } from "lucide-react";
+import { ArrowRight, FileText, Users, AlertCircle, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
 export default function Dashboard() {
@@ -162,6 +163,51 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+
+          {(summary as any)?.coverage_gap_count > 0 ? (
+            <Card className="border-amber-500/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  Coverage Gaps
+                </CardTitle>
+                <CardDescription>{(summary as any).coverage_gap_count} stage-archetype combinations have no content</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {((summary as any).coverage_gaps || []).slice(0, 5).map((gap: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{gap.stage}</Badge>
+                      <span className="text-muted-foreground">×</span>
+                      <Badge variant="outline" className="text-xs">{gap.archetype}</Badge>
+                    </div>
+                    <span className="text-xs text-red-400">0 docs</span>
+                  </div>
+                ))}
+                {(summary as any)?.coverage_gap_count > 5 && (
+                  <p className="text-xs text-muted-foreground">+{(summary as any).coverage_gap_count - 5} more</p>
+                )}
+                <Link href="/gaps" className="text-sm text-primary hover:underline flex items-center gap-1 pt-2">
+                    View full analysis <ArrowRight className="w-3 h-3" />
+                </Link>
+              </CardContent>
+            </Card>
+          ) : summary && (
+            <Card className="border-emerald-500/30">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  Full Coverage
+                </CardTitle>
+                <CardDescription>All stage-archetype combinations have content assigned</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/gaps" className="text-sm text-primary hover:underline flex items-center gap-1">
+                  View coverage details <ArrowRight className="w-3 h-3" />
+                </Link>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

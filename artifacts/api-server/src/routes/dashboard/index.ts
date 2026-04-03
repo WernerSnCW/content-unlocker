@@ -3,7 +3,9 @@ import { db, leadsTable, documentsTable, changelogTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { GetRecentActivityQueryParams, ListChangelogQueryParams } from "@workspace/api-zod";
 import { getComplianceConstants, validateSeedData } from "../../lib/dataManager";
+import { VALID_ARCHETYPES } from "../../../../../lib/personas";
 
+const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "Decision"];
 const router: IRouter = Router();
 
 router.get("/dashboard/summary", async (_req, res): Promise<void> => {
@@ -41,6 +43,21 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     (d) => d.review_state === "REQUIRES_REVIEW"
   ).length;
 
+  const currentCleanDocs = docs.filter((d) => d.lifecycle_status === "CURRENT" && d.review_state === "CLEAN");
+  const coverageGaps: Array<{ stage: string; archetype: string; document_count: number }> = [];
+  for (const stage of PIPELINE_STAGES) {
+    for (const archetype of VALID_ARCHETYPES) {
+      const count = currentCleanDocs.filter(
+        (d) =>
+          (d.pipeline_stage_relevance as string[])?.includes(stage) &&
+          (d.persona_relevance as string[])?.includes(archetype)
+      ).length;
+      if (count === 0) {
+        coverageGaps.push({ stage, archetype, document_count: 0 });
+      }
+    }
+  }
+
   res.json({
     total_leads: leads.length,
     total_documents: docs.length,
@@ -48,6 +65,8 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     pipeline_breakdown: pipelineBreakdown,
     documents_requiring_review: documentsRequiringReview,
     recent_sends: recentSends.slice(0, 10),
+    coverage_gaps: coverageGaps,
+    coverage_gap_count: coverageGaps.length,
   });
 });
 

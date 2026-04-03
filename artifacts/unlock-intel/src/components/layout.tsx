@@ -12,6 +12,7 @@ import {
   Grid3X3,
   RefreshCw,
   Phone,
+  BarChart3,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/generate", label: "Content Generation", icon: FileText },
     { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
     { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
+    { href: "/analytics/personas", label: "Persona Analytics", icon: BarChart3 },
   ];
 
   return (

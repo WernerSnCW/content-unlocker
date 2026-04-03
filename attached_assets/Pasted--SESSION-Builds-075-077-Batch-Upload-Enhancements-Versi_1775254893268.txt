@@ -1,0 +1,407 @@
+# SESSION — Builds 075 + 077 (Batch Upload Enhancements)
+Version: 1.0
+
+Two builds focused on the batch upload flow. Complete Build 075
+first and pass verification before starting Build 077.
+If any verification fails, stop and report.
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+- detectPropagationTargets() — read-only, no DB writes
+- propagateFromDocument() — detects, flags, writes changelog
+Use these. Do not reimplement propagation logic.
+
+### Prerequisites — confirm before starting
+- 073 (investor name extraction from filename): must be complete
+- 072 (Aircall speaker label normalisation): must be complete
+- 058 (enhanced single analysis with primary issue): must be complete
+
+Verify all three are in place before writing any code.
+
+---
+
+# BUILD 075 — Transcript-to-Lead Auto-Creation
+Priority: HIGH
+Area: Recommendation Engine — Batch Upload
+
+## Overview
+
+When batch analysis extracts an investor name from an Aircall
+transcript filename and no matching lead exists in the database,
+the user currently has to create the lead manually before linking.
+This build closes that gap — offering one-click lead creation
+pre-populated with the extracted name, detected persona, and
+detected pipeline stage directly from the batch result card.
+
+---
+
+## Step 1 — Backend: Fuzzy lead matching endpoint
+
+Create a new endpoint: GET /api/leads/match?name={name}
+
+Matching logic:
+- Exact match (case-insensitive): confidence 1.0
+- All words present in any order: confidence 0.85
+- First name match only: confidence 0.5
+- Last name match only: confidence 0.4
+- No match above 0.4: return empty array
+
+Response body:
+```typescript
+{
+  matches: Array<{
+    lead_id: string
+    name: string
+    company: string
+    pipeline_stage: string
+    detected_persona: string
+    confidence: number
+  }>
+  query: string
+}
+```
+
+Return up to 3 matches ordered by confidence descending.
+
+---
+
+## Step 2 — Backend: Pre-populated lead creation
+
+Update POST /api/leads to accept optional analysis fields:
+
+```typescript
+{
+  name: string
+  company?: string
+  pipeline_stage?: string         // pre-populated from analysis
+  detected_persona?: string       // pre-populated from analysis
+  source?: "batch_transcript"
+  transcript_filename?: string
+}
+```
+
+When source is "batch_transcript", create a changelog entry:
+- action: LEAD_CREATED_FROM_TRANSCRIPT
+- detail: investor name + transcript filename + detected persona
+  and stage
+
+---
+
+## Step 3 — Backend: Auto-match on batch analysis completion
+
+Update POST /api/recommendation/analyze-batch to run a lead
+match automatically for each result where investor_name is
+non-null. Run matches in parallel — do not add sequential latency.
+
+Add to each result in the response:
+```typescript
+{
+  filename: string
+  investor_name: string | null
+  status: "success" | "error"
+  analysis?: { ... }
+  lead_match?: {
+    matched: boolean
+    top_match?: {
+      lead_id: string
+      name: string
+      pipeline_stage: string
+      detected_persona: string
+      confidence: number
+    }
+    match_count: number
+  }
+}
+```
+
+If investor_name is null, omit lead_match entirely.
+
+---
+
+## Step 4 — Frontend: Batch result card lead management
+
+Update the batch result cards based on lead_match data:
+
+**High-confidence match (confidence ≥ 0.85):**
+Green "Likely match" banner:
+"Likely match: [Name] — [Stage] · [Persona]"
+Buttons: "Confirm match" and "Not this person"
+
+**Low-confidence match (confidence 0.4–0.84):**
+Yellow "Possible match" banner listing up to 3 candidates with
+confidence scores. User selects one or dismisses.
+
+**No match or investor_name is null:**
+Blue "New contact" banner:
+"No existing lead found for [Name]"
+Button: "Create Lead"
+
+**On "Create Lead" click:**
+Open an inline form (not a new page):
+- Name: pre-populated from investor_name (editable)
+- Company: empty (editable)
+- Pipeline stage: pre-populated from detected stage (editable
+  dropdown — canonical stages only)
+- Persona: pre-populated from detected persona (editable
+  dropdown — canonical archetypes only)
+
+On submit: POST /api/leads with source: "batch_transcript"
+On success: show green "Lead created — Link" button that
+navigates to the recommend flow for the new lead with analysis
+pre-populated.
+
+**On "Confirm match" click:**
+Record the lead linkage (existing behaviour) and navigate to
+the recommend flow pre-populated.
+
+---
+
+## Build 075 Verification — MUST PASS before starting Build 077
+
+Test 1 — Exact name match:
+- Run batch analysis with "Duncan_Stewart_2026-04-03.txt"
+- Confirm lead_match shows confidence 1.0 if Duncan Stewart
+  exists in leads
+- Confirm green "Likely match" banner on result card
+
+Test 2 — No match → create lead:
+- Run batch analysis with "New_Investor_2026-04-03.txt"
+- Confirm lead_match.matched is false
+- Confirm blue "New contact" banner appears
+- Click "Create Lead"
+- Confirm inline form pre-populated with name, stage, persona
+- Submit form
+- Confirm lead created with source: "batch_transcript"
+- Confirm LEAD_CREATED_FROM_TRANSCRIPT changelog entry
+
+Test 3 — Null investor name:
+- Run batch analysis with "call-recording-001.txt"
+- Confirm lead_match absent from response
+- Confirm existing "Link to Lead" manual flow unchanged
+
+Test 4 — Parallel matching performance:
+- Run batch with 3 named transcripts
+- Confirm lead matching runs without adding noticeable latency
+  (matches complete before or alongside analysis results)
+
+Report: BUILD 075 VERIFICATION — PASS / FAIL
+If FAIL: stop here. If PASS: proceed to Build 077.
+
+---
+
+# BUILD 077 — Batch Analysis Depth Parity
+Priority: HIGH
+Area: Recommendation Engine — Batch Upload
+
+## Overview
+
+The single transcript analyze endpoint returns 7 signal types:
+persona, stage, readiness, blocking objections, information gaps,
+primary issue, and recommended next action.
+
+The batch analyze endpoint currently returns only 2: persona and
+stage. This build brings the batch endpoint to full parity so
+agents processing 30,000-contact Aircall transcripts in batches
+get the same intelligence as processing a single transcript.
+
+---
+
+## Step 1 — Update the analyze-batch Claude prompt
+
+Update POST /api/recommendation/analyze-batch to use the same
+enhanced prompt as POST /api/recommendation/analyze (build 058).
+
+Include in every transcript analysis in the batch:
+
+```
+READINESS TO CLOSE
+Buying signals include asking about process, next steps, paperwork,
+mentioning a specific investment amount, referencing tax year
+deadlines, comparing favourably to alternatives, or no unresolved
+objections remaining.
+Rate as: READY | WARM | NURTURING | COLD
+Provide specific evidence from the transcript.
+
+BLOCKING OBJECTIONS
+Objections actively preventing progress include needing to speak
+to an accountant/IFA/partner, risk concerns expressed more than
+once, uncertainty about product mechanics, hesitation language
+("not sure", "need to think", "maybe later"), timeline deflection
+without a specific date.
+For each: name it, quote the evidence, rate severity as
+CRITICAL | SIGNIFICANT | MINOR.
+
+INFORMATION GAPS
+Topics the investor is confused about or expressing misconceptions
+about include questions about EIS/SEIS/VCT mechanics, incorrect
+comparisons to ISAs or pensions, confusion about tax relief timing,
+misunderstanding of risk or loss relief.
+For each: name it, describe the confusion, identify what document
+or explanation would address it.
+
+PRIMARY ISSUE
+The single most important thing driving next action:
+- READY_TO_CLOSE — buying signals present, objections resolved
+- OBJECTION_TO_RESOLVE — a specific blocking objection must be
+  addressed first
+- INFORMATION_GAP — investor needs specific education before
+  they can decide
+- NEEDS_NURTURING — too early, insufficient signals to act on yet
+Provide one sentence: recommended next action for the salesperson.
+
+CALL COMPLETENESS
+Assess which of the 4 call framework questions were covered:
+Q1: Portfolio composition, Q2: Investment objective,
+Q3: EIS/SEIS experience, Q4: What needs to happen to move forward.
+Return: questions_covered (integer), missing_signals (array).
+```
+
+Also include the Aircall speaker label instructions:
+analyse only Investor speaker turns for signals — Agent turns
+provide context only and must not be treated as investor signals.
+
+---
+
+## Step 2 — Update the analyze-batch response shape
+
+```typescript
+{
+  results: Array<{
+    filename: string
+    investor_name: string | null
+    status: "success" | "error"
+    lead_match?: { ... }
+    analysis?: {
+      // existing fields unchanged
+      persona: string
+      persona_confidence: number
+      stage: string
+      stage_confidence: number
+      objections: string[]
+      evidence: string[]
+
+      // new fields — parity with single endpoint
+      readiness: "READY" | "WARM" | "NURTURING" | "COLD"
+      readiness_evidence: string[]
+      blocking_objections: Array<{
+        name: string
+        evidence: string
+        severity: "CRITICAL" | "SIGNIFICANT" | "MINOR"
+      }>
+      information_gaps: Array<{
+        topic: string
+        description: string
+        suggested_document_type: string
+      }>
+      primary_issue: "READY_TO_CLOSE" | "OBJECTION_TO_RESOLVE" |
+                     "INFORMATION_GAP" | "NEEDS_NURTURING"
+      recommended_next_action: string
+      call_completeness: {
+        questions_covered: number
+        questions_total: 4
+        missing_signals: string[]
+        confidence_impact: string
+      }
+    }
+    error?: string
+  }>
+}
+```
+
+---
+
+## Step 3 — Update the batch result cards
+
+Update each result card to display the full signal set.
+
+Layout (in order):
+
+**1. Primary issue banner** — full width, colour-coded:
+- 🟢 READY TO CLOSE
+- 🟡 OBJECTION TO RESOLVE — show top blocking objection name
+- 🔴 INFORMATION GAP — show top gap topic
+- ⚪ NEEDS NURTURING
+
+**2. Recommended next action** — one sentence, below the banner
+
+**3. Investor profile row** — persona · stage · readiness rating
+
+**4. Collapsible detail section (collapsed by default):**
+- Blocking objections with severity badges
+- Information gaps with suggested document types
+- Call completeness: X/4 questions covered
+
+The lead match banner (from build 075) sits above the primary
+issue banner. Card structure from top to bottom:
+1. Lead match banner (green/yellow/blue)
+2. Primary issue banner
+3. Recommended next action
+4. Investor profile row
+5. Collapsible detail
+
+---
+
+## Build 077 Verification
+
+Test 1 — Full signal set in batch response:
+- POST /api/recommendation/analyze-batch with 2 transcripts
+- Confirm each result contains: readiness, blocking_objections,
+  information_gaps, primary_issue, recommended_next_action,
+  call_completeness
+- Confirm primary_issue is one of the 4 valid values
+
+Test 2 — Parity with single endpoint:
+- Analyse the same transcript via both single and batch endpoints
+- Confirm primary_issue classification agrees between them
+
+Test 3 — Aircall speaker focus:
+- Analyse an Aircall-format transcript via batch
+- Confirm signals come from Investor speaker turns only
+- Confirm agent's EIS explanations are not logged as investor
+  familiarity
+
+Test 4 — Frontend card display:
+- Upload 3 transcripts via batch UI
+- Confirm each card shows colour-coded primary issue banner
+- Confirm recommended next action is visible
+- Confirm detail section is collapsible and shows objections
+  and gaps when expanded
+
+Test 5 — Error isolation:
+- Include 1 empty/invalid transcript in a batch of 3
+- Confirm the 2 valid results show full signal sets
+- Confirm the errored result shows an error card without
+  affecting others
+
+Report: BUILD 077 VERIFICATION — PASS / FAIL
+
+---
+
+## Final session report
+
+BUILD 075 — Transcript-to-lead auto-creation: PASS / FAIL
+BUILD 077 — Batch analysis depth parity: PASS / FAIL
+
+For any failure: which test failed and why.
+
+For any success: confirm the batch upload flow now provides:
+- Automatic lead matching on name extraction
+- One-click lead creation pre-populated from analysis
+- Full 7-signal analysis on every batch transcript
+- Primary issue banner on every result card
