@@ -1,0 +1,210 @@
+# SESSION — Strategic Assessment (060)
+Version: 1.0
+
+Two steps. Create the PRODUCT_GOALS.md file first, then run the
+strategic assessment against it.
+
+---
+
+## Step 1 — Create PRODUCT_GOALS.md in the project root
+
+Save the following file to the project root as PRODUCT_GOALS.md.
+This file is the source of truth for the strategic assessment and
+will be used by the 060 prompt on every future run automatically.
+
+```markdown
+# PRODUCT GOALS
+## Unlock Document Intelligence Tool
+
+---
+
+## What this tool is for
+
+The Unlock Document Intelligence Tool is a content management and
+recommendation system for Unlock's founding investor sales campaign.
+It manages a registry of investor-facing documents, analyses call
+transcripts to detect investor signals, recommends the right document
+to send at each stage of the pipeline, generates new content using
+AI with built-in compliance checking, and identifies gaps in content
+coverage across investor archetypes and pipeline stages.
+
+---
+
+## Primary user
+
+Tom King and Unlock sales agents conducting the founding investor
+outreach campaign. Users are sophisticated but non-technical — they
+need the tool to surface the right action with minimal friction.
+The tool must be fast enough to use between calls and clear enough
+to use without training.
+
+---
+
+## Success criteria
+
+- The correct document is recommended for the correct investor
+  archetype at the correct pipeline stage, every time
+- Generated content passes QC on the first attempt without requiring
+  manual fixes for compliance language or figure framing
+- Content gaps across the 3 archetype × 5 stage coverage matrix
+  are identified and briefed automatically before they cause a
+  failed recommendation
+- Aircall transcripts from the 30,000-contact outreach campaign
+  can be uploaded in batches, analysed for persona and readiness,
+  and linked to leads without manual data entry
+- Every investor-facing document in the registry complies with
+  Content Bank V4 rules — correct figures, approved terminology,
+  no prohibited language — before it reaches an investor
+- When Unlock's product or compliance context changes, affected
+  documents are identified and flagged for review automatically
+  before the next campaign session
+
+---
+
+## Out of scope
+
+- This tool is not a CRM — lead management is secondary to
+  document intelligence
+- This tool does not replace Pipedrive or Aircall — it reads
+  from them (via transcript upload) but does not write back
+- This tool is not a publishing platform — documents are managed
+  here but delivered via email outside the tool
+- This tool is not for investors — it is for the sales team only
+- General-purpose AI writing assistance outside the Unlock
+  compliance framework is explicitly out of scope
+
+---
+
+## Version
+
+Last updated: April 2026
+```
+
+Confirm the file is saved before proceeding to Step 2.
+
+---
+
+## Step 2 — Run the strategic assessment
+
+Read PRODUCT_GOALS.md from the project root. Use its contents as
+the source of truth for goals, users, and success criteria.
+Complete the template below exactly. Replace every placeholder.
+
+---
+
+## STEP 1 — ESTABLISH GOALS
+
+Goals source: PRODUCT_GOALS.md (confirmed read)
+
+Summary of goals (3–5 bullets):
+- [bullet]
+- [bullet]
+- [bullet]
+
+---
+
+## STEP 2 — STRATEGIC ASSESSMENT OUTPUT
+
+### 1. Goals confirmed
+
+[3–5 bullet points summarising the goals as understood from
+PRODUCT_GOALS.md]
+
+---
+
+### 2. Strategic fit
+
+For each major feature or workflow, assess whether it serves the
+confirmed goals:
+
+#### `[Feature or workflow name]`
+**Serves the goal:** [YES / PARTIALLY / NO]
+**Reasoning:** [why it does or does not serve the goal]
+**Drift risk:** [has this feature grown beyond its purpose or
+pulled the tool in a direction inconsistent with the goals —
+YES / NO, with explanation]
+
+[repeat for every major feature or workflow]
+
+---
+
+### 3. Architectural appropriateness
+
+Assess whether the tool is built the right way for its goals
+and users. Consider: complexity vs need, scalability relative
+to expected usage, tech choices relative to user type, and
+whether the architecture would support growth without a rewrite.
+
+| Area | Appropriate | Notes |
+|---|---|---|
+| Data model | YES / PARTIALLY / NO | |
+| API structure | YES / PARTIALLY / NO | |
+| Frontend complexity | YES / PARTIALLY / NO | |
+| AI integration approach | YES / PARTIALLY / NO | |
+| Content generation pipeline | YES / PARTIALLY / NO | |
+| Compliance enforcement | YES / PARTIALLY / NO | |
+
+[add rows as needed]
+
+**Overall architecture verdict:** [WELL-SUITED / OVER-ENGINEERED /
+UNDER-BUILT]
+**Reasoning:** [2–3 sentences]
+
+---
+
+### 4. Enhancements
+
+Improvements to existing features that would materially close
+the gap between what the tool currently does and what the goals
+require. Ordered by impact.
+
+#### `[Enhancement name]`
+**Addresses:** [which goal or gap this closes]
+**What to build:** [specific description]
+**Effort estimate:** [LOW / MEDIUM / HIGH]
+**Priority:** [HIGH / MEDIUM / LOW]
+
+[repeat for each enhancement]
+
+---
+
+### 5. Potential new features
+
+Features that do not exist today but would advance the goals
+if added. Ordered by strategic value.
+
+#### `[Feature name]`
+**Addresses:** [which goal this advances]
+**What to build:** [specific description]
+**Dependency:** [what needs to exist first — or "None"]
+**Effort estimate:** [LOW / MEDIUM / HIGH]
+**Priority:** [HIGH / MEDIUM / LOW]
+
+[repeat for each potential feature]
+
+---
+
+### 6. Out-of-scope flags
+
+Features or patterns in the current build that appear to serve
+a different goal than the one confirmed — scope creep, unused
+complexity, or misaligned design decisions:
+
+- **[Feature or pattern]:** [what goal it seems to serve vs
+  what the confirmed goal actually is]
+
+If none identified: "None identified."
+
+---
+
+### 7. Overall verdict
+
+| Dimension | Status | Notes |
+|---|---|---|
+| Strategic fit | 🟢 / 🟡 / 🔴 | |
+| Architectural appropriateness | 🟢 / 🟡 / 🔴 | |
+| Enhancement opportunity | 🟢 / 🟡 / 🔴 | |
+| New feature opportunity | 🟢 / 🟡 / 🔴 | |
+
+**Recommendation:** [ON TRACK — ENHANCE / REORIENT BEFORE
+BUILDING / ARCHITECTURAL REVIEW NEEDED]

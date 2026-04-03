@@ -12,3 +12,9 @@ id = "SvqQkyM6pxX1rEHNPDT2J"
 uri = "file://FIX_REPORT_GAP_RANK.md"
 type = "text"
 title = "Fix Report — Gap Snapshot Accumulation + Rank Field Normalisation"
+
+[[outputs]]
+id = "UAGF8eeMXVGHnOR6srxS1"
+uri = "file://STRATEGIC_ASSESSMENT_060.md"
+type = "text"
+title = "Strategic Assessment 060 — Unlock Document Intelligence Tool"
