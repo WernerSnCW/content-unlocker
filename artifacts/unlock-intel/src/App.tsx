@@ -14,6 +14,8 @@ import DocumentDetail from "./pages/document-detail";
 import ContentBank from "./pages/content-bank";
 import Changelog from "./pages/changelog";
 import Generate from "./pages/generate";
+import GapAnalysis from "./pages/gaps";
+import FeatureUpdates from "./pages/feature-updates";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +39,8 @@ function Router() {
         <Route path="/content-bank" component={ContentBank} />
         <Route path="/changelog" component={Changelog} />
         <Route path="/generate" component={Generate} />
+        <Route path="/gaps" component={GapAnalysis} />
+        <Route path="/feature-updates" component={FeatureUpdates} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

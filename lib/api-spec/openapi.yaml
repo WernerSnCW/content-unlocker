@@ -21,6 +21,10 @@ tags:
     description: Changelog operations
   - name: content
     description: Content bank
+  - name: gaps
+    description: Content gap analysis
+  - name: feature-update
+    description: Feature update document cascade
   - name: generation
     description: Content generation & QC
   - name: dashboard
@@ -481,6 +485,99 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Persona"
+
+  /content/gaps:
+    get:
+      operationId: getContentGaps
+      tags: [gaps]
+      summary: Detect content gaps across coverage matrix, document types, and recommendation failures
+      responses:
+        "200":
+          description: Gap analysis results with information readiness assessment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GapAnalysisResult"
+
+  /content/generate-brief:
+    post:
+      operationId: generateBrief
+      tags: [gaps]
+      summary: Generate a structured content brief for a detected gap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateBriefRequest"
+      responses:
+        "200":
+          description: Generated brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateBriefResponse"
+        "422":
+          description: Insufficient information to generate brief
+
+  /content/generate-from-brief:
+    post:
+      operationId: generateFromBrief
+      tags: [gaps]
+      summary: Generate a document from a gap brief using the content generation pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateFromBriefRequest"
+      responses:
+        "200":
+          description: Generated document with QC report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerationResult"
+        "422":
+          description: Brief has unresolved information gaps
+
+  /content/feature-update:
+    post:
+      operationId: submitFeatureUpdate
+      tags: [feature-update]
+      summary: Submit a feature update and identify affected documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureUpdateRequest"
+      responses:
+        "200":
+          description: Feature update results with affected documents and review queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureUpdateResult"
+
+  /content/feature-update/{updateId}/queue:
+    get:
+      operationId: getFeatureUpdateQueue
+      tags: [feature-update]
+      summary: Get the current review queue status for a feature update
+      parameters:
+        - name: updateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Review queue status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeatureUpdateQueue"
 
   /generation/generate:
     post:
@@ -1484,3 +1581,318 @@ components:
         - valid
         - errors
         - warnings
+
+    MatrixGap:
+      type: object
+      properties:
+        archetype:
+          type: string
+        stage:
+          type: string
+        gap_type:
+          type: string
+          enum: [matrix]
+        existing_documents:
+          type: array
+          items:
+            type: string
+      required: [archetype, stage, gap_type, existing_documents]
+
+    TypeGap:
+      type: object
+      properties:
+        document_type:
+          type: string
+        gap_type:
+          type: string
+          enum: [type]
+        existing_documents:
+          type: array
+          items:
+            type: string
+      required: [document_type, gap_type, existing_documents]
+
+    RecommendationGap:
+      type: object
+      properties:
+        persona:
+          type: string
+        stage:
+          type: string
+        gap_type:
+          type: string
+          enum: [recommendation_failure]
+        reason:
+          type: string
+      required: [persona, stage, gap_type, reason]
+
+    ReadinessStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [SUFFICIENT, PARTIAL, INSUFFICIENT]
+        detail:
+          type: string
+      required: [status, detail]
+
+    InformationReadiness:
+      type: object
+      properties:
+        content_bank:
+          $ref: "#/components/schemas/ReadinessStatus"
+        compliance_constants:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [SUFFICIENT, PARTIAL, INSUFFICIENT]
+            detail:
+              type: string
+            missing_fields:
+              type: array
+              items:
+                type: string
+          required: [status, detail, missing_fields]
+        overall:
+          type: string
+          enum: [READY_TO_GENERATE, CAN_GENERATE_WITH_CAVEATS, INSUFFICIENT_TO_GENERATE]
+      required: [content_bank, compliance_constants, overall]
+
+    GapSummary:
+      type: object
+      properties:
+        total_gaps:
+          type: integer
+        matrix_gap_count:
+          type: integer
+        type_gap_count:
+          type: integer
+        recommendation_failure_count:
+          type: integer
+      required: [total_gaps, matrix_gap_count, type_gap_count, recommendation_failure_count]
+
+    GapAnalysisResult:
+      type: object
+      properties:
+        matrix_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatrixGap"
+        type_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/TypeGap"
+        recommendation_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationGap"
+        information_readiness:
+          $ref: "#/components/schemas/InformationReadiness"
+        summary:
+          $ref: "#/components/schemas/GapSummary"
+      required: [matrix_gaps, type_gaps, recommendation_gaps, information_readiness, summary]
+
+    GapInput:
+      type: object
+      properties:
+        archetype:
+          type: string
+        stage:
+          type: string
+        document_type:
+          type: string
+        gap_type:
+          type: string
+          enum: [matrix, type, recommendation_failure]
+        persona:
+          type: string
+        reason:
+          type: string
+      required: [gap_type]
+
+    GenerateBriefRequest:
+      type: object
+      properties:
+        gap:
+          $ref: "#/components/schemas/GapInput"
+        information_readiness:
+          $ref: "#/components/schemas/InformationReadiness"
+      required: [gap]
+
+    InformationNeeded:
+      type: object
+      properties:
+        field:
+          type: string
+        description:
+          type: string
+        source:
+          type: string
+          enum: [content_bank, compliance_constants, external]
+      required: [field, description, source]
+
+    ContentBrief:
+      type: object
+      properties:
+        title:
+          type: string
+        document_type:
+          type: string
+        archetypes:
+          type: array
+          items:
+            type: string
+        stages:
+          type: array
+          items:
+            type: string
+        key_messages:
+          type: array
+          items:
+            type: string
+        tone:
+          type: string
+        length_guidance:
+          type: string
+        compliance_considerations:
+          type: array
+          items:
+            type: string
+        source_material_pointers:
+          type: array
+          items:
+            type: string
+        information_needed:
+          type: array
+          items:
+            $ref: "#/components/schemas/InformationNeeded"
+      required: [title, document_type, archetypes, stages, key_messages, tone, length_guidance, compliance_considerations, source_material_pointers, information_needed]
+
+    GenerateBriefResponse:
+      type: object
+      properties:
+        brief:
+          $ref: "#/components/schemas/ContentBrief"
+        ready_to_generate:
+          type: boolean
+      required: [brief, ready_to_generate]
+
+    GenerateFromBriefRequest:
+      type: object
+      properties:
+        brief:
+          $ref: "#/components/schemas/ContentBrief"
+        override_information_gaps:
+          type: boolean
+          default: false
+      required: [brief]
+
+    FeatureUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        affected_features:
+          type: array
+          items:
+            type: string
+        change_type:
+          type: string
+          enum: [addition, modification, removal]
+        affects_compliance:
+          type: boolean
+        affects_tier1:
+          type: boolean
+      required: [title, description, affected_features, change_type, affects_compliance, affects_tier1]
+
+    AffectedDocument:
+      type: object
+      properties:
+        document_id:
+          type: string
+        title:
+          type: string
+        tier:
+          type: integer
+        detection_method:
+          type: string
+        detection_methods:
+          type: array
+          items:
+            type: string
+        relevance_reason:
+          type: string
+        review_priority:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        current_status:
+          type: string
+      required: [document_id, title, tier, detection_method, relevance_reason, review_priority, current_status]
+
+    FeatureUpdateResult:
+      type: object
+      properties:
+        update_id:
+          type: string
+        affected_documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AffectedDocument"
+        review_queue:
+          type: array
+          items:
+            type: string
+        summary:
+          type: object
+          properties:
+            total_affected:
+              type: integer
+            critical_count:
+              type: integer
+            high_count:
+              type: integer
+            changelog_entry_id:
+              type: string
+          required: [total_affected, critical_count, high_count, changelog_entry_id]
+      required: [update_id, affected_documents, review_queue, summary]
+
+    FeatureUpdateQueueDoc:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tier:
+          type: integer
+        type:
+          type: string
+        review_state:
+          type: string
+        lifecycle_status:
+          type: string
+      required: [id, name, tier, type, review_state, lifecycle_status]
+
+    FeatureUpdateQueue:
+      type: object
+      properties:
+        update_id:
+          type: string
+        total:
+          type: integer
+        pending:
+          type: integer
+        completed:
+          type: integer
+        pending_documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeatureUpdateQueueDoc"
+        completed_documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeatureUpdateQueueDoc"
+      required: [update_id, total, pending, completed, pending_documents, completed_documents]

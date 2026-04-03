@@ -388,6 +388,238 @@ export interface SeedValidation {
   warnings: string[];
 }
 
+export type MatrixGapGapType =
+  (typeof MatrixGapGapType)[keyof typeof MatrixGapGapType];
+
+export const MatrixGapGapType = {
+  matrix: "matrix",
+} as const;
+
+export interface MatrixGap {
+  archetype: string;
+  stage: string;
+  gap_type: MatrixGapGapType;
+  existing_documents: string[];
+}
+
+export type TypeGapGapType =
+  (typeof TypeGapGapType)[keyof typeof TypeGapGapType];
+
+export const TypeGapGapType = {
+  type: "type",
+} as const;
+
+export interface TypeGap {
+  document_type: string;
+  gap_type: TypeGapGapType;
+  existing_documents: string[];
+}
+
+export type RecommendationGapGapType =
+  (typeof RecommendationGapGapType)[keyof typeof RecommendationGapGapType];
+
+export const RecommendationGapGapType = {
+  recommendation_failure: "recommendation_failure",
+} as const;
+
+export interface RecommendationGap {
+  persona: string;
+  stage: string;
+  gap_type: RecommendationGapGapType;
+  reason: string;
+}
+
+export type ReadinessStatusStatus =
+  (typeof ReadinessStatusStatus)[keyof typeof ReadinessStatusStatus];
+
+export const ReadinessStatusStatus = {
+  SUFFICIENT: "SUFFICIENT",
+  PARTIAL: "PARTIAL",
+  INSUFFICIENT: "INSUFFICIENT",
+} as const;
+
+export interface ReadinessStatus {
+  status: ReadinessStatusStatus;
+  detail: string;
+}
+
+export type InformationReadinessComplianceConstantsStatus =
+  (typeof InformationReadinessComplianceConstantsStatus)[keyof typeof InformationReadinessComplianceConstantsStatus];
+
+export const InformationReadinessComplianceConstantsStatus = {
+  SUFFICIENT: "SUFFICIENT",
+  PARTIAL: "PARTIAL",
+  INSUFFICIENT: "INSUFFICIENT",
+} as const;
+
+export type InformationReadinessComplianceConstants = {
+  status: InformationReadinessComplianceConstantsStatus;
+  detail: string;
+  missing_fields: string[];
+};
+
+export type InformationReadinessOverall =
+  (typeof InformationReadinessOverall)[keyof typeof InformationReadinessOverall];
+
+export const InformationReadinessOverall = {
+  READY_TO_GENERATE: "READY_TO_GENERATE",
+  CAN_GENERATE_WITH_CAVEATS: "CAN_GENERATE_WITH_CAVEATS",
+  INSUFFICIENT_TO_GENERATE: "INSUFFICIENT_TO_GENERATE",
+} as const;
+
+export interface InformationReadiness {
+  content_bank: ReadinessStatus;
+  compliance_constants: InformationReadinessComplianceConstants;
+  overall: InformationReadinessOverall;
+}
+
+export interface GapSummary {
+  total_gaps: number;
+  matrix_gap_count: number;
+  type_gap_count: number;
+  recommendation_failure_count: number;
+}
+
+export interface GapAnalysisResult {
+  matrix_gaps: MatrixGap[];
+  type_gaps: TypeGap[];
+  recommendation_gaps: RecommendationGap[];
+  information_readiness: InformationReadiness;
+  summary: GapSummary;
+}
+
+export type GapInputGapType =
+  (typeof GapInputGapType)[keyof typeof GapInputGapType];
+
+export const GapInputGapType = {
+  matrix: "matrix",
+  type: "type",
+  recommendation_failure: "recommendation_failure",
+} as const;
+
+export interface GapInput {
+  archetype?: string;
+  stage?: string;
+  document_type?: string;
+  gap_type: GapInputGapType;
+  persona?: string;
+  reason?: string;
+}
+
+export interface GenerateBriefRequest {
+  gap: GapInput;
+  information_readiness?: InformationReadiness;
+}
+
+export type InformationNeededSource =
+  (typeof InformationNeededSource)[keyof typeof InformationNeededSource];
+
+export const InformationNeededSource = {
+  content_bank: "content_bank",
+  compliance_constants: "compliance_constants",
+  external: "external",
+} as const;
+
+export interface InformationNeeded {
+  field: string;
+  description: string;
+  source: InformationNeededSource;
+}
+
+export interface ContentBrief {
+  title: string;
+  document_type: string;
+  archetypes: string[];
+  stages: string[];
+  key_messages: string[];
+  tone: string;
+  length_guidance: string;
+  compliance_considerations: string[];
+  source_material_pointers: string[];
+  information_needed: InformationNeeded[];
+}
+
+export interface GenerateBriefResponse {
+  brief: ContentBrief;
+  ready_to_generate: boolean;
+}
+
+export interface GenerateFromBriefRequest {
+  brief: ContentBrief;
+  override_information_gaps?: boolean;
+}
+
+export type FeatureUpdateRequestChangeType =
+  (typeof FeatureUpdateRequestChangeType)[keyof typeof FeatureUpdateRequestChangeType];
+
+export const FeatureUpdateRequestChangeType = {
+  addition: "addition",
+  modification: "modification",
+  removal: "removal",
+} as const;
+
+export interface FeatureUpdateRequest {
+  title: string;
+  description: string;
+  affected_features: string[];
+  change_type: FeatureUpdateRequestChangeType;
+  affects_compliance: boolean;
+  affects_tier1: boolean;
+}
+
+export type AffectedDocumentReviewPriority =
+  (typeof AffectedDocumentReviewPriority)[keyof typeof AffectedDocumentReviewPriority];
+
+export const AffectedDocumentReviewPriority = {
+  CRITICAL: "CRITICAL",
+  HIGH: "HIGH",
+  MEDIUM: "MEDIUM",
+  LOW: "LOW",
+} as const;
+
+export interface AffectedDocument {
+  document_id: string;
+  title: string;
+  tier: number;
+  detection_method: string;
+  detection_methods?: string[];
+  relevance_reason: string;
+  review_priority: AffectedDocumentReviewPriority;
+  current_status: string;
+}
+
+export type FeatureUpdateResultSummary = {
+  total_affected: number;
+  critical_count: number;
+  high_count: number;
+  changelog_entry_id: string;
+};
+
+export interface FeatureUpdateResult {
+  update_id: string;
+  affected_documents: AffectedDocument[];
+  review_queue: string[];
+  summary: FeatureUpdateResultSummary;
+}
+
+export interface FeatureUpdateQueueDoc {
+  id: string;
+  name: string;
+  tier: number;
+  type: string;
+  review_state: string;
+  lifecycle_status: string;
+}
+
+export interface FeatureUpdateQueue {
+  update_id: string;
+  total: number;
+  pending: number;
+  completed: number;
+  pending_documents: FeatureUpdateQueueDoc[];
+  completed_documents: FeatureUpdateQueueDoc[];
+}
+
 export type ListLeadsParams = {
   search?: string;
   stage?: string;

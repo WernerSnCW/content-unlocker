@@ -29,6 +29,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 2. **Lead History** (`/leads`, `/leads/:id`): Lead management with pipeline stages, detected personas, chronological send timelines, next-best-action suggestions
 3. **Content Management** (`/registry`, `/registry/:id`, `/content-bank`, `/changelog`): 17-document registry with tier-based dependency chains, compliance constants panel, propagation alerts (Tier 1 cascades 2 levels), audit changelog
 4. **Content Generation & QC** (`/generate`): Two separate Claude API calls — generator + evaluator with max 2 regeneration attempts, then MANUAL_REVIEW_REQUIRED. Documents always start as DRAFT.
+5. **Content Gap Analysis** (`/gaps`): Detects missing content via 3 signals — coverage matrix (archetype×stage), required doc types, recommendation engine failures. Generates AI briefs and feeds into generation pipeline.
+6. **Feature Update Cascade** (`/feature-updates`): Submit product changes → detect affected documents via 4 methods (Tier 1 propagation, semantic match, type match, compliance match) → flag REQUIRES_REVIEW → prioritised review queue.
 
 ### Key Business Rules
 
@@ -52,7 +54,7 @@ artifacts-monorepo/
 │   │   │   ├── documents/       # Registry + propagation
 │   │   │   ├── recommendation/  # Analyze/rank/confirm-send/email-draft
 │   │   │   ├── generation/      # Generate/regenerate/promote with QC
-│   │   │   ├── content/         # Content bank + personas
+│   │   │   ├── content/         # Content bank + personas + gaps + feature-update
 │   │   │   └── dashboard/       # Summary + activity + changelog + compliance
 │   │   └── src/data/            # Seed data (registry.json, leads.json, compliance_constants.json)
 │   ├── unlock-intel/            # React Vite frontend (port 22068)
@@ -107,7 +109,7 @@ Express 5 API server. Routes in `src/routes/`. Uses `@workspace/api-zod` for val
 
 React + Vite frontend. Uses generated React Query hooks from `@workspace/api-client-react`.
 
-- 9 pages: Dashboard, Recommend, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate
+- 11 pages: Dashboard, Recommend, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis, FeatureUpdates
 - Routing: wouter with base path from `import.meta.env.BASE_URL`
 - Design: Dark navy sidebar, institutional styling, status color system
 
@@ -127,6 +129,7 @@ Anthropic client configured via Replit AI Integrations proxy. No API key needed.
 
 - 17 documents in registry.json covering investor packs, case studies, briefs, email templates, persona guides
 - 3 sample leads at different pipeline stages
-- Compliance constants (BPR cap, VCT relief rate, pension IHT changes, etc.)
+- Compliance constants (BPR cap, VCT relief rate, pension IHT changes, EIS/SEIS rates, loss relief, annual limits, etc.)
+- Coverage matrix config (`lib/coverage-matrix.ts`): 18 archetype×stage cells + 6 required doc types + 7 compliance field expectations
 - Content bank markdown with messaging and positioning
 - 19 investor personas with signals, pain points, objections

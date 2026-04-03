@@ -28,9 +28,16 @@ import type {
   EmailDraft,
   EmailDraftBody,
   ErrorResponse,
+  FeatureUpdateQueue,
+  FeatureUpdateRequest,
+  FeatureUpdateResult,
+  GapAnalysisResult,
   GdocsExportResult,
   GdocsImportResult,
   GdocsStatus,
+  GenerateBriefRequest,
+  GenerateBriefResponse,
+  GenerateFromBriefRequest,
   GenerationBrief,
   GenerationResult,
   GetContentBankParams,
@@ -1931,6 +1938,431 @@ export function useGetPersonas<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetPersonasQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Detect content gaps across coverage matrix, document types, and recommendation failures
+ */
+export const getGetContentGapsUrl = () => {
+  return `/api/content/gaps`;
+};
+
+export const getContentGaps = async (
+  options?: RequestInit,
+): Promise<GapAnalysisResult> => {
+  return customFetch<GapAnalysisResult>(getGetContentGapsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetContentGapsQueryKey = () => {
+  return [`/api/content/gaps`] as const;
+};
+
+export const getGetContentGapsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getContentGaps>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getContentGaps>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetContentGapsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getContentGaps>>> = ({
+    signal,
+  }) => getContentGaps({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getContentGaps>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetContentGapsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getContentGaps>>
+>;
+export type GetContentGapsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Detect content gaps across coverage matrix, document types, and recommendation failures
+ */
+
+export function useGetContentGaps<
+  TData = Awaited<ReturnType<typeof getContentGaps>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getContentGaps>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetContentGapsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate a structured content brief for a detected gap
+ */
+export const getGenerateBriefUrl = () => {
+  return `/api/content/generate-brief`;
+};
+
+export const generateBrief = async (
+  generateBriefRequest: GenerateBriefRequest,
+  options?: RequestInit,
+): Promise<GenerateBriefResponse> => {
+  return customFetch<GenerateBriefResponse>(getGenerateBriefUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generateBriefRequest),
+  });
+};
+
+export const getGenerateBriefMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateBrief>>,
+    TError,
+    { data: BodyType<GenerateBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateBrief>>,
+  TError,
+  { data: BodyType<GenerateBriefRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateBrief"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateBrief>>,
+    { data: BodyType<GenerateBriefRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateBrief(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateBriefMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateBrief>>
+>;
+export type GenerateBriefMutationBody = BodyType<GenerateBriefRequest>;
+export type GenerateBriefMutationError = ErrorType<void>;
+
+/**
+ * @summary Generate a structured content brief for a detected gap
+ */
+export const useGenerateBrief = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateBrief>>,
+    TError,
+    { data: BodyType<GenerateBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateBrief>>,
+  TError,
+  { data: BodyType<GenerateBriefRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateBriefMutationOptions(options));
+};
+
+/**
+ * @summary Generate a document from a gap brief using the content generation pipeline
+ */
+export const getGenerateFromBriefUrl = () => {
+  return `/api/content/generate-from-brief`;
+};
+
+export const generateFromBrief = async (
+  generateFromBriefRequest: GenerateFromBriefRequest,
+  options?: RequestInit,
+): Promise<GenerationResult> => {
+  return customFetch<GenerationResult>(getGenerateFromBriefUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generateFromBriefRequest),
+  });
+};
+
+export const getGenerateFromBriefMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromBrief>>,
+    TError,
+    { data: BodyType<GenerateFromBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateFromBrief>>,
+  TError,
+  { data: BodyType<GenerateFromBriefRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateFromBrief"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateFromBrief>>,
+    { data: BodyType<GenerateFromBriefRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateFromBrief(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateFromBriefMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateFromBrief>>
+>;
+export type GenerateFromBriefMutationBody = BodyType<GenerateFromBriefRequest>;
+export type GenerateFromBriefMutationError = ErrorType<void>;
+
+/**
+ * @summary Generate a document from a gap brief using the content generation pipeline
+ */
+export const useGenerateFromBrief = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromBrief>>,
+    TError,
+    { data: BodyType<GenerateFromBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateFromBrief>>,
+  TError,
+  { data: BodyType<GenerateFromBriefRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateFromBriefMutationOptions(options));
+};
+
+/**
+ * @summary Submit a feature update and identify affected documents
+ */
+export const getSubmitFeatureUpdateUrl = () => {
+  return `/api/content/feature-update`;
+};
+
+export const submitFeatureUpdate = async (
+  featureUpdateRequest: FeatureUpdateRequest,
+  options?: RequestInit,
+): Promise<FeatureUpdateResult> => {
+  return customFetch<FeatureUpdateResult>(getSubmitFeatureUpdateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(featureUpdateRequest),
+  });
+};
+
+export const getSubmitFeatureUpdateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitFeatureUpdate>>,
+    TError,
+    { data: BodyType<FeatureUpdateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitFeatureUpdate>>,
+  TError,
+  { data: BodyType<FeatureUpdateRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitFeatureUpdate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitFeatureUpdate>>,
+    { data: BodyType<FeatureUpdateRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitFeatureUpdate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitFeatureUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitFeatureUpdate>>
+>;
+export type SubmitFeatureUpdateMutationBody = BodyType<FeatureUpdateRequest>;
+export type SubmitFeatureUpdateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Submit a feature update and identify affected documents
+ */
+export const useSubmitFeatureUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitFeatureUpdate>>,
+    TError,
+    { data: BodyType<FeatureUpdateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitFeatureUpdate>>,
+  TError,
+  { data: BodyType<FeatureUpdateRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitFeatureUpdateMutationOptions(options));
+};
+
+/**
+ * @summary Get the current review queue status for a feature update
+ */
+export const getGetFeatureUpdateQueueUrl = (updateId: string) => {
+  return `/api/content/feature-update/${updateId}/queue`;
+};
+
+export const getFeatureUpdateQueue = async (
+  updateId: string,
+  options?: RequestInit,
+): Promise<FeatureUpdateQueue> => {
+  return customFetch<FeatureUpdateQueue>(
+    getGetFeatureUpdateQueueUrl(updateId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFeatureUpdateQueueQueryKey = (updateId: string) => {
+  return [`/api/content/feature-update/${updateId}/queue`] as const;
+};
+
+export const getGetFeatureUpdateQueueQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFeatureUpdateQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  updateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFeatureUpdateQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFeatureUpdateQueueQueryKey(updateId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFeatureUpdateQueue>>
+  > = ({ signal }) =>
+    getFeatureUpdateQueue(updateId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!updateId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFeatureUpdateQueue>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFeatureUpdateQueueQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFeatureUpdateQueue>>
+>;
+export type GetFeatureUpdateQueueQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the current review queue status for a feature update
+ */
+
+export function useGetFeatureUpdateQueue<
+  TData = Awaited<ReturnType<typeof getFeatureUpdateQueue>>,
+  TError = ErrorType<unknown>,
+>(
+  updateId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFeatureUpdateQueue>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFeatureUpdateQueueQueryOptions(updateId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

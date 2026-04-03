@@ -2,8 +2,13 @@ import { Router, type IRouter } from "express";
 import { GetContentBankQueryParams } from "@workspace/api-zod";
 import contentBankText from "../../data/content/700_CONTENT_Bank_V4_CURRENT.md";
 import personaGuideText from "../../data/content/520_GUIDE_Investor_Personas_19_V1_CURRENT.md";
+import gapsRouter from "./gaps";
+import featureUpdateRouter from "./feature-update";
 
 const router: IRouter = Router();
+
+router.use(gapsRouter);
+router.use(featureUpdateRouter);
 
 function parseSections(text: string): { title: string; content: string }[] {
   const sections: { title: string; content: string }[] = [];

@@ -8,7 +8,9 @@ import {
   Sparkles,
   Search,
   Settings,
-  Bell
+  Bell,
+  Grid3X3,
+  RefreshCw,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -22,6 +24,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/content-bank", label: "Content Bank", icon: Library },
     { href: "/changelog", label: "Changelog", icon: History },
     { href: "/generate", label: "Content Generation", icon: FileText },
+    { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
+    { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
   ];
 
   return (

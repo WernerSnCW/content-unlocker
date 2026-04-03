@@ -1,0 +1,205 @@
+# BUILD B — Feature Update Document Cascade
+Version: 1.0
+Priority: MEDIUM
+Depends on: Build A (gap analysis) recommended but not required
+
+---
+
+## Overview
+
+When the Unlock product's features or functions change, documents across
+the registry may need to be updated. This build adds a Feature Update
+flow that:
+
+1. Accepts a description of what changed in the product
+2. Identifies all documents that reference or are affected by that change
+   via three methods: Tier 1 propagation, semantic search, and document
+   type matching
+3. Flags affected documents as REQUIRES_REVIEW with a specific reason
+   tied to the feature change
+4. Creates a prioritised review queue so affected documents are updated
+   in the right order
+
+---
+
+## Step 1 — Backend: Feature update endpoint
+
+Create a new endpoint: POST /api/content/feature-update
+
+Request body:
+```typescript
+{
+  title: string                    // short name for the change, e.g. "VCT Relief Rate Change"
+  description: string              // full description of what changed
+  affected_features: string[]      // list of product features/functions affected
+  change_type: "addition" | "modification" | "removal"
+  affects_compliance: boolean      // true if compliance figures changed
+  affects_tier1: boolean           // true if foundational product description changed
+}
+```
+
+Response body:
+```typescript
+{
+  update_id: string
+  affected_documents: Array<{
+    document_id: string
+    title: string
+    tier: number
+    detection_method: "tier1_propagation" | "semantic_match" | "type_match" | "compliance_match"
+    relevance_reason: string     // specific reason this document is affected
+    review_priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
+    current_status: string
+  }>
+  review_queue: Array<string>    // document IDs in recommended review order
+  summary: {
+    total_affected: number
+    critical_count: number
+    high_count: number
+    changelog_entry_id: string
+  }
+}
+```
+
+---
+
+## Step 2 — Backend: Affected document detection
+
+When a feature update is submitted, identify affected documents using
+all four detection methods simultaneously. A document may be detected
+by more than one method — record all methods, assign the highest
+resulting priority.
+
+**Method 1 — Tier 1 propagation:**
+If affects_tier1 is true, trigger the existing propagation cascade
+from all Tier 1 documents. All downstream dependents are flagged.
+Priority: CRITICAL for Tier 1 documents, HIGH for direct dependents,
+MEDIUM for second-order dependents.
+
+**Method 2 — Semantic match:**
+Pass the feature update description and affected_features list to Claude.
+Claude reads all document titles, metadata, and content summaries and
+identifies which documents mention or describe the changed feature.
+Claude must return:
+- The document ID
+- A specific quote or reference from the document that relates to the change
+- A confidence score (HIGH / MEDIUM / LOW)
+Include only HIGH and MEDIUM confidence matches. Discard LOW confidence.
+Priority: HIGH for HIGH confidence matches, MEDIUM for MEDIUM confidence.
+
+**Method 3 — Type match:**
+If affects_compliance is true, all documents of type "compliance / risk
+disclosure" and "pricing / terms summary" are automatically flagged
+regardless of semantic match.
+Priority: CRITICAL if affects_compliance is true.
+
+**Method 4 — Compliance constants match:**
+If affects_compliance is true, identify which compliance constants have
+changed (passed in affected_features). Find all documents whose content
+references those constant values directly. Flag them.
+Priority: HIGH.
+
+**Review priority rules:**
+A document receives the highest priority assigned by any detection method.
+CRITICAL > HIGH > MEDIUM > LOW.
+
+**Review order:**
+The review_queue orders documents as:
+1. CRITICAL first — Tier 1 documents before their dependents
+2. HIGH next
+3. MEDIUM last
+
+This ensures foundational documents are corrected before dependent
+documents are updated, preventing propagation of incorrect information.
+
+---
+
+## Step 3 — Backend: Flag and changelog
+
+For each affected document:
+- Set lifecycle_status to REQUIRES_REVIEW
+- Add a changelog entry with:
+  - action: FLAGGED_FOR_FEATURE_UPDATE
+  - detail: the update_id, change title, and relevance reason
+  - document_id
+
+Create a single parent changelog entry for the feature update itself
+recording the update title, description, total documents affected, and
+the update_id.
+
+Do not change document content at this stage — flagging and review
+queuing only. Content changes happen through the existing edit or
+Google Docs workflow.
+
+---
+
+## Step 4 — Frontend: Feature Update page
+
+Add a new page: /feature-updates (linked from main navigation or
+from the Document Registry page as a secondary action)
+
+**Submit a feature update:**
+A form with fields matching the request body:
+- Title (short text)
+- Description (textarea — encourage detail, this drives semantic search)
+- Affected features (tag input — add multiple features)
+- Change type selector (addition / modification / removal)
+- Toggles for affects_compliance and affects_tier1
+
+On submit, show a loading state with message:
+"Scanning registry for affected documents..."
+
+**Results view:**
+After submission, show a review queue page with:
+- A summary bar: X documents flagged, Y critical, Z high priority
+- The feature update title and description for reference
+- Documents listed in review order with:
+  - Document title and tier badge
+  - Detection method(s) that flagged it (shown as tags)
+  - Relevance reason (the specific reason it was flagged)
+  - Review priority badge (CRITICAL / HIGH / MEDIUM / LOW)
+  - Current status
+  - A "Review" button linking to the document detail page
+
+**Review tracking:**
+As the user works through the review queue, documents that are updated
+and promoted back to CURRENT are automatically removed from the queue.
+Show a progress indicator: "X of Y documents reviewed."
+
+When all documents in the queue are cleared, show a completion state
+with a summary of what was updated.
+
+---
+
+## Step 5 — Confirm with live tests
+
+Test 1 — Tier 1 propagation:
+- Submit a feature update with affects_tier1: true
+- Confirm all Tier 1 documents and their dependents are flagged
+- Confirm review order puts Tier 1 documents first
+- Confirm changelog entries are created for each flagged document
+
+Test 2 — Semantic match:
+- Submit a feature update with a description mentioning "EIS income
+  tax relief" and affected_features: ["EIS relief rate"]
+- Confirm Claude identifies documents that mention EIS relief
+- Confirm the relevance_reason for each match is specific
+  (not generic)
+- Confirm LOW confidence matches are excluded
+
+Test 3 — Compliance cascade:
+- Submit a feature update with affects_compliance: true
+- Confirm all compliance and pricing documents are flagged as CRITICAL
+- Confirm compliance constant references are detected in document content
+
+Test 4 — Review queue progression:
+- Work through the review queue — update and promote one CRITICAL document
+- Confirm it is removed from the queue
+- Confirm the progress indicator updates
+- Confirm the remaining queue is unchanged
+
+Test 5 — No false positives:
+- Submit a feature update describing a change to a very specific feature
+  (e.g. "updated the dashboard refresh interval")
+- Confirm only documents genuinely referencing that feature are flagged
+- Confirm documents with no connection to the feature are not included

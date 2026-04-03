@@ -69,6 +69,47 @@
       "value": "Instant Investment",
       "note": "Not ASA. Via SeedLegals.",
       "applies_to": ["120", "130"]
+    },
+    {
+      "key": "eis_income_tax_relief",
+      "label": "EIS income tax relief rate",
+      "value": "30%",
+      "note": "Enterprise Investment Scheme. Up to 30% income tax relief on investments up to £1M (£2M if at least £1M in knowledge-intensive companies).",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "eis_cgt_deferral",
+      "label": "EIS CGT deferral rate",
+      "value": "100%",
+      "note": "Capital gains tax deferral available on gains reinvested into EIS-qualifying companies. No cap on amount.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "seis_income_tax_relief",
+      "label": "SEIS income tax relief rate",
+      "value": "50%",
+      "note": "Seed Enterprise Investment Scheme. 50% income tax relief on investments up to the annual SEIS limit.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "loss_relief_rate",
+      "label": "Loss relief rate",
+      "value": "Up to effective 38.5% for EIS (after income tax relief), up to 72% for SEIS",
+      "note": "Calculated as: (investment - income tax relief) × marginal tax rate. Exact rate depends on investor's marginal rate.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "annual_eis_limit",
+      "label": "Annual EIS investment limit",
+      "value": "£1,000,000 (£2,000,000 if ≥£1M in knowledge-intensive companies)",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "annual_seis_limit",
+      "label": "Annual SEIS investment limit",
+      "value": "£200,000",
+      "note": "Increased from £100,000 from April 2023.",
+      "applies_to": ["all investor docs"]
     }
   ]
 }

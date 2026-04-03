@@ -599,6 +599,262 @@ export const GetPersonasResponseItem = zod.object({
 export const GetPersonasResponse = zod.array(GetPersonasResponseItem);
 
 /**
+ * @summary Detect content gaps across coverage matrix, document types, and recommendation failures
+ */
+export const GetContentGapsResponse = zod.object({
+  matrix_gaps: zod.array(
+    zod.object({
+      archetype: zod.string(),
+      stage: zod.string(),
+      gap_type: zod.enum(["matrix"]),
+      existing_documents: zod.array(zod.string()),
+    }),
+  ),
+  type_gaps: zod.array(
+    zod.object({
+      document_type: zod.string(),
+      gap_type: zod.enum(["type"]),
+      existing_documents: zod.array(zod.string()),
+    }),
+  ),
+  recommendation_gaps: zod.array(
+    zod.object({
+      persona: zod.string(),
+      stage: zod.string(),
+      gap_type: zod.enum(["recommendation_failure"]),
+      reason: zod.string(),
+    }),
+  ),
+  information_readiness: zod.object({
+    content_bank: zod.object({
+      status: zod.enum(["SUFFICIENT", "PARTIAL", "INSUFFICIENT"]),
+      detail: zod.string(),
+    }),
+    compliance_constants: zod.object({
+      status: zod.enum(["SUFFICIENT", "PARTIAL", "INSUFFICIENT"]),
+      detail: zod.string(),
+      missing_fields: zod.array(zod.string()),
+    }),
+    overall: zod.enum([
+      "READY_TO_GENERATE",
+      "CAN_GENERATE_WITH_CAVEATS",
+      "INSUFFICIENT_TO_GENERATE",
+    ]),
+  }),
+  summary: zod.object({
+    total_gaps: zod.number(),
+    matrix_gap_count: zod.number(),
+    type_gap_count: zod.number(),
+    recommendation_failure_count: zod.number(),
+  }),
+});
+
+/**
+ * @summary Generate a structured content brief for a detected gap
+ */
+export const GenerateBriefBody = zod.object({
+  gap: zod.object({
+    archetype: zod.string().optional(),
+    stage: zod.string().optional(),
+    document_type: zod.string().optional(),
+    gap_type: zod.enum(["matrix", "type", "recommendation_failure"]),
+    persona: zod.string().optional(),
+    reason: zod.string().optional(),
+  }),
+  information_readiness: zod
+    .object({
+      content_bank: zod.object({
+        status: zod.enum(["SUFFICIENT", "PARTIAL", "INSUFFICIENT"]),
+        detail: zod.string(),
+      }),
+      compliance_constants: zod.object({
+        status: zod.enum(["SUFFICIENT", "PARTIAL", "INSUFFICIENT"]),
+        detail: zod.string(),
+        missing_fields: zod.array(zod.string()),
+      }),
+      overall: zod.enum([
+        "READY_TO_GENERATE",
+        "CAN_GENERATE_WITH_CAVEATS",
+        "INSUFFICIENT_TO_GENERATE",
+      ]),
+    })
+    .optional(),
+});
+
+export const GenerateBriefResponse = zod.object({
+  brief: zod.object({
+    title: zod.string(),
+    document_type: zod.string(),
+    archetypes: zod.array(zod.string()),
+    stages: zod.array(zod.string()),
+    key_messages: zod.array(zod.string()),
+    tone: zod.string(),
+    length_guidance: zod.string(),
+    compliance_considerations: zod.array(zod.string()),
+    source_material_pointers: zod.array(zod.string()),
+    information_needed: zod.array(
+      zod.object({
+        field: zod.string(),
+        description: zod.string(),
+        source: zod.enum(["content_bank", "compliance_constants", "external"]),
+      }),
+    ),
+  }),
+  ready_to_generate: zod.boolean(),
+});
+
+/**
+ * @summary Generate a document from a gap brief using the content generation pipeline
+ */
+export const generateFromBriefBodyOverrideInformationGapsDefault = false;
+
+export const GenerateFromBriefBody = zod.object({
+  brief: zod.object({
+    title: zod.string(),
+    document_type: zod.string(),
+    archetypes: zod.array(zod.string()),
+    stages: zod.array(zod.string()),
+    key_messages: zod.array(zod.string()),
+    tone: zod.string(),
+    length_guidance: zod.string(),
+    compliance_considerations: zod.array(zod.string()),
+    source_material_pointers: zod.array(zod.string()),
+    information_needed: zod.array(
+      zod.object({
+        field: zod.string(),
+        description: zod.string(),
+        source: zod.enum(["content_bank", "compliance_constants", "external"]),
+      }),
+    ),
+  }),
+  override_information_gaps: zod
+    .boolean()
+    .default(generateFromBriefBodyOverrideInformationGapsDefault),
+});
+
+export const GenerateFromBriefResponse = zod.object({
+  document: zod.object({
+    id: zod.string(),
+    file_code: zod.string(),
+    type: zod.string(),
+    name: zod.string(),
+    filename: zod.string(),
+    tier: zod.number(),
+    category: zod.string(),
+    lifecycle_status: zod.string(),
+    review_state: zod.string(),
+    version: zod.number(),
+    last_reviewed: zod.string(),
+    description: zod.string(),
+    pipeline_stage_relevance: zod.array(zod.string()),
+    persona_relevance: zod.array(zod.string()),
+    upstream_dependencies: zod.array(zod.string()),
+    downstream_dependents: zod.array(zod.string()),
+    is_generated: zod.boolean(),
+    generation_brief_id: zod.string().nullish(),
+    generation_attempt: zod.number().nullish(),
+    qc_report_id: zod.string().nullish(),
+    source_trace: zod.array(
+      zod.object({
+        claim_area: zod.string(),
+        source_document_id: zod.string(),
+        source_section: zod.string(),
+        source_excerpt_key: zod.string(),
+      }),
+    ),
+    content: zod.string().nullish(),
+    gdoc_id: zod.string().nullish(),
+    gdoc_url: zod.string().nullish(),
+  }),
+  generated_content: zod.string(),
+  qc_report: zod.object({
+    overall: zod.string(),
+    checks: zod.array(
+      zod.object({
+        check_id: zod.string(),
+        label: zod.string(),
+        result: zod.string(),
+        offending_text: zod.string().nullish(),
+        correct_version: zod.string().nullish(),
+        source: zod.string().nullish(),
+      }),
+    ),
+    fail_count: zod.number(),
+    warnings: zod.array(zod.string()),
+    qc_attempt: zod.number(),
+  }),
+});
+
+/**
+ * @summary Submit a feature update and identify affected documents
+ */
+export const SubmitFeatureUpdateBody = zod.object({
+  title: zod.string(),
+  description: zod.string(),
+  affected_features: zod.array(zod.string()),
+  change_type: zod.enum(["addition", "modification", "removal"]),
+  affects_compliance: zod.boolean(),
+  affects_tier1: zod.boolean(),
+});
+
+export const SubmitFeatureUpdateResponse = zod.object({
+  update_id: zod.string(),
+  affected_documents: zod.array(
+    zod.object({
+      document_id: zod.string(),
+      title: zod.string(),
+      tier: zod.number(),
+      detection_method: zod.string(),
+      detection_methods: zod.array(zod.string()).optional(),
+      relevance_reason: zod.string(),
+      review_priority: zod.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]),
+      current_status: zod.string(),
+    }),
+  ),
+  review_queue: zod.array(zod.string()),
+  summary: zod.object({
+    total_affected: zod.number(),
+    critical_count: zod.number(),
+    high_count: zod.number(),
+    changelog_entry_id: zod.string(),
+  }),
+});
+
+/**
+ * @summary Get the current review queue status for a feature update
+ */
+export const GetFeatureUpdateQueueParams = zod.object({
+  updateId: zod.coerce.string(),
+});
+
+export const GetFeatureUpdateQueueResponse = zod.object({
+  update_id: zod.string(),
+  total: zod.number(),
+  pending: zod.number(),
+  completed: zod.number(),
+  pending_documents: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      tier: zod.number(),
+      type: zod.string(),
+      review_state: zod.string(),
+      lifecycle_status: zod.string(),
+    }),
+  ),
+  completed_documents: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      tier: zod.number(),
+      type: zod.string(),
+      review_state: zod.string(),
+      lifecycle_status: zod.string(),
+    }),
+  ),
+});
+
+/**
  * @summary Generate a document from a brief
  */
 export const GenerateDocumentBody = zod.object({
