@@ -1,0 +1,237 @@
+# FIX + ENHANCEMENT — Aircall Speaker Label Normalisation
+Version: 1.0
+Area: Recommendation Engine — Batch Upload (055)
+Depends on: 073 (Aircall name extraction) must be complete first
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+---
+
+## Context
+
+Aircall transcripts contain timestamped speaker turns from two
+voices: the agent and the investor. Without speaker normalisation,
+Claude analyses the full transcript as a single voice — meaning
+the agent's sales language, EIS explanations, and objection
+handling are treated as investor signals. This produces inflated
+persona confidence, incorrect stage detection, and false
+objection identification.
+
+This fix ensures the parse endpoint identifies which speaker is
+the investor and which is the agent, normalises the labels, and
+signals this to the Claude analyze prompt so analysis focuses
+only on the investor's words.
+
+---
+
+## Step 1 — Detect Aircall format and normalise speaker labels
+
+Update POST /api/recommendation/parse-transcripts.
+
+**Aircall format detection:**
+A file is in Aircall format if it contains 3 or more lines
+matching the pattern: `[HH:MM:SS] SpeakerLabel: text`
+
+If Aircall format is detected, run the following normalisation:
+
+**1. Extract all unique speaker labels from the transcript**
+
+Scan every line for the pattern `[HH:MM:SS] Label:` and collect
+all unique Label values. There will typically be 2 speakers.
+
+**2. Identify the agent speaker label**
+
+The agent label is identified by checking (case-insensitive) for:
+- Labels containing: "agent", "rep", "caller", "sales", "unlock"
+- Labels matching known agent names: "tom", "thomas",
+  "claudia", "william"
+- If none of the above match: treat the speaker who appears
+  first in the transcript as the agent
+
+**3. Identify the investor speaker label**
+
+Every label that is not the agent label is the investor.
+If there are more than 2 unique labels, all non-agent labels
+are treated as investor turns (conference calls, etc.).
+
+**4. Normalise all speaker labels in the transcript**
+
+Replace every occurrence of the agent label with "Agent" and
+every occurrence of investor labels with "Investor":
+
+Before:
+```
+[00:00:03] Tom: Good morning, this is Tom from Unlock.
+[00:00:08] Duncan Stewart: Oh hi yes, I was expecting your call.
+```
+
+After:
+```
+[00:00:03] Agent: Good morning, this is Tom from Unlock.
+[00:00:08] Investor: Oh hi yes, I was expecting your call.
+```
+
+**5. Prepend a transcript header**
+
+Add to the beginning of the normalised content:
+```
+[TRANSCRIPT FORMAT: Aircall]
+[INVESTOR SPEAKER: {original investor label}]
+[AGENT SPEAKER: {original agent label}]
+[SPEAKERS NORMALISED: true]
+---
+```
+
+**6. Return the normalised content** as the content field in
+the parse response. The original raw content is discarded.
+
+If the file is NOT in Aircall format, return content unchanged.
+Do not prepend any header. Do not break existing behaviour.
+
+---
+
+## Step 2 — Update the analyze-batch Claude prompt
+
+Update the Claude prompt used by POST /api/recommendation/analyze-batch
+to instruct Claude on how to use the speaker labels.
+
+Add the following to the beginning of the existing analyze prompt:
+
+```
+TRANSCRIPT ANALYSIS INSTRUCTIONS
+
+This transcript may be in Aircall format with timestamped speaker
+turns and normalised speaker labels.
+
+If the transcript contains [TRANSCRIPT FORMAT: Aircall] in the
+header:
+- "Investor" speaker turns are the ONLY source of persona signals,
+  objection detection, readiness signals, and information gaps
+- "Agent" speaker turns provide context about what was asked or
+  demonstrated, but must NOT be used as signals of the investor's
+  views, knowledge, or emotional state
+- Do not treat the Agent's EIS explanations as investor familiarity
+- Do not treat the Agent's objection handling as investor objections
+- Do use the Agent's questions to understand which signals were
+  probed during the call
+
+If the transcript does NOT contain this header, analyse the full
+text as a single voice (free-form transcript).
+```
+
+---
+
+## Step 3 — Update the single analyze endpoint
+
+Apply the same prompt update to POST /api/recommendation/analyze
+(the single transcript endpoint, not just batch).
+
+The single analyze endpoint will also receive Aircall transcripts
+via the existing single-upload flow. It must handle the normalised
+format correctly.
+
+Do not change the endpoint path, request body, or response shape.
+The prompt update is additive.
+
+---
+
+## Step 4 — Confirm with live tests
+
+**Create a test Aircall transcript** with this exact content and
+save it as test_aircall.txt:
+
+```
+[TRANSCRIPT FORMAT: Aircall]
+[INVESTOR SPEAKER: Sarah Mitchell]
+[AGENT SPEAKER: Tom]
+[SPEAKERS NORMALISED: true]
+---
+[00:00:03] Agent: Good morning Sarah, this is Tom from Unlock.
+[00:00:07] Investor: Hi Tom, yes I was expecting your call.
+[00:00:11] Agent: Great. So as I mentioned, EIS can give you 30%
+  income tax relief immediately on the amount invested.
+[00:00:18] Investor: Yes I saw that in the documents you sent.
+  To be honest I'm still not sure I fully understand how the
+  loss relief works in practice.
+[00:00:27] Agent: Happy to walk through that. So if the company
+  were to fail completely...
+[00:00:32] Investor: Right, and you mentioned something about
+  38 pence? I found that confusing.
+[00:00:38] Agent: Exactly — for an additional rate taxpayer
+  the effective downside is around 38.5p per pound after all
+  reliefs are applied.
+[00:00:45] Investor: OK that does make it sound less scary.
+  My main worry is that my IFA keeps telling me he can't advise
+  on this, which makes me nervous.
+[00:00:54] Agent: That's completely normal — IFAs are restricted
+  from advising on individual EIS companies by regulation.
+[00:01:01] Investor: I see. I'd probably want to speak to my
+  accountant before I commit to anything.
+```
+
+Test 1 — Speaker detection:
+- Upload test_aircall.txt via parse endpoint
+- Confirm "Tom" is detected as Agent speaker
+- Confirm "Sarah Mitchell" is detected as Investor speaker
+- Confirm all [Agent:] and [Investor:] labels appear correctly
+  in the normalised output
+
+Test 2 — Analysis focuses on investor:
+- Run POST /api/recommendation/analyze with the normalised
+  transcript
+- Confirm primary_issue is OBJECTION_TO_RESOLVE or
+  INFORMATION_GAP (not READY_TO_CLOSE — Sarah has clear blockers)
+- Confirm blocking_objections includes the accountant/IFA blocker
+  — "I'd probably want to speak to my accountant"
+- Confirm information_gaps includes loss relief confusion
+  — "I found that confusing"
+- Confirm the agent's EIS explanation ("38.5p per pound") is NOT
+  logged as an investor signal of EIS familiarity
+- Confirm stage is Outreach or Called — not Demo Complete
+
+Test 3 — Non-Aircall transcript unchanged:
+- Upload a plain paragraph transcript (no timestamps)
+- Confirm parse endpoint returns content unchanged
+- Confirm no header is prepended
+- Confirm analysis runs normally
+
+Test 4 — Batch upload with Aircall transcripts:
+- Upload 2 Aircall transcripts via the batch UI
+- Confirm both are normalised before analysis
+- Confirm analysis results reflect investor signals only
+- Confirm investor names appear as card titles
+
+Test 5 — Edge case: single speaker transcript:
+- Upload an Aircall-format file with only one speaker label
+- Confirm it is treated as investor-only and analysed normally
+- Confirm no crash
+
+---
+
+## Final report
+
+Aircall format detection: WORKING / BROKEN
+Agent speaker correctly identified: YES / NO (specify which
+  label was detected as agent in the test transcript)
+Investor speaker correctly identified: YES / NO
+Speaker labels normalised in output: YES / NO
+Header prepended correctly: YES / NO
+Single analyze endpoint updated: YES / NO
+Batch analyze prompt updated: YES / NO
+
+Analysis test results:
+- primary_issue correct (OBJECTION or INFO_GAP, not READY): YES / NO
+- Accountant blocker detected: YES / NO
+- Loss relief confusion detected: YES / NO
+- Agent EIS explanation NOT logged as investor signal: YES / NO
+- Stage not inflated by agent knowledge: YES / NO
+
+Non-Aircall transcripts unchanged: CONFIRMED / BROKEN

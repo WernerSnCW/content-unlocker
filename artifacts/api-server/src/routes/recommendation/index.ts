@@ -29,6 +29,62 @@ const DATE_PATTERNS = [
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\d{1,2}\b/gi,
 ];
 
+const AIRCALL_LINE_RX = /^\[(\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*/;
+const AGENT_KEYWORDS = ["agent", "rep", "caller", "sales", "unlock"];
+const AGENT_NAMES = ["tom", "thomas", "claudia", "william"];
+
+function isAircallFormat(content: string): boolean {
+  const lines = content.split("\n");
+  let matchCount = 0;
+  for (const line of lines) {
+    if (AIRCALL_LINE_RX.test(line.trim())) matchCount++;
+    if (matchCount >= 3) return true;
+  }
+  return false;
+}
+
+function identifyAgentLabel(labels: string[], lines: string[]): string {
+  for (const label of labels) {
+    const lower = label.toLowerCase();
+    if (AGENT_KEYWORDS.some((kw) => lower.includes(kw))) return label;
+  }
+  for (const label of labels) {
+    const lower = label.toLowerCase().trim();
+    if (AGENT_NAMES.includes(lower)) return label;
+  }
+  for (const line of lines) {
+    const match = line.trim().match(AIRCALL_LINE_RX);
+    if (match) return match[2].trim();
+  }
+  return labels[0];
+}
+
+function normaliseAircallTranscript(content: string): { content: string; agentLabel: string; investorLabel: string } {
+  const lines = content.split("\n");
+  const labelSet = new Set<string>();
+  for (const line of lines) {
+    const match = line.trim().match(AIRCALL_LINE_RX);
+    if (match) labelSet.add(match[2].trim());
+  }
+  const labels = Array.from(labelSet);
+  if (labels.length === 0) return { content, agentLabel: "Unknown", investorLabel: "Unknown" };
+
+  const agentLabel = identifyAgentLabel(labels, lines);
+  const investorLabels = labels.filter((l) => l !== agentLabel);
+  const investorLabel = investorLabels.length > 0 ? investorLabels.join(" / ") : labels.length === 1 ? labels[0] : "Unknown";
+
+  const normalised = lines.map((line) => {
+    const match = line.trim().match(AIRCALL_LINE_RX);
+    if (!match) return line;
+    const speaker = match[2].trim();
+    const replacement = speaker === agentLabel ? "Agent" : "Investor";
+    return line.replace(`${match[2]}:`, `${replacement}:`);
+  });
+
+  const header = `[TRANSCRIPT FORMAT: Aircall]\n[INVESTOR SPEAKER: ${investorLabel}]\n[AGENT SPEAKER: ${agentLabel}]\n[SPEAKERS NORMALISED: true]\n---`;
+  return { content: `${header}\n${normalised.join("\n")}`, agentLabel, investorLabel };
+}
+
 function extractInvestorName(filename: string): string | null {
   let name = filename.replace(/\.(txt|docx)$/i, "");
   name = name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
@@ -79,27 +135,35 @@ router.post("/recommendation/parse-transcripts", upload.array("files", MAX_FILES
 
     const ext = file.originalname.toLowerCase().split(".").pop();
 
+    let rawText = "";
     if (ext === "txt") {
-      const text = file.buffer.toString("utf-8").trim();
-      if (!text) {
+      rawText = file.buffer.toString("utf-8").trim();
+      if (!rawText) {
         parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "File is empty" });
-      } else {
-        parsed.push({ filename: file.originalname, content: text, investor_name: investorName });
+        continue;
       }
     } else if (ext === "docx") {
       try {
         const result = await mammoth.extractRawText({ buffer: file.buffer });
-        const text = result.value.trim();
-        if (!text) {
+        rawText = result.value.trim();
+        if (!rawText) {
           parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "Document body is empty" });
-        } else {
-          parsed.push({ filename: file.originalname, content: text, investor_name: investorName });
+          continue;
         }
       } catch {
         parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "Failed to parse .docx file — file may be corrupt" });
+        continue;
       }
     } else {
       parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: `Unsupported file format: .${ext}. Only .txt and .docx are supported.` });
+      continue;
+    }
+
+    if (isAircallFormat(rawText)) {
+      const normalised = normaliseAircallTranscript(rawText);
+      parsed.push({ filename: file.originalname, content: normalised.content, investor_name: investorName });
+    } else {
+      parsed.push({ filename: file.originalname, content: rawText, investor_name: investorName });
     }
   }
 
@@ -152,7 +216,20 @@ router.post("/recommendation/analyze-batch", async (req, res): Promise<void> => 
         messages: [
           {
             role: "user",
-            content: `Analyze this investor call transcript and return structured JSON.
+            content: `TRANSCRIPT ANALYSIS INSTRUCTIONS
+
+This transcript may be in Aircall format with timestamped speaker turns and normalised speaker labels.
+
+If the transcript contains [TRANSCRIPT FORMAT: Aircall] in the header:
+- "Investor" speaker turns are the ONLY source of persona signals, objection detection, readiness signals, and information gaps
+- "Agent" speaker turns provide context about what was asked or demonstrated, but must NOT be used as signals of the investor's views, knowledge, or emotional state
+- Do not treat the Agent's EIS explanations as investor familiarity
+- Do not treat the Agent's objection handling as investor objections
+- Do use the Agent's questions to understand which signals were probed during the call
+
+If the transcript does NOT contain this header, analyse the full text as a single voice (free-form transcript).
+
+Analyze this investor call transcript and return structured JSON.
 
 TRANSCRIPT:
 ${transcriptWithMeta}
@@ -265,7 +342,20 @@ router.post("/recommendation/analyze", async (req, res): Promise<void> => {
       messages: [
         {
           role: "user",
-          content: `Analyze this investor call transcript and return structured JSON.
+          content: `TRANSCRIPT ANALYSIS INSTRUCTIONS
+
+This transcript may be in Aircall format with timestamped speaker turns and normalised speaker labels.
+
+If the transcript contains [TRANSCRIPT FORMAT: Aircall] in the header:
+- "Investor" speaker turns are the ONLY source of persona signals, objection detection, readiness signals, and information gaps
+- "Agent" speaker turns provide context about what was asked or demonstrated, but must NOT be used as signals of the investor's views, knowledge, or emotional state
+- Do not treat the Agent's EIS explanations as investor familiarity
+- Do not treat the Agent's objection handling as investor objections
+- Do use the Agent's questions to understand which signals were probed during the call
+
+If the transcript does NOT contain this header, analyse the full text as a single voice (free-form transcript).
+
+Analyze this investor call transcript and return structured JSON.
 
 TRANSCRIPT:
 ${transcript}

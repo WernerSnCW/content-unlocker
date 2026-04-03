@@ -81,8 +81,8 @@ artifacts-monorepo/
 
 ## Additional API Routes (Builds 055/058/059)
 
-- `POST /api/recommendation/parse-transcripts` — multipart file upload (.txt/.docx, max 20 files, 500KB each); auto-extracts `investor_name` from Aircall-style filenames (e.g., `john_smith_2026-04-03.txt` → "John Smith")
-- `POST /api/recommendation/analyze-batch` — sequential Claude analysis of multiple transcripts (max 20); accepts `investor_name` per transcript, prepends CALL METADATA block, returns `investor_name` in results
+- `POST /api/recommendation/parse-transcripts` — multipart file upload (.txt/.docx, max 20 files, 500KB each); auto-extracts `investor_name` from Aircall-style filenames; detects Aircall timestamped format (`[HH:MM:SS] Speaker:`) and normalises speaker labels to Agent/Investor with header block
+- `POST /api/recommendation/analyze-batch` — sequential Claude analysis of multiple transcripts (max 20); accepts `investor_name` per transcript, prepends CALL METADATA block, returns `investor_name` in results; Aircall-aware prompt focuses on investor signals only
 - `GET /api/call-framework/questions` — returns 4 call framework questions with purpose/signals/listen_for
 - `GET /api/content/gaps/history` — list saved gap snapshots
 - `GET /api/content/gaps/history/:id` — retrieve specific snapshot
