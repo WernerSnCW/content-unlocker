@@ -6,3 +6,9 @@ id = "NYonEaQmQYIkZJTwWNyPi"
 uri = "file://HEALTH_CHECK_055_058_059.md"
 type = "text"
 title = "Health Check — Post Build Session (055, 058, 059)"
+
+[[outputs]]
+id = "SvqQkyM6pxX1rEHNPDT2J"
+uri = "file://FIX_REPORT_GAP_RANK.md"
+type = "text"
+title = "Fix Report — Gap Snapshot Accumulation + Rank Field Normalisation"

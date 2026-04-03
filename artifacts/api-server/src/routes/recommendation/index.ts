@@ -520,6 +520,8 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
 
     const rankedWithDetails = (ranking.ranked_documents || []).map((r: any) => {
       const doc = eligible.find((d) => d.id === r.document_id);
+      const normRank = r.rank !== undefined ? r.rank : (r.ranking !== undefined ? r.ranking : null);
+      const normScore = r.relevance_score !== undefined ? r.relevance_score : (r.score !== undefined ? r.score : null);
       return {
         document_id: r.document_id,
         file_code: doc?.file_code || "",
@@ -527,6 +529,8 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
         description: doc?.description || "",
         tier: doc?.tier || 3,
         priority: r.priority,
+        rank: normRank,
+        relevance_score: normScore,
         rationale: r.rationale,
       };
     });
@@ -546,6 +550,8 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       description: d.description,
       tier: d.tier,
       priority: i + 1,
+      rank: i + 1,
+      relevance_score: null,
       rationale: d.description,
     }));
 

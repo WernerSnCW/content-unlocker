@@ -1,0 +1,149 @@
+# FIX SESSION — Gap Snapshot Accumulation + Rank Field Normalisation
+Version: 1.0
+
+Two small fixes. Complete both in this session.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+---
+
+## Fix 1 — Gap snapshot created on every page load
+**Priority:** MEDIUM — will inflate DB and file system under daily use
+**File:** The GET /api/content/gaps route handler
+
+### The problem
+Every call to GET /api/content/gaps automatically saves a snapshot
+to the database and writes a JSON file to the project directory.
+React Query refetches this endpoint on page load, tab focus, and
+window refocus. In daily use this will create dozens of redundant
+snapshots per session with no meaningful difference between them.
+
+### The fix
+Make snapshot saving opt-in via a query parameter.
+
+Change the behaviour of GET /api/content/gaps:
+- By default (no query parameter): return gap analysis results
+  without saving a snapshot. Do not write to the database or
+  the file system.
+- With `?save=true`: run the gap analysis AND save a snapshot
+  to the database, write the JSON file, and update the manifest.
+  Return the full response including snapshot_id and snapshot_file
+  as before.
+
+The response shape must not change when ?save=true is used.
+When ?save=true is not present, omit snapshot_id and snapshot_file
+from the response — do not include them as null or undefined.
+
+Update the frontend gaps page:
+- Remove any automatic snapshot-triggering behaviour on page load
+- Add a "Save Snapshot" button that calls GET /api/content/gaps?save=true
+- Show the snapshot confirmation bar only after a manual save,
+  not on every page load
+- The Previous Runs history panel should still load via
+  GET /api/content/gaps/history (unaffected by this change)
+
+### Confirm with live tests
+
+Test 1 — Default behaviour (no save):
+- Call GET /api/content/gaps (no query parameter)
+- Confirm gap results are returned correctly
+- Confirm no new row is created in gap_snapshots table
+- Confirm no new file is written to reports/gap-analysis/
+- Confirm snapshot_id and snapshot_file are absent from response
+
+Test 2 — Explicit save:
+- Call GET /api/content/gaps?save=true
+- Confirm gap results are returned correctly
+- Confirm a new row IS created in gap_snapshots table
+- Confirm a new JSON file IS written to reports/gap-analysis/
+- Confirm manifest.json is updated
+- Confirm snapshot_id and snapshot_file are present in response
+
+Test 3 — Frontend:
+- Open the /gaps page
+- Confirm no snapshot is created on page load (check DB count
+  before and after — count should not increase)
+- Click "Save Snapshot" button
+- Confirm snapshot is created and confirmation bar appears
+- Confirm Previous Runs panel shows the new snapshot
+
+---
+
+## Fix 2 — Rank response field naming varies
+**Priority:** LOW — currently handled gracefully but creates
+inconsistent data
+**File:** The POST /api/recommendation/rank route handler
+
+### The problem
+The rank endpoint passes Claude's response directly to the
+frontend without normalising field names. Claude occasionally
+returns:
+- `ranking` instead of `rank`
+- `score` instead of `relevance_score`
+
+The frontend handles both gracefully but the inconsistency means
+downstream code cannot rely on field names being stable. The Zod
+schema doesn't enforce AI output structure.
+
+### The fix
+Add a normalisation step in the rank endpoint after Claude's
+response is parsed, before returning the response to the caller.
+
+For each document in the ranked results, normalise to consistent
+field names:
+- If `ranking` is present and `rank` is absent: copy `ranking`
+  to `rank`
+- If `score` is present and `relevance_score` is absent: copy
+  `score` to `relevance_score`
+- If neither variant is present for a field: set the canonical
+  field to null
+
+Apply this normalisation after Claude's response is parsed —
+do not change the Claude prompt or the Zod input schema.
+
+The canonical output field names are: `rank` and `relevance_score`.
+After normalisation, every document in the response must have
+both fields, regardless of what Claude returned.
+
+### Confirm with live tests
+
+Test 1 — Normalisation applied:
+- POST /api/recommendation/rank with a valid request
+- Confirm every document in the response has a `rank` field
+  (integer or null — never undefined)
+- Confirm every document in the response has a `relevance_score`
+  field (number or null — never undefined)
+- Confirm no document has `ranking` or `score` as top-level fields
+  in the response (they may remain in the raw Claude output but
+  must not appear in the API response)
+
+Test 2 — Existing rank functionality unchanged:
+- Confirm the rank endpoint still returns documents in the
+  correct order
+- Confirm the relevance_reason field (if present) is unaffected
+- Confirm the endpoint does not crash if Claude returns an
+  unexpected structure
+
+---
+
+## Final report
+
+Fix 1 — Gap snapshot accumulation:
+- Default behaviour (no save): CONFIRMED no DB write / BROKEN
+- Explicit save (?save=true): CONFIRMED saves correctly / BROKEN
+- Frontend Save Snapshot button: WORKING / NOT IMPLEMENTED
+- DB row count stable on page load: YES / NO
+
+Fix 2 — Rank field normalisation:
+- rank field always present: YES / NO
+- relevance_score field always present: YES / NO
+- ranking and score absent from response: YES / NO
+- Rank order unchanged: YES / NO

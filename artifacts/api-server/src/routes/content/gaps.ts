@@ -199,6 +199,13 @@ router.get("/content/gaps", async (req, res): Promise<void> => {
       },
     };
 
+    const shouldSave = req.query.save === "true";
+
+    if (!shouldSave) {
+      res.json(gapResult);
+      return;
+    }
+
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const snapshotId = `gap_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}_${randomUUID().slice(0, 6)}`;

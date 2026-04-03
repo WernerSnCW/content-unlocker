@@ -68,6 +68,8 @@ export default function GapAnalysis() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [viewingSnapshot, setViewingSnapshot] = useState<any>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<{ id: string; file: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
@@ -79,13 +81,22 @@ export default function GapAnalysis() {
     setHistoryLoading(false);
   };
 
+  const handleSaveSnapshot = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/content/gaps?save=true`);
+      const json = await res.json();
+      if (json.snapshot_id) {
+        setSavedSnapshot({ id: json.snapshot_id, file: json.snapshot_file });
+        fetchHistory();
+      }
+    } catch {}
+    setSaving(false);
+  };
+
   useEffect(() => {
     if (historyOpen && snapshots.length === 0) fetchHistory();
   }, [historyOpen]);
-
-  useEffect(() => {
-    if (data && (data as any).snapshot_id) fetchHistory();
-  }, [data]);
 
   const handleSaveNotes = async (id: string) => {
     const notes = editingNotes[id];
@@ -284,18 +295,20 @@ export default function GapAnalysis() {
           <p className="text-muted-foreground mt-1">Identify missing content across archetypes, stages, and document types</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button size="sm" variant="outline" onClick={handleSaveSnapshot} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+            Save Snapshot
+          </Button>
           <OverallReadiness overall={gaps.information_readiness.overall} />
           <Badge variant="outline" className="text-lg px-4 py-1">{gaps.summary.total_gaps} gaps</Badge>
         </div>
       </div>
 
-      {gapsAny.snapshot_id && (
-        <div className={`p-3 rounded-md text-sm flex items-center justify-between ${gapsAny.save_warning ? "bg-amber-500/10 border border-amber-500/30 text-amber-400" : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"}`}>
+      {savedSnapshot && (
+        <div className="p-3 rounded-md text-sm flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
           <div className="flex items-center gap-2">
-            {gapsAny.save_warning ? <AlertTriangle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {gapsAny.save_warning
-              ? `Results shown but snapshot could not be saved — ${gapsAny.save_warning}`
-              : `Snapshot saved — ${gapsAny.snapshot_id} · ${gapsAny.snapshot_file}`}
+            <Save className="w-4 h-4" />
+            Snapshot saved — {savedSnapshot.id} · {savedSnapshot.file}
           </div>
         </div>
       )}
