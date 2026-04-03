@@ -19,6 +19,31 @@ const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "
 const MAX_FILES = 20;
 const MAX_FILE_SIZE = 500 * 1024;
 
+const NOISE_WORDS = new Set(["call", "recording", "transcript", "aircall", "call-recording", "rec", "audio", "voicemail", "vm"]);
+const DATE_PATTERNS = [
+  /\b\d{4}-\d{2}-\d{2}\b/g,
+  /\b\d{2}-\d{2}-\d{4}\b/g,
+  /\b\d{2}\/\d{2}\/\d{4}\b/g,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*\d{1,2}(?:\s*,?\s*\d{4})?\b/gi,
+  /\b\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(?:\s*\d{4})?\b/gi,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\d{1,2}\b/gi,
+];
+
+function extractInvestorName(filename: string): string | null {
+  let name = filename.replace(/\.(txt|docx)$/i, "");
+  name = name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const pattern of DATE_PATTERNS) {
+    name = name.replace(pattern, " ");
+  }
+  name = name.replace(/\s+/g, " ").trim();
+  const words = name.split(" ").filter((w) => !NOISE_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
+  if (words.length < 2 || words.length > 4) return null;
+  if (words.some((w) => /\d/.test(w))) return null;
+  const titleCased = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+  if (titleCased.length < 3) return null;
+  return titleCased;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -42,11 +67,13 @@ router.post("/recommendation/parse-transcripts", upload.array("files", MAX_FILES
     return;
   }
 
-  const parsed: Array<{ filename: string; content: string; error?: string }> = [];
+  const parsed: Array<{ filename: string; content: string; investor_name: string | null; error?: string }> = [];
 
   for (const file of files) {
+    const investorName = extractInvestorName(file.originalname);
+
     if (file.size > MAX_FILE_SIZE) {
-      parsed.push({ filename: file.originalname, content: "", error: `File exceeds ${MAX_FILE_SIZE / 1024}KB size limit (${Math.round(file.size / 1024)}KB)` });
+      parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: `File exceeds ${MAX_FILE_SIZE / 1024}KB size limit (${Math.round(file.size / 1024)}KB)` });
       continue;
     }
 
@@ -55,24 +82,24 @@ router.post("/recommendation/parse-transcripts", upload.array("files", MAX_FILES
     if (ext === "txt") {
       const text = file.buffer.toString("utf-8").trim();
       if (!text) {
-        parsed.push({ filename: file.originalname, content: "", error: "File is empty" });
+        parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "File is empty" });
       } else {
-        parsed.push({ filename: file.originalname, content: text });
+        parsed.push({ filename: file.originalname, content: text, investor_name: investorName });
       }
     } else if (ext === "docx") {
       try {
         const result = await mammoth.extractRawText({ buffer: file.buffer });
         const text = result.value.trim();
         if (!text) {
-          parsed.push({ filename: file.originalname, content: "", error: "Document body is empty" });
+          parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "Document body is empty" });
         } else {
-          parsed.push({ filename: file.originalname, content: text });
+          parsed.push({ filename: file.originalname, content: text, investor_name: investorName });
         }
       } catch {
-        parsed.push({ filename: file.originalname, content: "", error: "Failed to parse .docx file — file may be corrupt" });
+        parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: "Failed to parse .docx file — file may be corrupt" });
       }
     } else {
-      parsed.push({ filename: file.originalname, content: "", error: `Unsupported file format: .${ext}. Only .txt and .docx are supported.` });
+      parsed.push({ filename: file.originalname, content: "", investor_name: investorName, error: `Unsupported file format: .${ext}. Only .txt and .docx are supported.` });
     }
   }
 
@@ -99,16 +126,24 @@ router.post("/recommendation/analyze-batch", async (req, res): Promise<void> => 
   const compactPersonaRef = personaGuide.slice(0, 6000);
   const results: Array<{
     filename: string;
+    investor_name: string | null;
     status: "success" | "error";
     analysis?: any;
     error?: string;
   }> = [];
 
   for (const item of transcripts) {
+    const investorName = item.investor_name || null;
+
     if (!item.content || !item.content.trim()) {
-      results.push({ filename: item.filename || "unknown", status: "error", error: "Empty transcript content" });
+      results.push({ filename: item.filename || "unknown", investor_name: investorName, status: "error", error: "Empty transcript content" });
       continue;
     }
+    const today = new Date().toISOString().split("T")[0];
+    const metadataBlock = investorName
+      ? `CALL METADATA\nInvestor: ${investorName}\nKnown stage: Unknown\nDate: ${today}\n---\n`
+      : `CALL METADATA\nInvestor: Unknown\nKnown stage: Unknown\nDate: ${today}\n---\n`;
+    const transcriptWithMeta = metadataBlock + item.content;
 
     try {
       const message = await anthropic.messages.create({
@@ -120,7 +155,7 @@ router.post("/recommendation/analyze-batch", async (req, res): Promise<void> => 
             content: `Analyze this investor call transcript and return structured JSON.
 
 TRANSCRIPT:
-${item.content}
+${transcriptWithMeta}
 
 LEAD CONTEXT:
 No prior history — first contact.
@@ -172,6 +207,7 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
 
       results.push({
         filename: item.filename,
+        investor_name: investorName,
         status: "success",
         analysis: {
           persona: persona.name,
@@ -185,6 +221,7 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
     } catch (err: any) {
       results.push({
         filename: item.filename,
+        investor_name: investorName,
         status: "error",
         error: err.message || "Analysis failed",
       });

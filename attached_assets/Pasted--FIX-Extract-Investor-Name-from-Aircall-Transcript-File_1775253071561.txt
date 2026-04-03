@@ -1,0 +1,158 @@
+# FIX — Extract Investor Name from Aircall Transcript Filename
+Version: 1.0
+Area: Recommendation Engine — Batch Upload (055 + 072)
+Depends on: 072 (Aircall transcript support) should be complete first
+
+---
+
+## Context
+
+Aircall names transcript files after the contact. Common patterns:
+- "Duncan Stewart - 2026-04-03.txt"
+- "Duncan_Stewart_Call_2026-04-03.txt"
+- "Duncan Stewart.txt"
+- "2026-04-03 Duncan Stewart.txt"
+- "call-duncan-stewart-apr3.txt"
+
+The investor name is already in the filename. There is no need
+for agents to type it manually. Extract it automatically in the
+parse endpoint and surface it in the UI.
+
+---
+
+## Step 1 — Extract investor name from filename in the parse endpoint
+
+Update POST /api/recommendation/parse-transcripts.
+
+After parsing each file, attempt to extract an investor name from
+the filename using the following logic:
+
+1. Strip the file extension (.txt, .docx)
+2. Strip common Aircall filename patterns:
+   - Leading or trailing dates (YYYY-MM-DD, DD-MMM-YYYY,
+     MMM-DD-YYYY, Apr3, etc.)
+   - Common noise words: "call", "recording", "transcript",
+     "aircall", "call-recording"
+   - Separators: hyphens, underscores (replace with spaces)
+3. Title-case the remaining text
+4. If the result is 2–4 words and contains no numbers, treat it
+   as the investor name
+5. If extraction fails or the result looks like noise, set
+   investor_name to null
+
+Examples:
+- "Duncan Stewart - 2026-04-03.txt" → "Duncan Stewart"
+- "duncan_stewart_call_apr3.txt" → "Duncan Stewart"
+- "2026-04-03 James Whitfield.txt" → "James Whitfield"
+- "call-recording-001.txt" → null
+- "transcript.txt" → null
+
+Add investor_name to the parse response:
+
+```typescript
+{
+  parsed: Array<{
+    filename: string
+    content: string
+    investor_name: string | null    // extracted from filename
+    error?: string
+  }>
+}
+```
+
+---
+
+## Step 2 — Pass investor name through to analyze-batch
+
+Update POST /api/recommendation/analyze-batch to accept an optional
+investor_name per transcript:
+
+```typescript
+{
+  transcripts: Array<{
+    filename: string
+    content: string
+    investor_name?: string | null    // extracted from parse step
+  }>
+}
+```
+
+When investor_name is provided, include it in the metadata block
+prepended to the transcript content (from build 072):
+
+```
+CALL METADATA
+Investor: {investor_name}
+Known stage: Unknown
+Date: {today's date}
+---
+{transcript content}
+```
+
+---
+
+## Step 3 — Update the batch upload UI
+
+Update the frontend batch upload flow:
+
+1. After files are parsed, display the extracted investor_name
+   beneath each file chip — e.g. "Duncan Stewart" in grey text
+   below the filename
+
+2. Make the name editable — a small inline text field that
+   defaults to the extracted name but can be corrected if the
+   extraction was wrong or null
+
+3. If investor_name is null, show a placeholder "Unknown investor"
+   with the field still editable so the agent can type the name
+
+4. Pass the confirmed investor_name (extracted or manually entered)
+   to analyze-batch along with the transcript content
+
+5. In the results cards after analysis, show the investor name
+   as the card title instead of just the filename — the filename
+   becomes a subtitle
+
+6. Pre-populate the lead search with the investor name when the
+   user clicks "Link to Lead" (as per build 072 Step 4)
+
+---
+
+## Step 4 — Confirm with live tests
+
+Test 1 — Name extraction from standard Aircall filename:
+- Upload a file named "Duncan Stewart - 2026-04-03.txt"
+- Confirm parse response returns investor_name: "Duncan Stewart"
+- Confirm the name appears beneath the file chip in the UI
+
+Test 2 — Name extraction from underscore format:
+- Upload a file named "james_whitfield_call_apr3.txt"
+- Confirm parse response returns investor_name: "James Whitfield"
+
+Test 3 — Extraction fails gracefully:
+- Upload a file named "call-recording-001.txt"
+- Confirm parse response returns investor_name: null
+- Confirm UI shows "Unknown investor" placeholder with editable field
+
+Test 4 — Manual correction:
+- Upload a file where extracted name is wrong or null
+- Edit the name field in the UI before submitting
+- Confirm the corrected name is passed to analyze-batch and
+  appears in the analysis result
+
+Test 5 — Full flow:
+- Upload 3 Aircall transcripts with named files
+- Confirm names are extracted and shown correctly
+- Confirm names appear as card titles in results view
+- Confirm lead search is pre-populated when linking
+
+---
+
+## Final report
+
+Name extraction from filename: WORKING / BROKEN
+Editable name field in UI: WORKING / NOT IMPLEMENTED
+Name in analyze-batch metadata: CONFIRMED / BROKEN
+Results card title shows investor name: YES / NO
+Lead search pre-populated: YES / NO
+Graceful fallback for unextractable names: YES / NO

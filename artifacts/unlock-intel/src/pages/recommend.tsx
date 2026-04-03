@@ -9,8 +9,24 @@ import { Badge } from "@/components/ui/badge";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
+const NOISE_WORDS = new Set(["call", "recording", "transcript", "aircall", "call-recording", "rec", "audio", "voicemail", "vm"]);
+const DATE_RX = [/\b\d{4}-\d{2}-\d{2}\b/g, /\b\d{2}-\d{2}-\d{4}\b/g, /\b\d{2}\/\d{2}\/\d{4}\b/g, /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*\d{1,2}(?:\s*,?\s*\d{4})?\b/gi, /\b\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*(?:\s*\d{4})?\b/gi];
+
+function extractNameFromFilename(filename: string): string | null {
+  let name = filename.replace(/\.(txt|docx)$/i, "");
+  name = name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const rx of DATE_RX) name = name.replace(rx, " ");
+  name = name.replace(/\s+/g, " ").trim();
+  const words = name.split(" ").filter((w) => !NOISE_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
+  if (words.length < 2 || words.length > 4) return null;
+  if (words.some((w) => /\d/.test(w))) return null;
+  const result = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+  return result.length >= 3 ? result : null;
+}
+
 type BatchResult = {
   filename: string;
+  investor_name?: string | null;
   status: "success" | "error";
   analysis?: {
     persona: string;
@@ -48,6 +64,7 @@ export default function Recommend() {
   const [batchError, setBatchError] = useState<string | null>(null);
   const [linkingIndex, setLinkingIndex] = useState<number | null>(null);
   const [linkSearch, setLinkSearch] = useState("");
+  const [parsedNames, setParsedNames] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [detailPanels, setDetailPanels] = useState<Record<string, boolean>>({});
@@ -140,6 +157,16 @@ export default function Recommend() {
       setBatchError(`${oversized.length} file(s) exceed 500KB: ${oversized.map((f) => f.name).join(", ")}`);
     }
     setBatchFiles(combined);
+    setParsedNames((prev) => {
+      const next = { ...prev };
+      for (const f of fileArray) {
+        if (!(f.name in next)) {
+          const extracted = extractNameFromFilename(f.name);
+          if (extracted) next[f.name] = extracted;
+        }
+      }
+      return next;
+    });
   }, [batchFiles]);
 
   const removeFile = (index: number) => {
@@ -164,13 +191,25 @@ export default function Recommend() {
       const parseRes = await fetch(`${API_BASE}/recommendation/parse-transcripts`, { method: "POST", body: formData });
       if (!parseRes.ok) { setBatchError((await parseRes.json()).error || "Parse failed"); setBatchProcessing(false); return; }
       const { parsed } = await parseRes.json();
+      const nameMap: Record<string, string> = {};
+      for (const p of parsed) {
+        const editedName = parsedNames[p.filename];
+        nameMap[p.filename] = editedName !== undefined ? editedName : (p.investor_name || "");
+      }
+      setParsedNames((prev) => {
+        const next = { ...prev };
+        for (const p of parsed) {
+          if (!(p.filename in next) && p.investor_name) next[p.filename] = p.investor_name;
+        }
+        return next;
+      });
       const validTranscripts = parsed.filter((p: any) => !p.error && p.content);
-      const errorResults: BatchResult[] = parsed.filter((p: any) => p.error).map((p: any) => ({ filename: p.filename, status: "error" as const, error: p.error }));
+      const errorResults: BatchResult[] = parsed.filter((p: any) => p.error).map((p: any) => ({ filename: p.filename, investor_name: p.investor_name, status: "error" as const, error: p.error }));
       if (validTranscripts.length === 0) { setBatchResults(errorResults); setBatchProcessing(false); return; }
       setBatchProgress({ current: 0, total: validTranscripts.length });
       const analyzeRes = await fetch(`${API_BASE}/recommendation/analyze-batch`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcripts: validTranscripts.map((p: any) => ({ filename: p.filename, content: p.content })) }),
+        body: JSON.stringify({ transcripts: validTranscripts.map((p: any) => ({ filename: p.filename, content: p.content, investor_name: nameMap[p.filename] || p.investor_name || null })) }),
       });
       if (!analyzeRes.ok) { setBatchError((await analyzeRes.json()).error || "Analysis failed"); setBatchProcessing(false); return; }
       const { results } = await analyzeRes.json();
@@ -521,17 +560,29 @@ export default function Recommend() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">{batchFiles.length} file(s) · {Math.round(batchFiles.reduce((s, f) => s + f.size, 0) / 1024)}KB total</span>
-                    <Button variant="ghost" size="sm" onClick={() => { setBatchFiles([]); setBatchError(null); }}>Clear All</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setBatchFiles([]); setBatchError(null); setParsedNames({}); }}>Clear All</Button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {batchFiles.map((file, i) => (
-                      <div key={i} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${file.size > 500 * 1024 ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-border bg-muted/50"}`}>
-                        <FileText className="w-3 h-3" />
-                        {file.name}
-                        {file.size > 500 * 1024 && <span className="text-xs">(too large)</span>}
-                        <button onClick={() => removeFile(i)} className="hover:text-foreground"><X className="w-3 h-3" /></button>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    {batchFiles.map((file, i) => {
+                      const extractedName = parsedNames[file.name];
+                      return (
+                        <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm border ${file.size > 500 * 1024 ? "border-red-500/50 bg-red-500/10 text-red-400" : "border-border bg-muted/50"}`}>
+                          <FileText className="w-4 h-4 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate">{file.name}</div>
+                            <input
+                              type="text"
+                              className="w-full mt-1 text-xs bg-transparent border-b border-border/50 focus:border-primary outline-none text-muted-foreground placeholder:text-muted-foreground/50"
+                              placeholder="Unknown investor"
+                              value={extractedName ?? ""}
+                              onChange={(e) => setParsedNames((prev) => ({ ...prev, [file.name]: e.target.value }))}
+                            />
+                          </div>
+                          {file.size > 500 * 1024 && <span className="text-xs shrink-0">(too large)</span>}
+                          <button onClick={() => removeFile(i)} className="hover:text-foreground shrink-0"><X className="w-3 h-3" /></button>
+                        </div>
+                      );
+                    })}
                   </div>
                   <Button onClick={handleBatchSubmit} disabled={batchProcessing || batchFiles.length === 0} className="gap-2">
                     {batchProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -553,14 +604,19 @@ export default function Recommend() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-lg">Batch Results ({batchResults.length} transcripts)</h2>
-                <Button variant="outline" size="sm" onClick={() => { setBatchResults(null); setBatchFiles([]); setBatchError(null); }}>New Batch</Button>
+                <Button variant="outline" size="sm" onClick={() => { setBatchResults(null); setBatchFiles([]); setBatchError(null); setParsedNames({}); }}>New Batch</Button>
               </div>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {batchResults.map((result, i) => (
                   <Card key={i} className={result.status === "error" ? "border-red-500/30" : ""}>
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-sm truncate">{result.filename}</CardTitle>
+                        <div className="min-w-0">
+                          {result.investor_name && (
+                            <CardTitle className="text-base font-semibold truncate">{result.investor_name}</CardTitle>
+                          )}
+                          <div className={`text-xs truncate ${result.investor_name ? "text-muted-foreground mt-0.5" : "text-sm font-medium"}`}>{result.filename}</div>
+                        </div>
                         <Badge variant={result.status === "success" ? "default" : "destructive"} className="shrink-0 text-xs">
                           {result.status === "success" ? <><CheckCircle className="w-3 h-3 mr-1" />ANALYZED</> : <><XCircle className="w-3 h-3 mr-1" />ERROR</>}
                         </Badge>
@@ -588,7 +644,7 @@ export default function Recommend() {
                             </div>
                           )}
                           <div className="relative">
-                            <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => setLinkingIndex(linkingIndex === i ? null : i)}>
+                            <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => { setLinkingIndex(linkingIndex === i ? null : i); setLinkSearch(result.investor_name || ""); }}>
                               <User className="w-3 h-3" />Link to Lead
                             </Button>
                             {linkingIndex === i && (
