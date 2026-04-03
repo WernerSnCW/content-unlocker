@@ -1,0 +1,133 @@
+# TASK — Retry Gaps 1 and 5 with Master Generation Context
+Version: 3.0 (supersedes 062 Task 2 and 062B)
+
+---
+
+## Before starting
+
+Read the file at the path below in full. This is the master generation
+context for all Unlock brief generation. Pass its entire contents as
+additional_context when calling POST /api/content/generate-brief.
+
+File: 065_MASTER_generation_context_v1.0.md
+
+If this file is not in the project directory, it will need to be
+created first — paste the contents provided separately.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+---
+
+## Step 1 — Update the generate-brief endpoint
+
+The generate-brief endpoint already accepts an optional
+additional_context field added in the previous session.
+
+Confirm it is still in place before proceeding. If not, re-add it:
+
+```typescript
+{
+  gap: { ... }
+  information_readiness: { ... }
+  additional_context?: string    // injected into the Claude prompt
+}
+```
+
+---
+
+## Step 2 — Regenerate brief for Gap 1
+
+Call POST /api/content/generate-brief for Gap 1
+(Matrix: Preserver × Demo Booked).
+
+Pass the full contents of 065_MASTER_generation_context_v1.0.md
+as additional_context.
+
+Report:
+- Whether information_needed is now empty
+- Whether ready_to_generate is now true
+- The recommended document title from the brief
+- Source material pointers identified (confirm they reference real
+  content from the master context)
+- Any items still flagged as missing
+
+---
+
+## Step 3 — Regenerate brief for Gap 5
+
+Call POST /api/content/generate-brief for Gap 5
+(Recommendation failure: Preserver at Demo Booked).
+
+Pass the same master context as additional_context.
+
+Report the same fields as Step 2.
+
+---
+
+## Step 4 — Update the backend to load master context automatically
+
+Now that the master context file exists, update the generate-brief
+endpoint so it automatically loads and includes the master context
+on every call — without requiring the caller to pass it manually
+each time.
+
+Implementation:
+- On startup (or on first call), read the master context file from
+  the project directory
+- Cache it in memory
+- Prepend it to the Claude prompt for every generate-brief call,
+  before any additional_context supplied in the request body
+- If the file is not found, log a warning and proceed without it —
+  do not throw
+
+This means future brief generation calls work correctly with full
+Unlock context by default, and any additional_context in the request
+body is appended after the master context.
+
+---
+
+## Step 5 — Consolidated report
+
+After both briefs are regenerated, report:
+
+GAP 1 UPDATE
+- Was: [original information_needed count] items missing
+- Now: [count] items missing
+- Resolved by master context: [list what was resolved]
+- Still missing: [list what remains, if anything]
+- Recommended title: [from brief]
+- Ready to generate: YES / NO
+
+GAP 5 UPDATE
+- Was: [original information_needed count] items missing
+- Now: [count] items missing
+- Resolved by master context: [list what was resolved]
+- Still missing: [list what remains, if anything]
+- Recommended title: [from brief]
+- Ready to generate: YES / NO
+
+ENDPOINT UPDATE
+- Master context auto-load: CONFIRMED / FAILED (with reason)
+- File path used: [path]
+- Context length loaded: [character count]
+
+OVERALL
+- Gaps now ready to generate: [n of 2]
+- Remaining external information needed: [consolidated list or "None"]
+
+Do not generate content for either gap in this session.
+Report only.
