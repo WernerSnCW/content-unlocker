@@ -1,0 +1,167 @@
+# SESSION — Generate Gap 1 and Gap 5
+Version: 1.0
+
+Two documents to generate. Complete Gap 1 first, then Gap 5.
+The master context auto-loads on every generate-brief call —
+no additional_context needed for either.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Approved Decumulation Planner status language
+"Specification complete. Prototype build commencing."
+Do not deviate from this phrase in any generated content.
+
+### Approved loss relief framing
+EIS: "up to an effective 38.5% reduction in losses (after income
+tax relief) — subject to adviser confirmation"
+SEIS: "up to 72% effective relief — subject to adviser confirmation"
+Do not use per-pound arithmetic (e.g. "38.5p per £") in generated
+content — use the compliance constant percentage language above.
+
+---
+
+## Gap 1 — Matrix: Preserver × Demo Booked
+
+### Step 1 — Confirm the brief
+
+Call POST /api/content/generate-brief for Gap 1
+(Matrix: Preserver × Demo Booked).
+
+Confirm:
+- information_needed is empty
+- ready_to_generate is true
+- Document type and recommended title
+
+Report the full brief including all key messages and source
+material pointers before proceeding to generation.
+
+### Step 2 — Generate the document
+
+Call POST /api/content/generate-from-brief using the Gap 1 brief.
+
+Do not use override_information_gaps.
+
+After generation confirm:
+- Document ID
+- lifecycle_status: DRAFT
+- review_state reflects QC result
+- qc_history is non-empty (confirmed by GET /api/documents/:id)
+- Changelog entry: DOCUMENT_GENERATED_FROM_GAP
+- First 300 characters of content (no caveat block expected)
+
+### Step 3 — Report QC result
+
+Report:
+- QC result: PASS / FAIL
+- All QC checks run (list each)
+- Any failed checks with specific reason
+- Whether the Decumulation Planner status language is correct
+  ("Specification complete. Prototype build commencing." — not
+  "live", "available", or "launching soon")
+- Whether loss relief figures use the approved percentage framing
+  (not per-pound arithmetic)
+
+If QC passes: proceed to Step 4.
+If QC fails: do not promote. Report the failures in full and stop.
+Do not attempt to fix and re-run in this session — report back
+for review first.
+
+### Step 4 — Promote if QC passes
+
+If all QC checks pass:
+- Call POST /api/generation/[document_id]/promote
+- Confirm lifecycle_status: CURRENT
+- Confirm review_state: CLEAN
+- Confirm DOCUMENT_PROMOTED changelog entry
+- Confirm Gap 1 no longer appears in GET /api/content/gaps
+
+If QC failed: skip this step.
+
+---
+
+## Gap 5 — Recommendation failure: Preserver at Demo Booked
+
+### Step 1 — Confirm the brief
+
+Call POST /api/content/generate-brief for Gap 5
+(Recommendation failure: Preserver at Demo Booked).
+
+Confirm:
+- information_needed is empty
+- ready_to_generate is true
+- Document type and recommended title
+
+Report the full brief including all key messages and source
+material pointers before proceeding to generation.
+
+### Step 2 — Generate the document
+
+Call POST /api/content/generate-from-brief using the Gap 5 brief.
+
+Do not use override_information_gaps.
+
+After generation confirm the same fields as Gap 1 Step 2.
+
+### Step 3 — Report QC result
+
+Report the same fields as Gap 1 Step 3, applying the same
+checks for Decumulation Planner status language and loss relief
+framing.
+
+If QC passes: proceed to Step 4.
+If QC fails: do not promote. Report failures and stop.
+
+### Step 4 — Promote if QC passes
+
+Same as Gap 1 Step 4. Confirm Gap 5 no longer appears in
+GET /api/content/gaps after promotion.
+
+---
+
+## Final report
+
+After both documents are complete:
+
+GAP 1 RESULT
+- Document ID: [id]
+- Recommended title: [title]
+- Document type: [type]
+- QC result: PASS / FAIL
+- QC checks: [n passed of n total]
+- Promoted to CURRENT: YES / NO
+- Gap 1 resolved in coverage matrix: YES / NO
+
+GAP 5 RESULT
+- Document ID: [id]
+- Recommended title: [title]
+- Document type: [type]
+- QC result: PASS / FAIL
+- QC checks: [n passed of n total]
+- Promoted to CURRENT: YES / NO
+- Gap 5 resolved in gaps report: YES / NO
+
+COVERAGE UPDATE
+- Run GET /api/content/gaps after both documents are complete
+- Report the updated gap counts:
+  - Matrix gaps remaining: [n]
+  - Type gaps remaining: [n]
+  - Recommendation failures remaining: [n]
+  - Total gaps remaining: [n]
+- Information readiness overall: [status]
