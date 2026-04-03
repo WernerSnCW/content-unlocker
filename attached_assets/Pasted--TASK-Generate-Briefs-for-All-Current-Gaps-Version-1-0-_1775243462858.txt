@@ -1,0 +1,91 @@
+# TASK — Generate Briefs for All Current Gaps
+Version: 1.0
+
+Do not generate any document content in this session.
+Generate briefs only. Report findings before proceeding.
+
+---
+
+## Instructions
+
+Call POST /api/content/generate-brief for each of the 5 currently
+identified gaps. Run them one at a time — do not batch.
+
+Before starting, call GET /api/content/gaps to confirm the current
+gap list. Use the live gap data, not any cached state.
+
+For each gap, report the full brief response including:
+- The gap being addressed (archetype, stage, or document type)
+- The recommended document title
+- The document type
+- The key messages (all of them)
+- The source material pointers (all of them)
+- The information_needed array in full — every field, description,
+  and source
+- Whether ready_to_generate is true or false
+
+---
+
+## Output format
+
+After all 5 briefs are generated, produce a consolidated report
+in this format exactly:
+
+---
+
+### BRIEF REPORT
+
+**Total briefs generated:** [n]
+**Ready to generate immediately:** [n]
+**Blocked by missing information:** [n]
+
+---
+
+#### Gap 1 — [gap description]
+**Recommended title:** [title]
+**Document type:** [type]
+**Ready to generate:** YES / NO
+
+**Information needed:**
+- [field]: [description] (source: [source])
+[repeat for each item, or "None — ready to generate" if empty]
+
+**Key messages:**
+- [each key message]
+
+**Source material pointers:**
+- [each pointer]
+
+---
+
+[repeat for each gap]
+
+---
+
+### CONSOLIDATED INFORMATION NEEDED
+
+List every unique piece of missing information across all 5 briefs,
+grouped by source:
+
+**From content bank:**
+- [item]
+
+**From compliance constants:**
+- [item]
+
+**From external sources:**
+- [item]
+
+If nothing is missing from a source category: "None"
+
+---
+
+### RECOMMENDATION
+
+State clearly:
+- Which gaps can be generated immediately with existing information
+- Which gaps need additional information before generating
+- What specifically needs to be sourced externally before those
+  briefs are ready
+
+Do not generate any document content. Stop after this report.
