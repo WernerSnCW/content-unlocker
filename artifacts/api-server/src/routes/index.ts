@@ -7,6 +7,7 @@ import contentRouter from "./content";
 import generationRouter from "./generation";
 import dashboardRouter from "./dashboard";
 import gdocsRouter from "./gdocs";
+import callFrameworkRouter from "./call-framework";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(contentRouter);
 router.use(generationRouter);
 router.use(dashboardRouter);
 router.use(gdocsRouter);
+router.use(callFrameworkRouter);
 
 export default router;

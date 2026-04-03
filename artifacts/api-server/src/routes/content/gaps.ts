@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, documentsTable, changelogTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, documentsTable, changelogTable, gapSnapshotsTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getComplianceConstants } from "../../lib/dataManager";
@@ -15,6 +15,9 @@ import {
   COMPLIANCE_FIELD_LABELS,
 } from "../../../../../lib/coverage-matrix";
 import { resolveArchetype } from "../../../../../lib/personas";
+import { writeFile, readFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
+import path from "path";
 
 const router: IRouter = Router();
 
@@ -172,7 +175,7 @@ router.get("/content/gaps", async (req, res): Promise<void> => {
       overall = "CAN_GENERATE_WITH_CAVEATS";
     }
 
-    res.json({
+    const gapResult = {
       matrix_gaps: matrixGaps,
       type_gaps: typeGaps,
       recommendation_gaps: recommendationGaps,
@@ -194,10 +197,183 @@ router.get("/content/gaps", async (req, res): Promise<void> => {
         type_gap_count: typeGaps.length,
         recommendation_failure_count: recommendationGaps.length,
       },
+    };
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const snapshotId = `gap_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}_${randomUUID().slice(0, 6)}`;
+    const reportsDir = path.resolve(process.cwd(), "reports/gap-analysis");
+    const filePath = `reports/gap-analysis/${snapshotId}.json`;
+    let saveWarning: string | null = null;
+
+    try {
+      await mkdir(reportsDir, { recursive: true });
+      await writeFile(path.join(reportsDir, `${snapshotId}.json`), JSON.stringify({ ...gapResult, snapshot_id: snapshotId, created_at: now.toISOString() }, null, 2));
+
+      const manifestPath = path.join(reportsDir, "manifest.json");
+      let manifest: { snapshots: any[] } = { snapshots: [] };
+      try {
+        if (existsSync(manifestPath)) {
+          const raw = await readFile(manifestPath, "utf-8");
+          manifest = JSON.parse(raw);
+          if (!Array.isArray(manifest.snapshots)) manifest = { snapshots: [] };
+        }
+      } catch { manifest = { snapshots: [] }; }
+
+      manifest.snapshots.unshift({
+        id: snapshotId,
+        created_at: now.toISOString(),
+        total_gaps: gapResult.summary.total_gaps,
+        file: filePath,
+      });
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+    } catch (fileErr: any) {
+      req.log.error({ err: fileErr }, "Failed to write gap snapshot file");
+      saveWarning = `File write failed: ${fileErr.message}`;
+    }
+
+    try {
+      await db.insert(gapSnapshotsTable).values({
+        id: snapshotId,
+        created_at: now,
+        matrix_gaps: matrixGaps,
+        type_gaps: typeGaps,
+        recommendation_gaps: recommendationGaps,
+        information_readiness: gapResult.information_readiness,
+        summary: gapResult.summary,
+        total_gaps: gapResult.summary.total_gaps,
+        file_path: filePath,
+        notes: "",
+      });
+    } catch (dbErr: any) {
+      req.log.error({ err: dbErr }, "Failed to save gap snapshot to database");
+      if (!saveWarning) saveWarning = `Database save failed: ${dbErr.message}`;
+      else saveWarning += `; Database save failed: ${dbErr.message}`;
+    }
+
+    res.json({
+      ...gapResult,
+      snapshot_id: snapshotId,
+      snapshot_file: filePath,
+      ...(saveWarning ? { save_warning: saveWarning } : {}),
     });
   } catch (err: any) {
     req.log.error({ err }, "Gap detection failed");
     res.status(500).json({ error: "Gap detection failed" });
+  }
+});
+
+router.get("/content/gaps/history", async (_req, res): Promise<void> => {
+  try {
+    const snapshots = await db.select().from(gapSnapshotsTable).orderBy(desc(gapSnapshotsTable.created_at));
+    res.json({
+      snapshots: snapshots.map((s) => {
+        const summary = s.summary as any;
+        return {
+          id: s.id,
+          created_at: s.created_at,
+          total_gaps: s.total_gaps,
+          matrix_gap_count: summary?.matrix_gap_count ?? 0,
+          type_gap_count: summary?.type_gap_count ?? 0,
+          recommendation_failure_count: summary?.recommendation_failure_count ?? 0,
+          file_path: s.file_path,
+          notes: s.notes,
+        };
+      }),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch gap history" });
+  }
+});
+
+router.get("/content/gaps/history/:snapshotId", async (req, res): Promise<void> => {
+  try {
+    const [snapshot] = await db.select().from(gapSnapshotsTable).where(eq(gapSnapshotsTable.id, req.params.snapshotId));
+    if (!snapshot) {
+      res.status(404).json({ error: "Snapshot not found" });
+      return;
+    }
+    res.json(snapshot);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch snapshot" });
+  }
+});
+
+router.get("/content/gaps/history/:snapshotId/export", async (req, res): Promise<void> => {
+  try {
+    const [snapshot] = await db.select().from(gapSnapshotsTable).where(eq(gapSnapshotsTable.id, req.params.snapshotId));
+    if (!snapshot) {
+      res.status(404).json({ error: "Snapshot not found" });
+      return;
+    }
+
+    const format = (req.query.format as string) || "json";
+    const summary = snapshot.summary as any;
+    const ir = snapshot.information_readiness as any;
+
+    if (format === "markdown") {
+      const matrixRows = (snapshot.matrix_gaps as any[]).map((g: any) => `| ${g.archetype} | ${g.stage} | ${(g.existing_documents || []).join(", ") || "None"} |`).join("\n");
+      const typeRows = (snapshot.type_gaps as any[]).map((g: any) => `| ${g.document_type} | ${(g.existing_documents || []).join(", ") || "None"} |`).join("\n");
+      const recRows = (snapshot.recommendation_gaps as any[]).map((g: any) => `| ${g.persona} | ${g.stage} | ${g.reason} |`).join("\n");
+
+      const md = `# Gap Analysis Report
+Generated: ${snapshot.created_at}
+Snapshot ID: ${snapshot.id}
+
+## Summary
+- Total gaps: ${summary?.total_gaps ?? 0}
+- Matrix gaps: ${summary?.matrix_gap_count ?? 0}
+- Document type gaps: ${summary?.type_gap_count ?? 0}
+- Recommendation failures: ${summary?.recommendation_failure_count ?? 0}
+
+## Information Readiness
+Content bank: ${ir?.content_bank?.status || "N/A"} — ${ir?.content_bank?.detail || "N/A"}
+Compliance constants: ${ir?.compliance_constants?.status || "N/A"} — ${ir?.compliance_constants?.detail || "N/A"}
+Overall: ${ir?.overall || "N/A"}
+
+## Matrix Gaps
+| Archetype | Stage | Existing Documents |
+|---|---|---|
+${matrixRows || "| (none) | | |"}
+
+## Document Type Gaps
+| Type | Existing Documents |
+|---|---|
+${typeRows || "| (none) | |"}
+
+## Recommendation Failures
+| Persona | Stage | Reason |
+|---|---|---|
+${recRows || "| (none) | | |"}
+`;
+      res.setHeader("Content-Type", "text/markdown");
+      res.setHeader("Content-Disposition", `attachment; filename="gap-analysis-${snapshot.id}.md"`);
+      res.send(md);
+    } else {
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="gap-analysis-${snapshot.id}.json"`);
+      res.json(snapshot);
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: "Export failed" });
+  }
+});
+
+router.patch("/content/gaps/history/:snapshotId", async (req, res): Promise<void> => {
+  try {
+    const { notes } = req.body;
+    if (typeof notes !== "string") {
+      res.status(400).json({ error: "notes field is required as a string" });
+      return;
+    }
+    const [updated] = await db.update(gapSnapshotsTable).set({ notes }).where(eq(gapSnapshotsTable.id, req.params.snapshotId)).returning();
+    if (!updated) {
+      res.status(404).json({ error: "Snapshot not found" });
+      return;
+    }
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update snapshot" });
   }
 });
 

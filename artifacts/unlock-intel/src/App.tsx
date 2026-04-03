@@ -16,6 +16,7 @@ import Changelog from "./pages/changelog";
 import Generate from "./pages/generate";
 import GapAnalysis from "./pages/gaps";
 import FeatureUpdates from "./pages/feature-updates";
+import CallPrep from "./pages/call-prep";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/generate" component={Generate} />
         <Route path="/gaps" component={GapAnalysis} />
         <Route path="/feature-updates" component={FeatureUpdates} />
+        <Route path="/call-prep" component={CallPrep} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

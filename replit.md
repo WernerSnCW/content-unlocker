@@ -77,6 +77,23 @@ artifacts-monorepo/
 - **leads**: id, name, company, pipeline_stage, first_contact, last_contact, detected_persona, archived, send_log (JSONB), stage_history (JSONB), notes (JSONB)
 - **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, last_reviewed, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, generation_brief_id, generation_attempt, qc_report_id, source_trace (JSONB), content, qc_history (JSONB), gdoc_id, gdoc_url
 - **changelog**: id, timestamp, action, document_id, lead_id, details, triggered_by
+- **gap_snapshots**: id (text PK with random suffix), total_gaps, matrix_gaps, type_gaps, rec_failures, snapshot_data (JSONB), file_path, notes, created_at
+
+## Additional API Routes (Builds 055/058/059)
+
+- `POST /api/recommendation/parse-transcripts` — multipart file upload (.txt/.docx, max 20 files, 500KB each)
+- `POST /api/recommendation/analyze-batch` — sequential Claude analysis of multiple transcripts (max 20)
+- `GET /api/call-framework/questions` — returns 4 call framework questions with purpose/signals/listen_for
+- `GET /api/content/gaps/history` — list saved gap snapshots
+- `GET /api/content/gaps/history/:id` — retrieve specific snapshot
+- `GET /api/content/gaps/history/:id/export?format=json|markdown` — download snapshot
+- `PATCH /api/content/gaps/history/:id` — update notes on a snapshot
+
+## Key Libraries
+
+- `lib/call-questions.ts` — 4 structured call framework questions
+- `lib/coverage-matrix.ts` — gap analysis matrix config
+- `lib/personas.ts` — 19 persona → 3 archetype mapping
 
 ## TypeScript & Composite Projects
 
@@ -109,13 +126,13 @@ Express 5 API server. Routes in `src/routes/`. Uses `@workspace/api-zod` for val
 
 React + Vite frontend. Uses generated React Query hooks from `@workspace/api-client-react`.
 
-- 11 pages: Dashboard, Recommend, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis, FeatureUpdates
+- 13 pages: Dashboard, Recommend (Single + Batch Upload tabs), CallPrep, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis (with snapshot persistence + history), FeatureUpdates
 - Routing: wouter with base path from `import.meta.env.BASE_URL`
 - Design: Dark navy sidebar, institutional styling, status color system
 
 ### `lib/db` (`@workspace/db`)
 
-Drizzle ORM with PostgreSQL. Three tables: leads, documents, changelog.
+Drizzle ORM with PostgreSQL. Four tables: leads, documents, changelog, gap_snapshots.
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 

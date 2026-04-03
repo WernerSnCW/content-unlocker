@@ -12,47 +12,118 @@ import {
 import personaGuide from "../../data/content/520_GUIDE_Investor_Personas_19_V1_CURRENT.md";
 import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt";
 import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
+import multer from "multer";
+import mammoth from "mammoth";
 
 const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "Decision"];
+const MAX_FILES = 20;
+const MAX_FILE_SIZE = 500 * 1024;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: MAX_FILES,
+    fields: 10,
+    parts: MAX_FILES + 10,
+  },
+});
 
 const router: IRouter = Router();
 
-router.post("/recommendation/analyze", async (req, res): Promise<void> => {
-  const parsed = AnalyzeTranscriptBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+router.post("/recommendation/parse-transcripts", upload.array("files", MAX_FILES + 1), async (req: any, res): Promise<void> => {
+  const files = req.files as Express.Multer.File[];
+  if (!files || files.length === 0) {
+    res.status(400).json({ error: "No files uploaded" });
+    return;
+  }
+  if (files.length > MAX_FILES) {
+    res.status(400).json({ error: `Maximum ${MAX_FILES} files allowed per batch. You uploaded ${files.length}.` });
     return;
   }
 
-  const { transcript, lead_id } = parsed.data;
+  const parsed: Array<{ filename: string; content: string; error?: string }> = [];
 
-  let sendHistorySummary = "No prior history — first contact.";
-  if (lead_id) {
-    const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, lead_id));
-    if (lead) {
-      const sendLog = (lead.send_log as any[]) || [];
-      if (sendLog.length > 0) {
-        sendHistorySummary = `Returning lead. ${sendLog.length} previous sends. Last contact: ${lead.last_contact}. Documents previously sent: ${sendLog.flatMap((s: any) => s.documents_sent).join(", ")}. Current stage: ${lead.pipeline_stage}.`;
+  for (const file of files) {
+    if (file.size > MAX_FILE_SIZE) {
+      parsed.push({ filename: file.originalname, content: "", error: `File exceeds ${MAX_FILE_SIZE / 1024}KB size limit (${Math.round(file.size / 1024)}KB)` });
+      continue;
+    }
+
+    const ext = file.originalname.toLowerCase().split(".").pop();
+
+    if (ext === "txt") {
+      const text = file.buffer.toString("utf-8").trim();
+      if (!text) {
+        parsed.push({ filename: file.originalname, content: "", error: "File is empty" });
+      } else {
+        parsed.push({ filename: file.originalname, content: text });
       }
+    } else if (ext === "docx") {
+      try {
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        const text = result.value.trim();
+        if (!text) {
+          parsed.push({ filename: file.originalname, content: "", error: "Document body is empty" });
+        } else {
+          parsed.push({ filename: file.originalname, content: text });
+        }
+      } catch {
+        parsed.push({ filename: file.originalname, content: "", error: "Failed to parse .docx file — file may be corrupt" });
+      }
+    } else {
+      parsed.push({ filename: file.originalname, content: "", error: `Unsupported file format: .${ext}. Only .txt and .docx are supported.` });
+    }
+  }
+
+  res.json({ parsed });
+});
+
+router.post("/recommendation/analyze-batch", async (req, res): Promise<void> => {
+  const { transcripts } = req.body;
+  if (!Array.isArray(transcripts) || transcripts.length === 0) {
+    res.status(400).json({ error: "transcripts array is required" });
+    return;
+  }
+  if (transcripts.length > MAX_FILES) {
+    res.status(400).json({ error: `Maximum ${MAX_FILES} transcripts allowed per batch` });
+    return;
+  }
+  const MAX_CONTENT_LENGTH = 50000;
+  for (const item of transcripts) {
+    if (typeof item.content === "string" && item.content.length > MAX_CONTENT_LENGTH) {
+      item.content = item.content.slice(0, MAX_CONTENT_LENGTH);
     }
   }
 
   const compactPersonaRef = personaGuide.slice(0, 6000);
+  const results: Array<{
+    filename: string;
+    status: "success" | "error";
+    analysis?: any;
+    error?: string;
+  }> = [];
 
-  try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `Analyze this investor call transcript and return structured JSON.
+  for (const item of transcripts) {
+    if (!item.content || !item.content.trim()) {
+      results.push({ filename: item.filename || "unknown", status: "error", error: "Empty transcript content" });
+      continue;
+    }
+
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        messages: [
+          {
+            role: "user",
+            content: `Analyze this investor call transcript and return structured JSON.
 
 TRANSCRIPT:
-${transcript}
+${item.content}
 
 LEAD CONTEXT:
-${sendHistorySummary}
+No prior history — first contact.
 
 PERSONA REFERENCE (compact):
 ${compactPersonaRef}
@@ -82,6 +153,141 @@ You must return ONLY valid JSON matching this exact schema:
 }
 
 Return ONLY the JSON object, no markdown formatting, no code blocks.`,
+          },
+        ],
+      });
+
+      const block = message.content[0];
+      const text = block.type === "text" ? block.text : "";
+      const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      const analysis = JSON.parse(cleaned);
+
+      const persona = analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] };
+      const stage = analysis.pipeline_stage || { stage: "Called", confidence_score: 0, rationale: "" };
+
+      if (!PIPELINE_STAGES.includes(stage.stage)) {
+        stage.stage = "Called";
+        stage.confidence_score = 0;
+      }
+
+      results.push({
+        filename: item.filename,
+        status: "success",
+        analysis: {
+          persona: persona.name,
+          persona_confidence: persona.confidence_score,
+          stage: stage.stage,
+          stage_confidence: stage.confidence_score,
+          objections: (analysis.objections || []).map((o: any) => o.objection || o),
+          evidence: persona.evidence || [],
+        },
+      });
+    } catch (err: any) {
+      results.push({
+        filename: item.filename,
+        status: "error",
+        error: err.message || "Analysis failed",
+      });
+    }
+  }
+
+  res.json({ results });
+});
+
+router.post("/recommendation/analyze", async (req, res): Promise<void> => {
+  const parsed = AnalyzeTranscriptBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { transcript, lead_id } = parsed.data;
+  const questions_answered = req.body.questions_answered as { Q1?: boolean; Q2?: boolean; Q3?: boolean; Q4?: boolean } | undefined;
+
+  let sendHistorySummary = "No prior history — first contact.";
+  if (lead_id) {
+    const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, lead_id));
+    if (lead) {
+      const sendLog = (lead.send_log as any[]) || [];
+      if (sendLog.length > 0) {
+        sendHistorySummary = `Returning lead. ${sendLog.length} previous sends. Last contact: ${lead.last_contact}. Documents previously sent: ${sendLog.flatMap((s: any) => s.documents_sent).join(", ")}. Current stage: ${lead.pipeline_stage}.`;
+      }
+    }
+  }
+
+  const compactPersonaRef = personaGuide.slice(0, 6000);
+
+  const questionsContext = questions_answered
+    ? `\nCALL CHECKLIST STATUS:\n- Q1 (Goals/motivation): ${questions_answered.Q1 ? "COVERED" : "NOT COVERED"}\n- Q2 (Prior experience): ${questions_answered.Q2 ? "COVERED" : "NOT COVERED"}\n- Q3 (Hesitations/objections): ${questions_answered.Q3 ? "COVERED" : "NOT COVERED"}\n- Q4 (Other decision makers): ${questions_answered.Q4 ? "COVERED" : "NOT COVERED"}\n`
+    : "\nCALL CHECKLIST STATUS: Not provided — infer from the transcript which of these four areas were addressed:\n- Q1: Investment goals and time horizon\n- Q2: Prior EIS/startup investing experience\n- Q3: Hesitations or deal-breakers\n- Q4: Other decision-makers involved\n";
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: `Analyze this investor call transcript and return structured JSON.
+
+TRANSCRIPT:
+${transcript}
+
+LEAD CONTEXT:
+${sendHistorySummary}
+${questionsContext}
+PERSONA REFERENCE (compact):
+${compactPersonaRef}
+
+PIPELINE STAGES (canonical — use exactly one): ${PIPELINE_STAGES.join(", ")}
+
+PRIMARY ISSUE CATEGORIES (use exactly one):
+- READY_TO_CLOSE — investor shows clear buying signals, no blocking objections
+- OBJECTION_TO_RESOLVE — specific objection identified that blocks progress
+- INFORMATION_GAP — investor lacks key information needed to decide
+- NEEDS_NURTURING — not ready yet, requires longer-term engagement
+
+You must return ONLY valid JSON matching this exact schema:
+{
+  "detected_persona": {
+    "name": "<one of the 19 personas or 3 public archetypes: Growth Seeker, Preserver, Legacy Builder>",
+    "confidence_score": <0.0-1.0>,
+    "evidence": ["<signal from transcript>", ...]
+  },
+  "pipeline_stage": {
+    "stage": "<EXACTLY one of: Outreach, Called, Demo Booked, Demo Complete, Decision>",
+    "confidence_score": <0.0-1.0>,
+    "rationale": "<why this stage>"
+  },
+  "readiness_score": <0.0-1.0>,
+  "objections": [
+    {
+      "objection": "<what the investor objected to>",
+      "severity": "<blocking | significant | minor>",
+      "suggested_response": "<how to address it>"
+    }
+  ],
+  "blocking_objections": ["<list only blocking-severity objections>"],
+  "information_gaps": [
+    {
+      "gap": "<what information is missing>",
+      "impact": "<how this gap affects the decision>",
+      "suggested_document_type": "<type of document that would fill this gap>"
+    }
+  ],
+  "primary_issue": "<EXACTLY one of: READY_TO_CLOSE, OBJECTION_TO_RESOLVE, INFORMATION_GAP, NEEDS_NURTURING>",
+  "recommended_next_action": "<one specific, actionable sentence>",
+  "questions_answered": {
+    "Q1": <true/false — was the investor's goals/motivation discussed?>,
+    "Q2": <true/false — was prior investment experience discussed?>,
+    "Q3": <true/false — were hesitations or objections surfaced?>,
+    "Q4": <true/false — were other decision-makers discussed?>
+  },
+  "transcript_summary": "<2-3 sentence summary>",
+  "pipeline_stage_suggestion": "<suggested next stage or null>"
+}
+
+Return ONLY the JSON object, no markdown formatting, no code blocks.`,
         },
       ],
     });
@@ -99,10 +305,57 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
       return;
     }
 
+    const stage = analysis.pipeline_stage || { stage: "Called", confidence_score: 0, rationale: "" };
+    if (!PIPELINE_STAGES.includes(stage.stage)) {
+      stage.stage = "Called";
+      stage.confidence_score = 0;
+    }
+
+    const validPrimaryIssues = ["READY_TO_CLOSE", "OBJECTION_TO_RESOLVE", "INFORMATION_GAP", "NEEDS_NURTURING"];
+    const primaryIssue = validPrimaryIssues.includes(analysis.primary_issue) ? analysis.primary_issue : "NEEDS_NURTURING";
+
+    const qa = analysis.questions_answered || (questions_answered ? {
+      Q1: !!questions_answered.Q1,
+      Q2: !!questions_answered.Q2,
+      Q3: !!questions_answered.Q3,
+      Q4: !!questions_answered.Q4,
+    } : { Q1: false, Q2: false, Q3: false, Q4: false });
+
+    const questionsCovered = [qa.Q1, qa.Q2, qa.Q3, qa.Q4].filter(Boolean).length;
+    const missingSignals: string[] = [];
+    if (!qa.Q1) missingSignals.push("Investment goals and time horizon");
+    if (!qa.Q2) missingSignals.push("Prior EIS/startup investing experience");
+    if (!qa.Q3) missingSignals.push("Hesitations or deal-breakers");
+    if (!qa.Q4) missingSignals.push("Other decision-makers involved");
+
+    let confidenceImpact = "Full coverage — high confidence analysis";
+    if (questionsCovered <= 2) confidenceImpact = "Low coverage — analysis confidence may be reduced";
+    else if (questionsCovered === 3) confidenceImpact = "Good coverage — one signal area missing";
+
     res.json({
       detected_persona: analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] },
-      pipeline_stage: analysis.pipeline_stage || { stage: "Called", confidence_score: 0, rationale: "" },
-      objections: analysis.objections || [],
+      pipeline_stage: stage,
+      readiness_score: typeof analysis.readiness_score === "number" ? analysis.readiness_score : 0.5,
+      objections: (analysis.objections || []).map((o: any) => ({
+        objection: o.objection || "",
+        severity: o.severity || "minor",
+        suggested_response: o.suggested_response || "",
+      })),
+      blocking_objections: analysis.blocking_objections || [],
+      information_gaps: (analysis.information_gaps || []).map((g: any) => ({
+        gap: g.gap || "",
+        impact: g.impact || "",
+        suggested_document_type: g.suggested_document_type || "",
+      })),
+      primary_issue: primaryIssue,
+      recommended_next_action: analysis.recommended_next_action || "Follow up with relevant materials.",
+      questions_answered: qa,
+      call_completeness: {
+        questions_covered: questionsCovered,
+        questions_total: 4,
+        missing_signals: missingSignals,
+        confidence_impact: confidenceImpact,
+      },
       transcript_summary: analysis.transcript_summary || "",
       pipeline_stage_suggestion: analysis.pipeline_stage_suggestion || null,
     });

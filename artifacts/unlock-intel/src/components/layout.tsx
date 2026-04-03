@@ -11,6 +11,7 @@ import {
   Bell,
   Grid3X3,
   RefreshCw,
+  Phone,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
+    { href: "/call-prep", label: "Call Prep", icon: Phone },
     { href: "/leads", label: "Lead Management", icon: Users },
     { href: "/registry", label: "Document Registry", icon: FileText },
     { href: "/content-bank", label: "Content Bank", icon: Library },

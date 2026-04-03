@@ -1,0 +1,780 @@
+# SESSION — Builds 055, 058, 059 (Sequenced)
+Version: 1.0
+
+Three builds in sequence. Complete each build and pass its
+verification before starting the next. If any verification
+fails, stop and report — do not proceed to the next build.
+
+---
+
+## SYSTEM REFERENCE — Verify before starting
+
+**Before writing any code, verify the following canonical values
+from the live system. Do not infer or assume.**
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+- detectPropagationTargets() — read-only, no DB writes
+- propagateFromDocument() — detects, flags, writes changelog
+Use these. Do not reimplement propagation logic.
+
+---
+
+# BUILD 055 — Multi-Transcript Batch Upload
+Priority: HIGH
+Area: Recommendation Engine — Analyze
+
+## Overview
+
+Users need to upload multiple call transcripts in one session.
+Each transcript is analyzed independently — producing its own
+persona, pipeline stage, and document recommendations. After
+reviewing results, the user decides which lead to link each
+transcript to (existing or new).
+
+---
+
+## Step 1 — Backend: File parsing endpoint
+
+Create a new endpoint: POST /api/recommendation/parse-transcripts
+
+This accepts multipart/form-data with one or more uploaded files.
+
+Supported formats:
+- .txt — read as plain text (UTF-8)
+- .docx — extract plain text from the document body only
+  (ignore headers, footers, comments)
+
+Response body:
+```typescript
+{
+  parsed: Array<{
+    filename: string
+    content: string
+    error?: string    // present if file could not be parsed
+  }>
+}
+```
+
+Rules:
+- Accept up to 20 files per request — reject with 400 if exceeded
+- Enforce a 500KB size limit per file — reject oversized files with
+  a clear per-file error, do not reject the whole batch
+- If a file cannot be parsed (wrong format, corrupt, empty), include
+  it in the response with an error field rather than failing the
+  whole request
+- Return the parsed content in the same order as the uploaded files
+
+---
+
+## Step 2 — Backend: Batch analyze endpoint
+
+Create a new endpoint: POST /api/recommendation/analyze-batch
+
+Request body:
+```typescript
+{
+  transcripts: Array<{
+    filename: string        // original filename, used as display label
+    content: string         // plain text content of the transcript
+  }>
+}
+```
+
+Response body:
+```typescript
+{
+  results: Array<{
+    filename: string
+    status: "success" | "error"
+    analysis?: {
+      persona: string
+      persona_confidence: number
+      stage: string
+      stage_confidence: number
+      objections: string[]
+      evidence: string[]
+    }
+    error?: string          // present only if status is "error"
+  }>
+}
+```
+
+Processing rules:
+- Process each transcript sequentially, not in parallel — Claude
+  calls must not be concurrent to avoid rate limit errors
+- If one transcript fails, continue processing the rest — do not
+  abort the batch
+- Use exactly the same Claude prompt and persona guide context as
+  the existing single analyze endpoint
+- Do not create leads, log sends, or write to the database
+- The batch endpoint is analysis only — lead linking happens in
+  the frontend after the user reviews results
+
+---
+
+## Step 3 — Frontend: Batch upload UI
+
+Add a "Batch Upload" mode to the existing Recommend page,
+accessible via a toggle or tab alongside the existing single
+transcript input.
+
+**Upload area:**
+- Drag-and-drop zone accepting .txt and .docx files
+- Also accepts click-to-browse file selection
+- Show each uploaded file as a removable chip/tag before submission
+- Display file count and total size as files are added
+- Show a clear error if more than 20 files are selected
+- Show per-file errors for files that exceed 500KB
+
+**Processing state:**
+- On submit, call POST /api/recommendation/parse-transcripts first
+- Then call POST /api/recommendation/analyze-batch with the parsed
+  content
+- Show a progress indicator: "Analyzing transcript X of Y" updating
+  as each result arrives
+- Do not show a spinner for the whole batch — show incremental
+  progress
+
+**Results view:**
+After all transcripts are analyzed, display results as a list.
+Each result card shows:
+- Filename as the card title
+- Detected persona and confidence score
+- Detected pipeline stage and confidence score
+- Key objections detected (up to 3, truncated)
+- A status badge: ANALYZED / ERROR
+
+If a transcript errored, show the error message in the card and
+allow the user to remove it or re-upload.
+
+**Lead linking (per transcript):**
+Each result card includes a "Link to Lead" action. On click, show
+a dropdown or modal with two options:
+- "Match existing lead" — searchable dropdown of current leads
+  (search by name or company)
+- "Create new lead" — opens the standard new lead form
+  pre-populated with any name/company detected in the transcript
+
+Linking a transcript to a lead navigates to the standard single
+Recommend flow for that lead, with the analysis result
+pre-populated (persona, stage, objections already filled in —
+user proceeds directly to the Rank step without re-analyzing).
+
+Do not auto-link or auto-create leads — the user must make this
+decision explicitly for each transcript.
+
+---
+
+## Build 055 Verification — MUST PASS before proceeding to 058
+
+Run these tests. If any fail, stop and report.
+
+Test 1 — Successful batch:
+- Upload 3 .txt transcript files
+- Confirm parse endpoint returns content for all 3
+- Confirm analyze-batch returns 3 independent results with distinct
+  personas and stages
+- Confirm progress indicator updates as each result arrives
+
+Test 2 — Mixed success/error batch:
+- Upload 2 valid .txt files and 1 empty file
+- Confirm the 2 valid files are analyzed successfully
+- Confirm the empty file shows an error card, not a page crash
+
+Test 3 — Link to existing lead:
+- Analyze a batch, link one result to an existing lead
+- Confirm the single Recommend flow opens with persona and stage
+  pre-populated
+- Confirm no duplicate analysis is triggered
+
+Test 4 — File limit enforcement:
+- Attempt to upload 21 files
+- Confirm a clear error is shown and no files are processed
+- Attempt to upload a file over 500KB
+- Confirm that file is rejected per-file and the rest proceed
+
+Report: BUILD 055 VERIFICATION — PASS / FAIL
+If FAIL: stop here and report which test failed and why.
+If PASS: proceed to Build 058.
+
+---
+
+# BUILD 058 — Call Question Framework & Enhanced Transcript Analysis
+Version: 1.1
+Priority: HIGH
+Area: Recommendation Engine — Call Prep + Analyze
+Depends on: Fix 1 (persona mapping at lib/personas.ts) must be
+in place — confirm before starting.
+
+## Overview
+
+Two tightly coupled additions:
+1. A minimum call question framework surfaced as a Call Prep page
+   and a checklist in the recommend flow
+2. An enhanced transcript analysis that detects readiness to close,
+   blocking objections, and information gaps, and flags the primary
+   issue driving next action
+
+---
+
+## Step 1 — Backend: Call question framework
+
+Create a new configuration file at lib/call-questions.ts.
+
+```typescript
+export const MINIMUM_CALL_QUESTIONS = [
+  {
+    id: "Q1",
+    question: "What does your current investment portfolio look like — what are you mostly in?",
+    purpose: "Identifies archetype, risk tolerance, and portfolio concentration gaps",
+    signals: ["archetype", "risk_tolerance", "portfolio_gaps"],
+    listen_for: [
+      "Heavy in property → likely Legacy Builder or Growth Seeker",
+      "Pension/ISA focused → likely Preserver",
+      "Stocks/equities → likely Growth Seeker",
+      "Cash heavy → likely Preserver or Ultra-Conservative",
+      "Diverse alternatives → likely Legacy Builder or Entrepreneur"
+    ]
+  },
+  {
+    id: "Q2",
+    question: "What are you trying to get out of this — growth, income, tax efficiency, or something else?",
+    purpose: "Confirms archetype and primary investment objective",
+    signals: ["archetype_confirmation", "primary_objective"],
+    listen_for: [
+      "Tax efficiency primary → likely Preserver, ISA/SIPP Maximiser",
+      "Growth primary → likely Growth Seeker, Entrepreneur",
+      "Legacy/estate → likely Legacy Builder, HNW Inheritor",
+      "Income → likely Dividend Seeker, Preserver",
+      "Multiple objectives → probe for the dominant one"
+    ]
+  },
+  {
+    id: "Q3",
+    question: "Have you done anything like EIS or SEIS before?",
+    purpose: "Determines pipeline stage signal, education level needed, and risk familiarity",
+    signals: ["pipeline_stage", "education_level", "risk_familiarity"],
+    listen_for: [
+      "Yes, multiple times → likely Demo Complete or beyond, minimal education needed",
+      "Yes, once → familiar but may have had a bad experience worth exploring",
+      "No but familiar → early stage, needs mechanics explained",
+      "Never heard of it → very early stage, foundational education required first"
+    ]
+  },
+  {
+    id: "Q4",
+    question: "What would need to happen for you to feel comfortable moving forward?",
+    purpose: "Surfaces objections, information gaps, and readiness to close in a single question",
+    signals: ["readiness", "primary_blocker", "information_gaps"],
+    listen_for: [
+      "Mentions accountant/IFA/partner → third party blocker, not yet ready",
+      "Asks about process or paperwork → strong readiness signal",
+      "References specific amount → very strong readiness signal",
+      "References tax year → urgency signal, readiness high",
+      "Can't articulate what they need → confusion, education gap",
+      "No hesitation, asks about next steps → ready to close"
+    ]
+  }
+];
+```
+
+Expose via: GET /api/call-framework/questions
+
+---
+
+## Step 2 — Backend: Enhanced analyze endpoint
+
+Update the existing POST /api/recommendation/analyze endpoint.
+The enhancement is additive — existing integrations must continue
+to work unchanged.
+
+Add the following to the existing Claude prompt:
+
+```
+In addition to investor persona and pipeline stage, assess the
+following.
+
+When detecting pipeline stage, use only these canonical values:
+Outreach | Called | Demo Booked | Demo Complete | Decision
+
+READINESS TO CLOSE
+Buying signals include:
+- Asking about process, next steps, or paperwork
+- Mentioning a specific investment amount
+- Referencing tax year deadlines or timing
+- Comparing the product favourably to alternatives
+- No unresolved objections remaining
+Rate readiness as: READY | WARM | NURTURING | COLD
+Provide specific evidence from the transcript for the rating.
+
+BLOCKING OBJECTIONS
+Objections that are actively preventing progress include:
+- Needing to speak to an accountant, IFA, or partner before deciding
+- Risk or downside concerns expressed more than once
+- Uncertainty about product structure or mechanics
+- Hesitation language: "not sure", "need to think", "maybe later"
+- Timeline deflection without a specific date
+For each: name it, quote the evidence, and rate severity as
+CRITICAL | SIGNIFICANT | MINOR.
+
+INFORMATION GAPS
+Topics the investor is confused about or expressing misconceptions
+about include:
+- Direct questions about how EIS, SEIS, or VCT works
+- Incorrect comparisons to ISAs, pensions, or standard equities
+- Confusion about tax relief timing or mechanics
+- Misunderstanding of risk or loss relief
+For each: name it, describe the confusion, and identify what
+document or explanation would address it.
+
+PRIMARY ISSUE
+The single most important thing driving next action. Choose one:
+- READY_TO_CLOSE — buying signals present, objections resolved
+- OBJECTION_TO_RESOLVE — a specific blocking objection must be
+  addressed first
+- INFORMATION_GAP — investor needs specific education before
+  they can decide
+- NEEDS_NURTURING — too early, insufficient signals to act on yet
+Provide a one-sentence recommended next action for the salesperson.
+```
+
+Add to the analyze response:
+```typescript
+{
+  // existing fields unchanged
+  persona: string
+  persona_confidence: number
+  stage: string                    // must be one of the 5 canonical stages
+  stage_confidence: number
+  objections: string[]
+  evidence: string[]
+
+  // new fields
+  readiness: "READY" | "WARM" | "NURTURING" | "COLD"
+  readiness_evidence: string[]
+  blocking_objections: Array<{
+    name: string
+    evidence: string
+    severity: "CRITICAL" | "SIGNIFICANT" | "MINOR"
+  }>
+  information_gaps: Array<{
+    topic: string
+    description: string
+    suggested_document_type: string
+  }>
+  primary_issue: "READY_TO_CLOSE" | "OBJECTION_TO_RESOLVE" | "INFORMATION_GAP" | "NEEDS_NURTURING"
+  recommended_next_action: string
+}
+```
+
+If the Claude response returns a stage value outside the canonical
+list, map it to the closest canonical stage or return
+stage_confidence: 0 with a note. Never pass a non-canonical stage
+value to the frontend.
+
+---
+
+## Step 3 — Backend: Questions answered tracking
+
+Add an optional field to the analyze request body:
+```typescript
+{
+  transcript: string
+  questions_answered?: {
+    Q1: boolean
+    Q2: boolean
+    Q3: boolean
+    Q4: boolean
+  }
+}
+```
+
+If questions_answered is provided, add to the response:
+```typescript
+{
+  call_completeness: {
+    questions_covered: number
+    questions_total: 4
+    missing_signals: string[]
+    confidence_impact: string
+  }
+}
+```
+
+If questions_answered is not provided, infer from the transcript
+whether each question was asked and answered, and populate
+questions_answered automatically in the response.
+
+---
+
+## Step 4 — Frontend: Call Prep page
+
+Add a new page: /call-prep
+
+Header: "Before You Call"
+Subtitle: "Cover these four questions in every call. They don't
+need to be asked verbatim — work them into the conversation
+naturally."
+
+For each question, show a card with:
+- The question text (large, readable)
+- A "What to listen for" section with the listen_for guidance
+  as scannable bullet points
+- A checkbox to tick once covered during the call
+
+Below the questions: a persistent "Start Recommend Flow" button
+that passes the checkbox state (questions_answered) through to
+the Recommend page.
+
+Design requirements:
+- Must be readable on a phone — salespeople will have this open
+  during calls on mobile
+- High contrast, large text, minimal chrome
+- Checkbox state does not need to persist between sessions
+
+---
+
+## Step 5 — Frontend: Enhanced Recommend flow
+
+**Transcript input step:**
+Add a collapsible "Call Checklist" panel above the transcript input
+showing the four questions as checkboxes. Pre-populate checkbox
+state if passed through from the Call Prep page.
+
+Completeness indicator:
+- 4/4 covered → 🟢 Full coverage
+- 3/4 covered → 🟡 Good coverage — note which signal is missing
+- 2/4 or fewer → 🔴 Low coverage — analysis confidence may be
+  reduced
+
+**Analysis results step:**
+Redesign to lead with primary_issue rather than persona.
+
+Layout:
+1. Primary issue banner — full width, colour-coded:
+   - 🟢 READY TO CLOSE — green, next action prominent
+   - 🟡 OBJECTION TO RESOLVE — amber, blocking objection listed
+   - 🔴 INFORMATION GAP — red, specific gap named
+   - ⚪ NEEDS NURTURING — grey, next action shown
+
+2. Recommended next action — one sentence, bold
+
+3. Investor profile — persona, stage, readiness in a compact row
+
+4. Detail panels (collapsible):
+   - Blocking objections (with severity badges)
+   - Information gaps (with suggested document types)
+   - Evidence from transcript
+   - Call completeness
+
+When primary_issue is INFORMATION_GAP, bias document ranking
+toward educational content using the suggested_document_type
+from each information_gap item.
+
+---
+
+## Build 058 Verification — MUST PASS before proceeding to 059
+
+Test 1 — Questions endpoint:
+- GET /api/call-framework/questions
+- Confirm all 4 questions returned with purpose, signals, listen_for
+
+Test 2 — Enhanced analysis:
+- POST /api/recommendation/analyze with a rich transcript
+- Confirm all new fields present in response
+- Confirm stage is one of the 5 canonical values
+- Confirm primary_issue is one of the four valid values
+- Confirm recommended_next_action is a specific sentence
+
+Test 3 — Sparse transcript:
+- POST /api/recommendation/analyze with a short transcript
+  not covering Q3 or Q4
+- Confirm call_completeness reflects missing coverage
+- Confirm analysis degrades gracefully without crashing
+
+Test 4 — Primary issue drives UI:
+- Analysis returning READY_TO_CLOSE → green banner, next action
+  prominent
+- Analysis returning INFORMATION_GAP → red banner, gap named,
+  document ranking biased toward educational documents
+
+Test 5 — Call Prep handoff:
+- Open Call Prep page, tick Q1 and Q2 only
+- Click "Start Recommend Flow"
+- Confirm Recommend page shows Q1 and Q2 pre-ticked
+- Confirm completeness indicator shows 🔴 Low coverage
+
+Test 6 — Stage taxonomy:
+- Confirm no non-canonical stage value is ever returned by the
+  analyze endpoint
+
+Report: BUILD 058 VERIFICATION — PASS / FAIL
+If FAIL: stop here and report which test failed and why.
+If PASS: proceed to Build 059.
+
+---
+
+# BUILD 059 — Gap Analysis Persistence
+Priority: MEDIUM
+Area: Content Gap Analysis
+Depends on: Build A (056 v1.1) must be complete — confirm before
+starting.
+
+## Overview
+
+Gap analysis results currently exist only for the duration of a
+session. This build adds three persistence layers:
+1. Database — every gap analysis run saved as a snapshot record
+2. Project file — each run writes a dated JSON file to the
+   project directory
+3. Frontend export — users can download any saved snapshot as
+   JSON or markdown
+
+If one layer fails, the others must still complete successfully.
+
+---
+
+## Step 1 — Database: Gap snapshot schema
+
+Add a new table: gap_snapshots
+
+```typescript
+gap_snapshots {
+  id:              string        // e.g. "gap_20260403_143022"
+  created_at:      timestamp
+  matrix_gaps:     jsonb
+  type_gaps:       jsonb
+  recommendation_gaps: jsonb
+  information_readiness: jsonb
+  summary:         jsonb
+  total_gaps:      integer       // denormalised from summary
+  file_path:       string        // path of the project file written
+  notes:           string        // optional user label
+}
+```
+
+Add two endpoints:
+
+GET /api/content/gaps/history
+Returns all snapshots in reverse chronological order:
+```typescript
+{
+  snapshots: Array<{
+    id: string
+    created_at: string
+    total_gaps: number
+    matrix_gap_count: number
+    type_gap_count: number
+    recommendation_failure_count: number
+    file_path: string
+    notes: string
+  }>
+}
+```
+
+GET /api/content/gaps/history/:snapshotId
+Returns the full snapshot record including all gap arrays.
+
+---
+
+## Step 2 — Backend: Auto-save on every gap run
+
+Update GET /api/content/gaps to automatically save a snapshot
+after every successful run.
+
+Snapshot ID format: gap_{YYYYMMDD}_{HHmmss}
+
+Add to the existing response:
+```typescript
+{
+  // ... all existing fields ...
+  snapshot_id: string
+  snapshot_file: string    // relative path of the written project file
+}
+```
+
+If the database save fails: log the error, still return gap
+results — do not block the user.
+If the file write fails: log the error, still return results and
+the snapshot_id — do not block.
+
+---
+
+## Step 3 — Project file: Write dated JSON snapshot
+
+After each gap run, write a JSON file to:
+reports/gap-analysis/{snapshot_id}.json
+
+Create the directory if it does not exist.
+
+File contents: the complete gap analysis response as JSON.
+
+Also maintain a manifest at reports/gap-analysis/manifest.json
+listing all snapshots in reverse chronological order:
+```json
+{
+  "snapshots": [
+    {
+      "id": "gap_20260403_143022",
+      "created_at": "2026-04-03T14:30:22Z",
+      "total_gaps": 0,
+      "file": "reports/gap-analysis/gap_20260403_143022.json"
+    }
+  ]
+}
+```
+
+Update the manifest on every new run. If the manifest does not
+exist, create it. If it is malformed, recreate it from the files
+present in the directory.
+
+---
+
+## Step 4 — Backend: Export endpoints
+
+GET /api/content/gaps/history/:snapshotId/export?format=json
+Response headers:
+- Content-Type: application/json
+- Content-Disposition: attachment; filename="gap-analysis-{id}.json"
+
+GET /api/content/gaps/history/:snapshotId/export?format=markdown
+Response headers:
+- Content-Type: text/markdown
+- Content-Disposition: attachment; filename="gap-analysis-{id}.md"
+
+Markdown format:
+```
+# Gap Analysis Report
+Generated: {created_at}
+Snapshot ID: {snapshot_id}
+
+## Summary
+- Total gaps: {total_gaps}
+- Matrix gaps: {matrix_gap_count}
+- Document type gaps: {type_gap_count}
+- Recommendation failures: {recommendation_failure_count}
+
+## Information Readiness
+Content bank: {status} — {detail}
+Compliance constants: {status} — {detail}
+Overall: {overall}
+
+## Matrix Gaps
+| Archetype | Stage | Existing Documents |
+|---|---|---|
+[rows]
+
+## Document Type Gaps
+| Type | Existing Documents |
+|---|---|
+[rows]
+
+## Recommendation Failures
+| Persona | Stage | Reason |
+|---|---|---|
+[rows]
+```
+
+---
+
+## Step 5 — Frontend: Persistence UI
+
+**Snapshot indicator:**
+After a gap analysis runs, show a confirmation bar:
+"Snapshot saved — {snapshot_id} · {file_path}"
+
+If save failed: "Results shown but snapshot could not be saved —
+[error reason]"
+
+**History panel:**
+Add a collapsible "Previous Runs" section at the bottom of
+the /gaps page.
+
+For each snapshot show:
+- Snapshot ID and date/time
+- Total gaps at time of run
+- Trend indicator vs previous run:
+  - ↓ X fewer gaps (green)
+  - ↑ X more gaps (red)
+  - = No change (grey)
+- Notes field (editable inline — PATCH updates the DB record)
+- Download buttons: JSON and Markdown
+- A "View" button that loads the historical snapshot into the
+  gap view (read-only, labelled "Viewing snapshot from {date}")
+
+PATCH /api/content/gaps/history/:snapshotId with { "notes": string }
+
+---
+
+## Build 059 Verification
+
+Test 1 — Auto-save on gap run:
+- Call GET /api/content/gaps
+- Confirm response includes snapshot_id and snapshot_file
+- Confirm snapshot record exists via GET /api/content/gaps/history
+- Confirm JSON file exists at the reported path
+- Confirm manifest.json was created or updated
+
+Test 2 — Manifest integrity:
+- Run GET /api/content/gaps three times
+- Confirm manifest.json lists all three in reverse chronological
+  order
+- Confirm each entry links to a file that exists
+
+Test 3 — JSON export:
+- GET /api/content/gaps/history/:snapshotId/export?format=json
+- Confirm download response with correct Content-Disposition header
+- Confirm file contents are valid JSON
+
+Test 4 — Markdown export:
+- GET /api/content/gaps/history/:snapshotId/export?format=markdown
+- Confirm download response with correct Content-Disposition header
+- Confirm markdown renders correct gap counts and tables
+- Confirm all stage and archetype values in tables are canonical
+
+Test 5 — Failure resilience:
+- Simulate a DB write failure
+- Confirm GET /api/content/gaps still returns gap results
+- Confirm the error is logged and response includes a warning
+- Confirm the UI shows the save failure message rather than crashing
+
+Test 6 — Notes:
+- Add a note to a snapshot via the inline editor
+- Confirm the note persists after page refresh
+
+Report: BUILD 059 VERIFICATION — PASS / FAIL
+
+---
+
+## Final session report
+
+After all three builds are complete:
+
+BUILD 055 — Batch transcript upload: PASS / FAIL
+BUILD 058 — Call framework + enhanced analysis: PASS / FAIL
+BUILD 059 — Gap analysis persistence: PASS / FAIL
+
+For any build that failed: which test failed and why.
+
+For any build that passed: confirm the new endpoints are live
+and the UI changes are visible.
+
+Run GET /api/content/gaps after Build 059 is complete and confirm
+the current gap state is saved as a snapshot with the correct
+counts.
