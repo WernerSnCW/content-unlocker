@@ -75,7 +75,7 @@ artifacts-monorepo/
 ## Database Schema
 
 - **leads**: id, name, company, pipeline_stage, first_contact, last_contact, detected_persona, archived, send_log (JSONB), stage_history (JSONB), notes (JSONB)
-- **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, content, qc_history (JSONB)
+- **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, last_reviewed, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, generation_brief_id, generation_attempt, qc_report_id, source_trace (JSONB), content, qc_history (JSONB), gdoc_id, gdoc_url
 - **changelog**: id, timestamp, action, document_id, lead_id, details, triggered_by
 
 ## TypeScript & Composite Projects

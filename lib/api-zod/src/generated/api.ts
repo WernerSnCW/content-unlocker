@@ -326,6 +326,7 @@ export const ListDocumentsResponseItem = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  qc_history: zod.array(zod.object({}).passthrough()).optional(),
   gdoc_id: zod.string().nullish(),
   gdoc_url: zod.string().nullish(),
 });
@@ -368,6 +369,7 @@ export const GetDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  qc_history: zod.array(zod.object({}).passthrough()).optional(),
   gdoc_id: zod.string().nullish(),
   gdoc_url: zod.string().nullish(),
 });
@@ -422,6 +424,7 @@ export const UpdateDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  qc_history: zod.array(zod.object({}).passthrough()).optional(),
   gdoc_id: zod.string().nullish(),
   gdoc_url: zod.string().nullish(),
 });
@@ -472,6 +475,7 @@ export const GetPropagationStatusResponseItem = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  qc_history: zod.array(zod.object({}).passthrough()).optional(),
   gdoc_id: zod.string().nullish(),
   gdoc_url: zod.string().nullish(),
 });
@@ -764,6 +768,7 @@ export const GenerateFromBriefResponse = zod.object({
       }),
     ),
     content: zod.string().nullish(),
+    qc_history: zod.array(zod.object({}).passthrough()).optional(),
     gdoc_id: zod.string().nullish(),
     gdoc_url: zod.string().nullish(),
   }),
@@ -897,6 +902,7 @@ export const GenerateDocumentResponse = zod.object({
       }),
     ),
     content: zod.string().nullish(),
+    qc_history: zod.array(zod.object({}).passthrough()).optional(),
     gdoc_id: zod.string().nullish(),
     gdoc_url: zod.string().nullish(),
   }),
@@ -957,6 +963,7 @@ export const RegenerateDocumentResponse = zod.object({
       }),
     ),
     content: zod.string().nullish(),
+    qc_history: zod.array(zod.object({}).passthrough()).optional(),
     gdoc_id: zod.string().nullish(),
     gdoc_url: zod.string().nullish(),
   }),
@@ -1016,6 +1023,7 @@ export const PromoteDocumentResponse = zod.object({
     }),
   ),
   content: zod.string().nullish(),
+  qc_history: zod.array(zod.object({}).passthrough()).optional(),
   gdoc_id: zod.string().nullish(),
   gdoc_url: zod.string().nullish(),
 });

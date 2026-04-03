@@ -1,0 +1,227 @@
+# SESSION — Decumulation Planner Cascade + FAQ Regeneration
+Version: 1.0
+
+Two tasks. Complete Task 1 first, then Task 2.
+Do not skip ahead or run them in parallel.
+
+---
+
+## SYSTEM REFERENCE — Verify before starting
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+- detectPropagationTargets() — read-only, no DB writes
+- propagateFromDocument() — detects, flags, writes changelog
+Use these functions. Do not reimplement propagation logic.
+Do not call both on the same document in the same operation.
+
+### Changelog action types confirmed in live system
+FLAGGED_FOR_FEATURE_UPDATE — confirmed, no conflict
+
+---
+
+## Task 1 — Decumulation Planner Feature Update Cascade
+
+The Decumulation Planner has received new features and functions.
+This task uses the feature update cascade (Build B) to identify all
+documents that reference the Decumulation Planner and flag them for
+review. This is a live test of the cascade on real data.
+
+### Step 1 — Reset all documents to CLEAN before starting
+
+Before submitting the feature update, reset all documents to
+review_state: CLEAN so the cascade results are clean and unambiguous.
+Confirm the reset is complete before proceeding.
+
+### Step 2 — Submit the feature update
+
+Call POST /api/content/feature-update with the following body:
+
+```json
+{
+  "title": "Decumulation Planner — New Features and Functions",
+  "description": "The Decumulation Planner has been updated with new features and functions since the current registry documents were written. The Decumulation Planner answers the question every investor approaching retirement needs to ask: given my assets, how long will my money last if I spend £X per year — and what is the optimal sequence to draw from those assets to minimise tax and maximise what I pass to my heirs? It covers Cash, ISA (including flexible ISA), pension (DC/SIPP/workplace), investment property, VCT, EIS, and AIM shares, and models four drawdown strategies: tax-optimised, IHT-optimised, income-first, and growth-first. Key modelled scenarios include the proposed April 2026 BPR cap (£2.5M at 100%, 50% above), proposed April 2027 pension IHT inclusion, trust and gifting mechanics (NEFI, CLT 7-year rolling window with NRB stacking, PET taper relief schedule), and year-indexed tax parameters for multi-decade plans. Any document that describes, references, or positions the Decumulation Planner — including its scope, capabilities, prototype status, demonstration visibility, approved status language, or roadmap — may now be inaccurate or incomplete and requires review and updating.",
+  "affected_features": [
+    "Decumulation Planner",
+    "Decumulation Engine",
+    "decumulation",
+    "retirement income planning",
+    "drawdown planning",
+    "drawdown sequencing",
+    "portfolio decumulation",
+    "IHT-optimised drawdown",
+    "tax-optimised drawdown",
+    "pension drawdown sequencing",
+    "BPR cap modelling",
+    "pension IHT 2027"
+  ],
+  "change_type": "addition",
+  "affects_compliance": false,
+  "affects_tier1": true
+}
+```
+
+Note: affects_tier1 is true because the Decumulation Planner is
+described in foundational Tier 1 documents. This triggers the Tier 1
+propagation cascade via detectPropagationTargets() in addition to
+semantic matching.
+
+### Step 3 — Report the results
+
+After the feature update runs, report in full:
+
+**Feature update ID:** [update_id]
+
+**Affected documents by priority:**
+
+| Priority | Document ID | Title | Tier | Detection Method(s) | Relevance Reason |
+|---|---|---|---|---|---|
+[one row per affected document]
+
+**Summary:**
+- Total documents flagged: [n]
+- CRITICAL: [n]
+- HIGH: [n]
+- MEDIUM: [n]
+- LOW: [n]
+- Changelog entries created: [n]
+
+### Step 4 — Verify the review queue
+
+Call GET /api/content/feature-update/{update_id}/queue
+
+Confirm:
+- All flagged documents appear in the queue
+- Queue is ordered CRITICAL first, then HIGH, then MEDIUM
+- Tier 1 documents appear before their dependents within the
+  same priority level
+- No FLAGGED_FOR_REVIEW duplicate entries exist alongside
+  the FLAGGED_FOR_FEATURE_UPDATE entries
+
+### Step 5 — Verify no false positives
+
+For each document flagged via semantic_match, confirm:
+- The relevance_reason is specific to the Decumulation Planner
+- The document genuinely references the feature
+- Flag any document where the match appears to be a false positive
+
+Report: [n] semantic matches, [n] confirmed relevant,
+[n] potential false positives with explanation.
+
+### Step 6 — Confirm audit trail
+
+Call GET /api/changelog and confirm:
+- One parent changelog entry for the feature update itself
+- One FLAGGED_FOR_FEATURE_UPDATE entry per affected document
+- No FLAGGED_FOR_REVIEW duplicate entries on the same documents
+
+Do not resolve or update any documents. Leave the review queue
+open. Task 1 complete — proceed to Task 2.
+
+---
+
+## Task 2 — FAQ Regeneration with QC verification
+
+The FAQ document (gap_dd3587e1) was generated in a previous session
+but QC failed and the qc_history was not persisted correctly due to
+a serialisation bug. This task regenerates the FAQ cleanly and
+verifies the full QC result is captured and persisted.
+
+### Step 1 — Confirm the QC serialisation bug is fixed
+
+Before regenerating, check whether the qc_history column serialisation
+issue identified in the previous session has been fixed. Inspect the
+generate-from-brief endpoint and the QC evaluation code to confirm
+qc_history is correctly serialised to the database.
+
+If it is not fixed, fix it before proceeding. The fix should ensure:
+- The qc_history array is correctly persisted to the database on
+  every generation call
+- GET /api/documents/:id returns a non-empty qc_history array for
+  any document that has been through QC evaluation
+- Do not change the QC evaluation logic — only the serialisation
+
+Report whether the fix was needed and what was changed.
+
+### Step 2 — Delete or supersede the previous FAQ document
+
+The previous FAQ document (gap_dd3587e1) was generated with a caveat
+block from an earlier brief that had information gaps. It should be
+removed before regenerating cleanly.
+
+If a delete endpoint exists: delete gap_dd3587e1.
+If no delete endpoint exists: update its review_state to BLOCKED
+and lifecycle_status to ARCHIVED so it does not appear in gap
+detection or ranking. Do not leave it as an active DRAFT.
+
+### Step 3 — Regenerate the brief for Gap 2
+
+Call POST /api/content/generate-brief for Gap 2
+(Type gap: FAQ / Objection Handler).
+
+The master context is now auto-loaded — no additional_context
+needed for this gap.
+
+Confirm the brief returns:
+- information_needed: empty (was already ready before master context)
+- ready_to_generate: true
+- Document type: FAQ / Objection Handler
+
+### Step 4 — Generate the FAQ document
+
+Call POST /api/content/generate-from-brief using the Gap 2 brief.
+
+Do not use override_information_gaps — the brief should be clean.
+
+After generation, confirm:
+- Document was created with a new ID
+- lifecycle_status: DRAFT
+- review_state reflects QC result (CLEAN if pass, REQUIRES_REVIEW
+  if fail)
+- qc_history is non-empty — confirm by calling GET /api/documents/:id
+  and checking the qc_history field contains the full QC evaluation
+- A changelog entry exists: DOCUMENT_GENERATED_FROM_GAP
+
+### Step 5 — Report QC result in full
+
+Report:
+- Document ID: [new ID]
+- QC result: PASS / FAIL
+- QC checks run: [list all checks that were evaluated]
+- Any failed checks: [detail each failure with the specific reason]
+- qc_history persisted correctly: YES / NO
+- First 300 characters of generated content (confirm no caveat block)
+- Gap 2 status in GET /api/content/gaps: [still appears / resolved]
+  (should still appear as DRAFT, not CURRENT)
+
+Do not promote the document to CURRENT. Leave as DRAFT for review.
+
+---
+
+## Final status report
+
+After both tasks are complete:
+
+TASK 1 — Decumulation cascade:
+- Feature update ID: [id]
+- Total documents flagged: [n]
+- Review queue confirmed: YES / NO
+- False positives identified: [n] (list if any)
+- Audit trail clean: YES / NO
+
+TASK 2 — FAQ regeneration:
+- QC serialisation bug: WAS PRESENT / ALREADY FIXED / [detail]
+- Previous FAQ document: DELETED / ARCHIVED
+- New FAQ document ID: [id]
+- QC result: PASS / FAIL
+- qc_history persisted: YES / NO
+- Ready for human review: YES / NO

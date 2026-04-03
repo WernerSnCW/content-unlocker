@@ -202,6 +202,8 @@ export interface EmailDraft {
   template_used: string;
 }
 
+export type DocumentQcHistoryItem = { [key: string]: unknown };
+
 export interface SourceTraceEntry {
   claim_area: string;
   source_document_id: string;
@@ -236,6 +238,7 @@ export interface Document {
   source_trace: SourceTraceEntry[];
   /** @nullable */
   content?: string | null;
+  qc_history?: DocumentQcHistoryItem[];
   /** @nullable */
   gdoc_id?: string | null;
   /** @nullable */

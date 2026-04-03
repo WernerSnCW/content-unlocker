@@ -1202,6 +1202,10 @@ components:
             $ref: "#/components/schemas/SourceTraceEntry"
         content:
           type: ["string", "null"]
+        qc_history:
+          type: array
+          items:
+            type: object
         gdoc_id:
           type: ["string", "null"]
         gdoc_url:

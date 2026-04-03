@@ -172,6 +172,7 @@ function formatDoc(doc: any) {
     qc_report_id: doc.qc_report_id,
     source_trace: doc.source_trace || [],
     content: doc.content,
+    qc_history: doc.qc_history || [],
     gdoc_id: doc.gdoc_id || null,
     gdoc_url: doc.gdoc_url || null,
   };

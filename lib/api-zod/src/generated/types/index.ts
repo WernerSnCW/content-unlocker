@@ -22,6 +22,7 @@ export * from "./createLeadBody";
 export * from "./dashboardSummary";
 export * from "./dashboardSummaryPipelineBreakdown";
 export * from "./document";
+export * from "./documentQcHistoryItem";
 export * from "./documentSummary";
 export * from "./emailDraft";
 export * from "./emailDraftBody";

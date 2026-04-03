@@ -5,6 +5,7 @@
  * Unlock Content Intelligence Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { DocumentQcHistoryItem } from "./documentQcHistoryItem";
 import type { SourceTraceEntry } from "./sourceTraceEntry";
 
 export interface Document {
@@ -34,6 +35,7 @@ export interface Document {
   source_trace: SourceTraceEntry[];
   /** @nullable */
   content?: string | null;
+  qc_history?: DocumentQcHistoryItem[];
   /** @nullable */
   gdoc_id?: string | null;
   /** @nullable */
