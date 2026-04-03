@@ -1,0 +1,225 @@
+# SESSION — Docs 700 and 520 Compliance Remediation
+Version: 1.0
+
+Pre-existing QC failures in the two largest Tier 1 documents.
+None of these failures are cascade-related — they predate the
+Decumulation Planner update. Both documents are currently
+REQUIRES_REVIEW and will remain so until QC passes.
+
+Complete Doc 700 first, then Doc 520.
+
+---
+
+## SYSTEM REFERENCE
+
+### Approved compliance figures (from compliance_constants.json)
+- EIS income tax relief: 30%
+- SEIS income tax relief: 50%
+- VCT income tax relief: 20% (NOT 30%)
+- BPR cap: £2,500,000 per estate — subject to final enactment
+- Pension IHT change: April 2027 — subject to final legislation
+- EIS loss relief (additional rate): ~38.5% effective reduction
+  in losses — subject to adviser confirmation
+- SEIS loss relief (additional rate): up to 72% effective relief
+  — subject to adviser confirmation
+
+### Loss relief framing (approved — from FAQ fix session)
+EIS: "up to an effective 38.5% reduction in losses (after income
+tax relief) — subject to adviser confirmation"
+SEIS: "up to 72% effective relief — subject to adviser confirmation"
+Never use per-pound arithmetic (e.g. "27.5p per £" or "22p per £")
+in investor-facing documents.
+
+### Portfolio arithmetic rule
+No portfolio allocation example may sum to more than 100%.
+Any example showing percentages across asset classes must
+total exactly 100%.
+
+### BPR qualifier rule
+Every reference to the BPR cap (£2,500,000) must be followed
+immediately by: "subject to final enactment"
+This applies to every occurrence throughout the document —
+not just the first mention.
+
+### Pension IHT qualifier rule
+Every reference to the April 2027 pension IHT change must be
+followed by: "subject to final legislation"
+
+### Approved product tagline
+"Clarity, without complexity."
+Must appear in all Tier 1 documents.
+
+---
+
+## DOC 700 — Content Bank (98,148 characters)
+
+### Step 1 — Read and locate all failing sections
+
+Call GET /api/documents/700 and identify:
+
+1. Every BPR cap reference — confirm "subject to final enactment"
+   follows each one. Flag every occurrence where it is missing.
+
+2. Every pension IHT / April 2027 reference — confirm "subject
+   to final legislation" follows each. Flag every missing instance.
+
+3. The loss relief section — identify which figure is used:
+   22p per £ or 27.5p per £ or percentage framing. The approved
+   framing is percentage-based (38.5% EIS, 72% SEIS) — not
+   per-pound arithmetic. Flag the conflicting reference.
+   NOTE: Do not resolve the 22p vs 27.5p conflict by choosing
+   one figure — both are wrong framing. Replace both with the
+   approved percentage framing.
+
+4. The P005 portfolio arithmetic error — find the example
+   showing 50% + 30% + 40% (= 120%). This must be corrected
+   to sum to 100%. Adjust the figures proportionally:
+   e.g. 45% + 30% + 25% = 100%, or any allocation that is
+   realistic for the persona and sums correctly.
+
+5. The product tagline — confirm "Clarity, without complexity."
+   appears. Add it to the document header or introduction if
+   missing.
+
+### Step 2 — Apply fixes
+
+Make only the minimum changes required to fix each failure.
+Do not rewrite surrounding sections. Do not alter content that
+is not directly related to the failing checks.
+
+Apply all fixes in a single PATCH — do not make multiple PATCH
+calls for separate fixes.
+
+Call PATCH /api/documents/700 with:
+- The full corrected content
+- edit_override: true
+
+### Step 3 — Re-run QC
+
+Call POST /api/generation/700/qc-rerun
+
+If QC passes: proceed to Step 4.
+If QC fails: report remaining failures. Apply fixes and re-run
+up to 2 more times (3 total attempts). If still failing after
+3 attempts, stop and report — do not promote.
+
+### Step 4 — Set review_state to CLEAN
+
+Doc 700 is already CURRENT — do not call the promote endpoint.
+Set review_state: CLEAN via PATCH or status endpoint.
+
+Confirm review_state: CLEAN in GET /api/documents/700.
+Confirm a changelog entry records the change.
+
+### Report — Doc 700
+- BPR qualifier fixes applied: [n occurrences fixed]
+- Pension IHT qualifier fixes applied: [n occurrences fixed]
+- Loss relief framing fixed: YES / NO (describe what changed)
+- Portfolio arithmetic fixed: YES (show corrected figures)
+- Product tagline added: YES / ALREADY PRESENT
+- QC attempts: [n]
+- QC result: PASS / FAIL
+- review_state CLEAN: YES / NO
+
+---
+
+## DOC 520 — Investor Personas (42,982 characters)
+
+Doc 520 has 13 QC failures. Several are structural issues with
+the document type — the QC engine is checking for product-level
+compliance language in a document that describes personas rather
+than making product claims. Before applying fixes, assess each
+failure category:
+
+### Step 1 — Read and categorise failures
+
+Call GET /api/documents/520 and review against the QC failure
+list from the previous session:
+
+**Category A — Fixable compliance issues:**
+- Portfolio arithmetic error (50% + 30% + 40% = 120%) — fix
+- Unsubstantiated savings figures (£5-20K) — remove or add
+  "varies by investor" qualifier
+- Investment advice framing in objection rebuttals — rephrase
+  to information-only framing (e.g. "Unlock provides information
+  about EIS" not "EIS is right for you")
+- Product tagline missing — add to document header
+
+**Category B — False positives for this document type:**
+- BPR/pension qualifier language not present — this document
+  describes personas, not tax reliefs. Only add qualifiers if
+  the document actually states BPR cap figures or pension IHT
+  dates. If it does not, flag this as a false positive.
+- VCT/EIS relief rates not stated — same logic. Personas do not
+  need to state relief rates unless they are quoting them.
+- Decumulation Planner build status — only required if the
+  document references the Planner's availability. Check if it
+  does — if not, false positive.
+
+Report your categorisation before making any changes.
+List which failures are Category A (fixable) and which are
+Category B (false positives for document type).
+
+### Step 2 — Apply Category A fixes only
+
+Fix only the genuine compliance issues (Category A).
+Do not attempt to add product-level compliance language to
+sections where it does not belong (Category B).
+
+Apply all Category A fixes in a single PATCH:
+- edit_override: true
+
+### Step 3 — Re-run QC
+
+Call POST /api/generation/520/qc-rerun
+
+Report the result per check:
+- Which checks now pass
+- Which checks still fail and why
+- For any remaining failures: is it a genuine issue or a false
+  positive given the document type?
+
+If all genuine issues pass: proceed to Step 4 even if false
+positive failures remain — note them in the report.
+
+If genuine issues remain: apply fixes and re-run (max 3 attempts
+total). Stop and report if still failing.
+
+### Step 4 — Set review_state to CLEAN
+
+Doc 520 is already CURRENT — do not call the promote endpoint.
+Set review_state: CLEAN via PATCH or status endpoint.
+
+Confirm review_state: CLEAN in GET /api/documents/520.
+Confirm a changelog entry records the change.
+
+### Report — Doc 520
+- Category A failures (genuine): [list]
+- Category B failures (false positives): [list]
+- Fixes applied: [describe each]
+- QC attempts: [n]
+- QC result: PASS / FAIL (note any remaining false positives)
+- review_state CLEAN: YES / NO
+
+---
+
+## Final session report
+
+DOC 700:
+- Failures fixed: [n]
+- QC result: PASS / FAIL
+- review_state CLEAN: YES / NO
+
+DOC 520:
+- Genuine failures fixed: [n]
+- False positives identified: [n]
+- QC result: PASS / FAIL
+- review_state CLEAN: YES / NO
+
+QUEUE STATE after this session:
+- Tier 1 documents remaining REQUIRES_REVIEW: [n]
+- Total documents remaining REQUIRES_REVIEW: [n]
+
+If both documents are now CLEAN: Tier 1 queue is clear.
+Next session should address Tier 2 (Doc 200) and begin
+systematic Tier 3 review.

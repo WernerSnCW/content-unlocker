@@ -1,0 +1,120 @@
+# FIX — Doc 400 QC Completion
+Version: 1.0
+
+Doc 400 (Decumulation Engine) passes all core compliance checks
+but has 2 remaining QC failures requesting supplementary EIS/SEIS
+detail and a likely false positive on VCT. This fix adds the
+missing detail and clears the document.
+
+---
+
+## SYSTEM REFERENCE
+
+### Approved compliance figures (from compliance_constants.json)
+- EIS income tax relief: 30%
+- EIS CGT deferral: available — defer gains by investing in EIS
+- EIS CGT exemption on exit: 100%, no cap, after 3-year hold
+- SEIS income tax relief: 50%
+- SEIS annual limit: £200,000
+- EIS annual limit: £1,000,000 (£2,000,000 for knowledge-intensive)
+- BPR cap: £2,500,000 — subject to final enactment
+- VCT relief: 20%
+- Pension IHT: April 2027 — subject to final legislation
+
+---
+
+## Step 1 — Read current doc 400 content
+
+Call GET /api/documents/400 and read the current content field.
+Identify the Compliance Notes section near the end of the document.
+
+---
+
+## Step 2 — Add missing EIS and SEIS detail
+
+In the Compliance Notes section, add the following after the
+existing BPR and pension IHT caveats:
+
+```
+## EIS and SEIS Relief Rates
+
+EIS (Enterprise Investment Scheme):
+- Income tax relief: 30% of investment value
+- Annual investment limit: £1,000,000 (£2,000,000 for
+  knowledge-intensive companies)
+- CGT deferral: available — gains deferred by investing in
+  qualifying EIS shares
+- CGT exemption on exit: 100%, no upper cap, after 3-year
+  qualifying hold
+- Loss relief: available against income tax or CGT
+
+SEIS (Seed Enterprise Investment Scheme):
+- Income tax relief: 50% of investment value
+- Annual investment limit: £200,000
+- CGT exemption on exit: 100% after 3-year qualifying hold
+- Loss relief: available
+
+All relief figures subject to individual circumstances and HMRC
+qualifying conditions. Investors should seek independent tax
+advice. Tax treatment may change.
+```
+
+Do not change any other section of the document.
+
+---
+
+## Step 3 — PATCH the document
+
+Call PATCH /api/documents/400 with:
+- The full updated content (existing content + new section added)
+- edit_override: true (required for Tier 1 documents)
+
+Confirm the PATCH returns 200 and content is updated.
+
+---
+
+## Step 4 — Re-run QC
+
+Call POST /api/generation/400/qc-rerun
+
+Report:
+- QC result: PASS / FAIL
+- All checks and their results
+- If any failures remain: exact failure reason
+
+If the VCT check fails again with identical offending/correct
+text — confirm this is a false positive (offending text matches
+the correct version exactly) and note it. Do not change the
+VCT content to address a false positive.
+
+If QC passes: proceed to Step 5.
+If QC fails with genuine failures (offending ≠ correct):
+report and stop — do not promote.
+
+---
+
+## Step 5 — Promote doc 400
+
+If QC passes, update the review_state to CLEAN.
+
+Since doc 400 is already CURRENT (not DRAFT), use the QC rerun
+result to set review_state: CLEAN directly via PATCH or the
+appropriate status endpoint — do not call the promote endpoint
+(which requires DRAFT status).
+
+Confirm:
+- review_state: CLEAN
+- lifecycle_status: CURRENT (unchanged)
+- A changelog entry records the status change
+
+---
+
+## Final report
+
+Content added: YES / NO
+QC result: PASS / FAIL
+QC checks run: [n]
+Remaining failures: [list any, or "None"]
+VCT check: TRUE FAILURE / FALSE POSITIVE (identical text)
+review_state set to CLEAN: YES / NO
+Doc 400 clear in review queue: YES / NO
