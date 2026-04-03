@@ -1,0 +1,143 @@
+# HEALTH CHECK — Post Builds 075, 076, 077, 078
+Version: 1.2
+
+Assess the functional health of this project following completion
+of four builds: transcript-to-lead auto-creation (075), persona
+accuracy validation (076), batch analysis depth parity (077), and
+recommendation-to-gap linkage (078).
+
+Complete the template below exactly. Do not add prose before or
+after it. Replace every placeholder in square brackets.
+
+Assess every tool, feature, or user-facing workflow in the project.
+Do not skip anything because it seems minor.
+
+---
+
+## HEALTH CHECK OUTPUT
+
+### 1. Tools and features assessed
+
+For each significant tool, feature, or workflow:
+
+#### `[Tool or feature name]`
+**Intended purpose:** [what it is supposed to do]
+**Current status:** [WORKING / PARTIAL / BROKEN / UNKNOWN]
+**Evidence:** [what confirms this — specific function, file, or
+behaviour. For integration features connecting to external services,
+a live end-to-end test is required. If a live end-to-end test
+cannot be performed, status must be UNKNOWN.]
+**Gaps:** [what it fails to do or "None identified"]
+
+Pay particular attention to the four new builds and any areas
+they touched:
+
+**Build 075 — Transcript-to-lead auto-creation:**
+- GET /api/leads/match?name={name} — fuzzy matching endpoint
+- POST /api/leads with source: "batch_transcript" — pre-populated
+  lead creation
+- Auto-match in analyze-batch response (lead_match field)
+- Batch result card lead management UI (match banners, inline
+  create form)
+
+**Build 076 — Persona accuracy validation:**
+- GET /api/analytics/personas — analytics endpoint
+- POST /api/leads/:id/confirm-persona — confirmation endpoint
+- persona_confidence and stage_confidence fields on leads
+- /analytics/personas page
+- Persona confirmation UI on lead detail page
+
+**Build 077 — Batch analysis depth parity:**
+- analyze-batch now returns readiness, blocking_objections,
+  information_gaps, primary_issue, recommended_next_action,
+  call_completeness
+- Batch result cards show primary issue banner and full signals
+- Aircall speaker focus confirmed in batch prompt
+
+**Build 078 — Recommendation-to-gap linkage:**
+- Rank endpoint recommendation_gap detection (zero results AND
+  low relevance score < 0.4)
+- POST /api/recommendation/gap-brief endpoint
+- Gap panel UI on failed recommendation
+- Dashboard coverage gap card
+
+Also check that the following existing features were not broken
+by any of the four builds:
+- Single transcript analyze (persona, stage, primary issue,
+  readiness, blocking objections)
+- Document rank (when documents ARE available — not gap case)
+- Email draft and confirm send
+- Lead management CRUD
+- Document registry and QC pipeline
+- Content gap analysis and gap persistence
+- Feature update cascade
+- Google Docs integration (live end-to-end test required)
+
+[repeat for every significant tool or feature]
+
+---
+
+### 2. Silent failures
+
+Things that run without errors but produce wrong or incomplete
+results:
+
+- **[Function or feature]:** [what it does vs what it should do]
+
+If none identified: "None identified."
+
+---
+
+### 3. Unreachable or unwired code
+
+Code that exists but is not connected to anything:
+
+- **[File or function]:** [why it is unreachable]
+
+If none identified: "None identified."
+
+---
+
+### 4. Fragile areas
+
+Code that works now but is likely to break:
+
+- **[File or function]:**
+  - **Issue:** [the specific fragility]
+  - **Likelihood:** [LOW / MEDIUM / HIGH]
+
+If none identified: "None identified."
+
+---
+
+### 5. Overall verdict
+
+| Area | Status | Notes |
+|---|---|---|
+| Lead Matching — Fuzzy Match (075) | 🟢 / 🟡 / 🔴 | |
+| Lead Matching — Auto-match in batch (075) | 🟢 / 🟡 / 🔴 | |
+| Lead Creation from Transcript (075) | 🟢 / 🟡 / 🔴 | |
+| Persona Analytics Endpoint (076) | 🟢 / 🟡 / 🔴 | |
+| Persona Confirmation (076) | 🟢 / 🟡 / 🔴 | |
+| Persona Analytics Page (076) | 🟢 / 🟡 / 🔴 | |
+| Batch Analysis — Full Signal Set (077) | 🟢 / 🟡 / 🔴 | |
+| Batch Result Cards — Primary Issue Banner (077) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Gap Detection (078) | 🟢 / 🟡 / 🔴 | |
+| Gap Brief Pre-population (078) | 🟢 / 🟡 / 🔴 | |
+| Dashboard Coverage Gap Card (078) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Single Analyze | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Rank (success case) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Email Draft | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Confirm Send | 🟢 / 🟡 / 🔴 | |
+| Batch Upload — Parse + Analyze | 🟢 / 🟡 / 🔴 | |
+| Lead Management — CRUD | 🟢 / 🟡 / 🔴 | |
+| Document Registry | 🟢 / 🟡 / 🔴 | |
+| Content Generation & QC | 🟢 / 🟡 / 🔴 | |
+| Content Gap Analysis | 🟢 / 🟡 / 🔴 | |
+| Feature Update Cascade | 🟢 / 🟡 / 🔴 | |
+| Google Docs Integration | 🟢 / 🟡 / 🔴 | |
+| Dashboard | 🟢 / 🟡 / 🔴 | |
+| Changelog | 🟢 / 🟡 / 🔴 | |
+
+**Recommendation:** [PROCEED TO BUILD / FIX BEFORE BUILDING /
+NEEDS SENIOR REVIEW]
