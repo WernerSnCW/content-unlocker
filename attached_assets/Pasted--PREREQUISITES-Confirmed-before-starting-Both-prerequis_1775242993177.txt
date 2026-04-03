@@ -1,0 +1,335 @@
+# PREREQUISITES — Confirmed before starting
+
+Both prerequisites for this build have been verified as in place:
+
+- Fix 1 — Persona Mapping: `lib/personas.ts` confirmed with full
+  19-persona → 3-archetype mapping and resolveArchetype() function ✓
+- Fix 2 — Seed Content Loading: Doc 520 (42,982 chars) and Doc 700
+  (98,148 chars) confirmed loading correctly. Docs without content
+  files correctly have null. ✓
+
+Proceed with the build below.
+
+---
+
+# BUILD A — Content Gap Analysis Engine
+Version: 1.1 — corrected pipeline stage taxonomy, added system reference block
+Priority: HIGH
+Depends on: Fix 1 (persona mapping) must be complete first
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+**Before writing any code, verify the following canonical values from
+the live system. Do not infer, assume, or use values from this document
+if they conflict with what the live system uses. If any value below
+differs from the live system, use the live system value and note the
+discrepancy.**
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical document tiers
+Tier 1 (foundational) | Tier 2 (supporting) | Tier 3 (tactical)
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+- detectPropagationTargets() — read-only, no DB writes
+- propagateFromDocument() — detects, flags, writes changelog
+Use these functions. Do not reimplement propagation logic.
+
+---
+
+## Overview
+
+The tool needs to identify what content is missing, assess whether it
+has enough information to create that content, generate briefs for each
+gap, and feed those briefs into the existing content generation pipeline.
+
+Gap detection uses three signals simultaneously:
+1. Coverage matrix — every archetype × pipeline stage combination should
+   have at least one CLEAN + CURRENT document
+2. Document type coverage — certain document types must always exist
+   regardless of persona/stage
+3. Recommendation engine failures — gaps surfaced by the rank endpoint
+   returning zero results for a valid persona + stage combination
+
+---
+
+## Step 1 — Backend: Coverage matrix definition
+
+Create a configuration file at lib/coverage-matrix.ts defining the
+required coverage.
+
+**Archetype × stage matrix:**
+Every cell in this matrix must have at least one CLEAN + CURRENT document
+tagged for that archetype and appropriate for that stage.
+
+Archetypes: Growth Seeker, Preserver, Legacy Builder
+Stages: Outreach, Called, Demo Booked, Demo Complete, Decision
+
+That is 3 × 5 = 15 required coverage cells.
+
+Do not use any stage values outside the canonical list above. If the
+live system uses different stage names, use those and flag the
+discrepancy before proceeding.
+
+**Required document types:**
+The following document types must exist at least once in the registry
+regardless of persona/stage coverage:
+- Case study
+- One-pager / overview
+- FAQ / objection handler
+- Compliance / risk disclosure
+- How it works / explainer
+- Pricing / terms summary
+
+Store both the matrix and the type list in the config file as exported
+constants. These will be updated over time as the product grows.
+
+---
+
+## Step 2 — Backend: Gap detection endpoint
+
+Create a new endpoint: GET /api/content/gaps
+
+This endpoint analyses the document registry against the coverage matrix
+and returns all identified gaps from all three signal sources.
+
+Response body:
+```typescript
+{
+  matrix_gaps: Array<{
+    archetype: string
+    stage: string                  // always one of the 5 canonical stages
+    gap_type: "matrix"
+    existing_documents: string[]   // IDs of any docs that partially cover this cell
+  }>
+  type_gaps: Array<{
+    document_type: string
+    gap_type: "type"
+    existing_documents: string[]
+  }>
+  recommendation_gaps: Array<{
+    persona: string
+    stage: string                  // always one of the 5 canonical stages
+    gap_type: "recommendation_failure"
+    reason: string
+  }>
+  information_readiness: {
+    content_bank: {
+      status: "SUFFICIENT" | "PARTIAL" | "INSUFFICIENT"
+      detail: string
+    }
+    compliance_constants: {
+      status: "SUFFICIENT" | "PARTIAL" | "INSUFFICIENT"
+      detail: string
+      missing_fields: string[]
+    }
+    overall: "READY_TO_GENERATE" | "CAN_GENERATE_WITH_CAVEATS" | "INSUFFICIENT_TO_GENERATE"
+  }
+  summary: {
+    total_gaps: number
+    matrix_gap_count: number
+    type_gap_count: number
+    recommendation_failure_count: number
+  }
+}
+```
+
+**Information readiness assessment:**
+For each gap identified, before generating briefs the system must assess
+whether it has enough source material. This assessment runs against:
+
+- Content bank: Claude reads the content bank and assesses whether it
+  contains sufficient material to write a document for each gap type.
+  Flag as INSUFFICIENT if the content bank has no relevant material for
+  a specific persona or topic area.
+
+- Compliance constants: Check that all expected fields are present and
+  non-null in compliance_constants.json. Expected fields at minimum:
+  EIS income tax relief rate, EIS CGT deferral rate, SEIS income tax
+  relief rate, loss relief rate, VCT relief rate, annual EIS limit,
+  annual SEIS limit. Flag any missing or null fields as missing_fields.
+
+The overall status is:
+- READY_TO_GENERATE if both content bank and compliance constants are SUFFICIENT
+- CAN_GENERATE_WITH_CAVEATS if either is PARTIAL
+- INSUFFICIENT_TO_GENERATE if either is INSUFFICIENT
+
+---
+
+## Step 3 — Backend: Brief generation endpoint
+
+Create a new endpoint: POST /api/content/generate-brief
+
+Accepts a single gap (from the gaps response) and generates a structured
+content brief for it using Claude.
+
+Request body:
+```typescript
+{
+  gap: {
+    archetype?: string             // must be one of the 3 canonical archetypes
+    stage?: string                 // must be one of the 5 canonical stages
+    document_type?: string
+    gap_type: "matrix" | "type" | "recommendation_failure"
+  }
+  information_readiness: object    // pass through from gaps response
+}
+```
+
+The brief Claude generates must include:
+- Recommended document title
+- Document type
+- Target archetype(s)
+- Target pipeline stage(s) — use only canonical stage names
+- Key messages to convey (3–5 bullet points)
+- Tone and length guidance
+- Compliance considerations (reference relevant constants)
+- Source material pointers (specific sections of the content bank to draw from)
+- Information gaps: any specific information needed that is not currently
+  available in the content bank or compliance constants — flagged clearly
+  as INFORMATION NEEDED with a description of what is missing
+
+If information_readiness.overall is INSUFFICIENT_TO_GENERATE, the
+endpoint should return a 422 with a clear message listing what is
+missing before a brief can be generated. Do not attempt to generate
+a brief without sufficient information.
+
+Response body:
+```typescript
+{
+  brief: {
+    title: string
+    document_type: string
+    archetypes: string[]           // subset of canonical archetypes
+    stages: string[]               // subset of canonical stages
+    key_messages: string[]
+    tone: string
+    length_guidance: string
+    compliance_considerations: string[]
+    source_material_pointers: string[]
+    information_needed: Array<{
+      field: string
+      description: string
+      source: "content_bank" | "compliance_constants" | "external"
+    }>
+  }
+  ready_to_generate: boolean
+}
+```
+
+---
+
+## Step 4 — Backend: Brief → generation pipeline
+
+Create a new endpoint: POST /api/content/generate-from-brief
+
+Accepts a brief (from the generate-brief response) and passes it into
+the existing content generation pipeline (POST /api/generation/generate).
+
+This endpoint:
+- Formats the brief into a generation prompt
+- Calls the existing generate endpoint internally
+- Returns the same response shape as the existing generate endpoint
+- Creates a changelog entry noting the document was generated from a gap brief
+
+If ready_to_generate is false on the brief, reject with 422 and list
+the information_needed items. Do not generate content with known
+information gaps unless the user explicitly overrides with
+{ "override_information_gaps": true } in the request body.
+
+When override is used, prepend a CAVEAT block to the generated content
+listing the information gaps so the QC engine and human reviewer can
+see what was assumed or omitted.
+
+---
+
+## Step 5 — Frontend: Gap Analysis page
+
+Add a new page: /gaps (linked from the main navigation as "Content Gaps")
+
+**Gap summary view:**
+Show three sections side by side:
+- Matrix gaps (archetype × stage coverage holes, using canonical stage names)
+- Document type gaps
+- Recommendation failures
+
+For each gap show:
+- What is missing
+- A traffic light for information readiness (🟢 ready / 🟡 caveats / 🔴 insufficient)
+- A "Generate Brief" button
+
+**Information readiness panel:**
+A persistent sidebar panel showing:
+- Content bank status with detail text
+- Compliance constants status with any missing fields listed
+- Overall readiness verdict
+
+If overall status is INSUFFICIENT_TO_GENERATE, disable all Generate Brief
+buttons and show a clear explanation of what needs to be added first.
+
+**Brief review:**
+When a brief is generated, show it in a full-width panel with:
+- All brief fields editable before proceeding
+- Information needed items highlighted in red
+- A "Generate Content" button (disabled if information_needed is non-empty
+  and override is not confirmed)
+- An "Override — generate anyway" option that reveals a confirmation
+  dialog explaining the caveats that will be added
+
+**Generation result:**
+On successful generation, navigate to the existing document detail page
+for the new document. The gap it filled should now show as covered in
+the matrix view on return.
+
+---
+
+## Step 6 — Confirm with live tests
+
+Test 1 — Stage taxonomy verification:
+- Before running any other test, confirm the canonical pipeline stages
+  in the live system match: Outreach, Called, Demo Booked, Demo Complete,
+  Decision. If they differ, stop and report the discrepancy.
+
+Test 2 — Gap detection:
+- Call GET /api/content/gaps on the current registry
+- Confirm the matrix shows 15 cells (3 archetypes × 5 stages)
+- Confirm all stage values in the response are from the canonical list
+- Confirm document type gaps are listed
+- Confirm information readiness assessment runs without error
+
+Test 3 — Brief generation:
+- Pick one matrix gap with 🟢 readiness
+- Call POST /api/content/generate-brief
+- Confirm a structured brief is returned with all required fields
+- Confirm stages in the brief are from the canonical list
+- Confirm source_material_pointers reference real content bank sections
+
+Test 4 — Information insufficiency:
+- Temporarily remove a compliance constant from compliance_constants.json
+- Call GET /api/content/gaps
+- Confirm the missing field appears in missing_fields
+- Confirm overall status degrades correctly
+- Restore the constant after testing
+
+Test 5 — Full pipeline:
+- Pick one gap, generate a brief, generate content from the brief
+- Confirm the document appears in the registry with correct archetype
+  and stage tags (canonical values only)
+- Confirm the gap no longer appears in GET /api/content/gaps
+- Confirm a changelog entry records the gap-driven generation
