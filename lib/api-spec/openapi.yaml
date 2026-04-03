@@ -809,6 +809,10 @@ components:
           type: boolean
         company:
           type: ["string", "null"]
+        notes:
+          type: array
+          items:
+            type: string
 
     SendLogEntry:
       type: object

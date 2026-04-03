@@ -1,6 +1,8 @@
 import { db, leadsTable, documentsTable, changelogTable } from "@workspace/db";
 import { eq, ilike, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { readFileSync, readdirSync } from "fs";
+import { join } from "path";
 import registryData from "../data/registry.json" with { type: "json" };
 import leadsData from "../data/leads.json" with { type: "json" };
 import complianceData from "../data/compliance_constants.json" with { type: "json" };
@@ -15,7 +17,40 @@ export async function seedDatabase() {
 
   logger.info("Seeding database...");
 
+  const candidateDirs = [
+    join(import.meta.dirname, "..", "src", "data", "content"),
+    join(import.meta.dirname, "..", "data", "content"),
+  ];
+  let contentDir = "";
+  let contentFiles: string[] = [];
+  for (const dir of candidateDirs) {
+    try {
+      contentFiles = readdirSync(dir);
+      contentDir = dir;
+      logger.info(`Found content directory at ${dir} with ${contentFiles.length} files`);
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!contentDir) {
+    logger.warn("Content directory not found, all documents will have null content");
+  }
+
   for (const doc of (registryData as any).documents) {
+    let content: string | null = null;
+    const matchingFile = contentFiles.find((f) => f.startsWith(`${doc.id}_`));
+    if (matchingFile) {
+      try {
+        content = readFileSync(join(contentDir, matchingFile), "utf-8");
+        logger.info(`Loaded content for ${doc.id} (${doc.name}) from ${matchingFile}`);
+      } catch (err) {
+        logger.warn(`Failed to read content file ${matchingFile} for ${doc.id}: ${err}`);
+      }
+    } else {
+      logger.info(`No content file found for ${doc.id} (${doc.name}), setting content to null`);
+    }
+
     await db.insert(documentsTable).values({
       id: doc.id,
       file_code: doc.file_code,
@@ -38,7 +73,7 @@ export async function seedDatabase() {
       generation_attempt: doc.generation_attempt || null,
       qc_report_id: doc.qc_report_id || null,
       source_trace: doc.source_trace || [],
-      content: null,
+      content,
       qc_history: [],
     }).onConflictDoNothing();
   }

@@ -161,6 +161,14 @@ router.patch("/leads/:id", async (req, res): Promise<void> => {
   if (parsed.data.detected_persona !== undefined) updates.detected_persona = parsed.data.detected_persona;
   if (parsed.data.archived !== undefined) updates.archived = parsed.data.archived;
   if (parsed.data.company !== undefined) updates.company = parsed.data.company;
+  if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No valid fields provided for update" });
+    return;
+  }
+
+  updates.updated_at = new Date();
 
   const [lead] = await db
     .update(leadsTable)

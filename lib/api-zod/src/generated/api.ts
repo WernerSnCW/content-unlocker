@@ -107,6 +107,7 @@ export const UpdateLeadBody = zod.object({
   detected_persona: zod.string().nullish(),
   archived: zod.boolean().optional(),
   company: zod.string().nullish(),
+  notes: zod.array(zod.string()).optional(),
 });
 
 export const UpdateLeadResponse = zod.object({

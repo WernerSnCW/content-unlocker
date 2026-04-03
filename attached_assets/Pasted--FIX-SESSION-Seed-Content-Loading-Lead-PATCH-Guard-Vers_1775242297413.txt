@@ -1,0 +1,156 @@
+# FIX SESSION — Seed Content Loading + Lead PATCH Guard
+Version: 1.0
+Priority: HIGH / MEDIUM
+Fixes: 053 Fix 2 + 053 Fix 3
+Complete both fixes in this session before running any tests.
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+**Before writing any code, verify the following canonical values from
+the live system. Do not infer, assume, or use values from this document
+if they conflict with what the live system uses.**
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+Use detectPropagationTargets() or propagateFromDocument() — do not
+reimplement propagation logic.
+
+---
+
+## Fix 2 — Seed function sets content: null for all documents
+**Priority:** HIGH — blocks Google Docs exports and content previews
+**File:** dataManager.ts — the seedDatabase function
+
+### The problem
+The seed function explicitly sets content: null for all documents.
+Content markdown files exist on disk at:
+  artifacts/api-server/src/data/content/
+
+These files are not read during seeding. As a result:
+- All Google Docs exports send empty content
+- Content Preview on all document detail pages shows "No content available"
+- The Google Docs round-trip mechanism works but operates on empty documents
+
+### The fix
+Update the seed function to load content from the content directory
+into the database when seeding documents.
+
+Before implementing, inspect the content directory and identify the
+naming convention used by the content files. Do not assume — read the
+directory first and establish whether files are named by document ID,
+document title slug, or some other pattern.
+
+The loading logic must:
+- For each document being seeded, look for a corresponding content file
+  using the naming convention identified above
+- If a matching file is found, read its contents and set the content
+  field to that string
+- If no matching file is found, set content to null — do not throw,
+  handle missing files gracefully
+- Log which documents loaded content and which fell back to null so
+  the result is visible
+
+Do not change the document registry schema or any endpoint.
+Only the seed function should change.
+
+### Confirm with live tests
+
+Test 1 — Content loads on seed:
+- Wipe and reseed the database
+- Call GET /api/documents/:id for at least 5 documents
+- Confirm the content field is non-null for documents that have
+  matching content files
+- Confirm documents without matching files have content: null and
+  did not cause the seed to fail
+
+Test 2 — Google Docs export sends real content:
+- Call POST /api/gdocs/export/:id for a document that now has content
+- Confirm the created Google Doc contains the document's actual content,
+  not an empty string
+- Confirm GET /api/gdocs/status/:id returns linked: true and accessible: true
+
+Test 3 — Content preview renders:
+- Open the document detail page for a seeded document with content
+- Confirm the Content Preview section renders the content text
+- Confirm it does not show "No content available"
+
+---
+
+## Fix 3 — Lead PATCH crashes with 500 on unrecognised fields
+**Priority:** MEDIUM — causes crashes instead of clean errors
+**File:** leads/index.ts — the PATCH /api/leads/:id handler
+
+### The problem
+The PATCH handler builds an updates object from the request body.
+It only processes four fields: pipeline_stage, detected_persona,
+archived, and company. If the request body contains only fields
+outside this set (e.g. notes, or any unknown field), the updates
+object is empty and Drizzle throws "Error: No values to set" — a
+500 crash. The notes field in particular is likely to be sent by
+the frontend but is silently unhandled.
+
+### The fix — two changes required
+
+**A. Add notes field handling**
+Add notes to the list of fields processed by the PATCH handler.
+Notes should be written to the lead record.
+
+Also add updated_at to every PATCH so the lead's last-modified
+timestamp is always refreshed on any successful update.
+
+**B. Guard against empty updates**
+After building the updates object, check if it is empty before
+passing it to Drizzle. If empty, return a 400 response with a
+clear error message:
+  { "error": "No valid fields provided for update" }
+
+Do not let an empty updates object reach the database layer under
+any circumstances.
+
+Do not change the Zod input schema beyond what is needed to accept
+the notes field. Do not change any other endpoint.
+
+### Confirm with live tests
+
+Test 1 — Notes field updates correctly:
+- PATCH /api/leads/:id with { "notes": ["Test note"] }
+- Confirm 200 response
+- Confirm GET /api/leads/:id returns the updated notes field
+- Confirm updated_at has been refreshed
+
+Test 2 — Unknown fields return 400:
+- PATCH /api/leads/:id with { "unknown_field": "value" }
+- Confirm 400 response with error message "No valid fields provided
+  for update"
+- Confirm no 500 error and no database write attempted
+
+Test 3 — Existing fields still work:
+- PATCH /api/leads/:id with { "pipeline_stage": "Demo Complete" }
+- Confirm 200 response and correct update
+- Confirm this is unchanged from before the fix
+
+Test 4 — Mixed known and unknown fields:
+- PATCH /api/leads/:id with { "pipeline_stage": "Called", "unknown_field": "x" }
+- Confirm 200 response — the known field should be processed
+- Confirm unknown field is silently ignored, not rejected
+
+---
+
+## Final check — run after both fixes are complete
+
+Run the health check prompt (050) after both fixes are applied.
+Confirm:
+- Lead Management shows 🟢 (not 🟡)
+- Google Docs Integration shows 🟢 with non-null content confirmed
+- No new issues introduced by either fix

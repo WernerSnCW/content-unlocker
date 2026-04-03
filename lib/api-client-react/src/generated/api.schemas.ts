@@ -87,6 +87,7 @@ export interface UpdateLeadBody {
   archived?: boolean;
   /** @nullable */
   company?: string | null;
+  notes?: string[];
 }
 
 export interface NextAction {
