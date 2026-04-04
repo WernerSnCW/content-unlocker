@@ -1,0 +1,93 @@
+# UNLOCK — QC Fix Brief
+## AI Investment Thesis (gen_ca705607) — 6 QC Fails
+## Priority: CRITICAL — Fix before any other editorial work
+
+---
+
+## Most Likely QC Fails and Fixes
+
+### Fail 1 — Return figure not framed as effective cost
+**QC check:** COMPLIANCE_FIGURES
+**Likely error:** Document states "3.8x return" or "returns of 3.8x" without framing as effective cost
+**Fix:** Replace every return figure reference with:
+> "We target a 5-6x return on the money you actually put at risk — after income tax relief of 30% returns £30,000 immediately on a £100,000 investment, your effective cost is £70,000. Our portfolio model produces a base case of 3.8x on the gross investment — that's £380,000 — all CGT-free. On the money you actually risked, that's 5.4x."
+
+**Qualifier required on every mention:** "Subject to individual tax circumstances."
+
+---
+
+### Fail 2 — 3.8x attributed to NESTA as a headline figure
+**QC check:** UNSUBSTANTIATED_CLAIMS
+**Likely error:** "Research shows 3.8x average EIS return" or "NESTA confirms 3.8x"
+**Fix:** Replace with:
+> "Unlock's portfolio model — a 4/3/2/1 distribution calibrated to the distributional findings of the NESTA/Wiltbank 2009 study — produces a base case gross return of 3.8x."
+NESTA's own mean is 2.2x. 3.8x is the model output. Never attribute it directly to NESTA.
+
+---
+
+### Fail 3 — Capital at risk declaration missing
+**QC check:** CAPITAL_AT_RISK
+**Fix:** Add to document footer or risk section:
+> "Capital is at risk. The value of investments can fall as well as rise and investors may not get back the full amount invested. Tax treatment depends on individual circumstances and may change."
+
+---
+
+### Fail 4 — Exit comparables incomplete or wrong
+**QC check:** UNSUBSTANTIATED_CLAIMS
+**Likely error:** Document only cites PitchBook, or cites ContentCal 7.8x
+**Fix:** Use all three confirmed comparables:
+- PitchBook → Morningstar (2016, $225M)
+- Bureau van Dijk → Moody's (2017, €3bn)
+- Refinitiv → LSEG (2021, $27bn)
+
+Do not mention ContentCal — the 7.8x figure has no public source.
+
+---
+
+### Fail 5 — Co-creation claim without naming caveat
+**QC check:** UNSUBSTANTIATED_CLAIMS
+**Likely error:** Names Tony Vine-Lott or specific investors without naming permission
+**Fix:** Use unnamed framing:
+> "Five founding investors — including senior figures from the UK financial services sector — are actively using the platform and shaping its development weekly. This is co-creation, not speculation."
+
+Do not name Tony Vine-Lott until written permission is confirmed.
+
+---
+
+### Fail 6 — January 2027 / ASA structure included
+**QC check:** Prohibited language / BLOCKED content
+**Likely error:** Document references the two-year window or January 2027 carry-back structure
+**Fix:** Remove entirely. The January 2027 structure is BLOCKED pending legal sign-off. The AI Investment Thesis does not need it — the investment case stands without it.
+
+---
+
+## After Fixing All 6 Fails
+
+1. Re-run QC — target 0 fails
+2. If any auto-resolved: verify they are genuinely resolved not just suppressed
+3. Promote to CURRENT
+4. Assign persona tags: Growth Seeker
+5. Assign stage tags: Called, Demo Booked, Demo Complete
+6. F0 gate is now live — Pack 1 can be sent
+
+---
+
+## Cold Advice Gap (gen_bea526c5) — 5 QC Fails
+Fix after AI Thesis is promoted.
+
+Most likely fails:
+- "IFAs are not permitted" language → replace with "cannot practically advise"
+- Capital at risk declaration missing
+- Unlock brand mentioned in document body (must not appear — this is a cold/unbranded document)
+- Return figures included (must not appear — this is education only, no return claims)
+- Missing "Subject to individual tax circumstances" qualifier
+
+---
+
+## EIS Risk Plain English (gen_07d5ec98) — 3 QC Fails
+Fix after Cold Advice Gap.
+
+Most likely fails:
+- 22p figure included → replace with 27.5p throughout
+- Capital at risk declaration missing or incorrect framing
+- "EIS is low risk" or similar language → prohibited
