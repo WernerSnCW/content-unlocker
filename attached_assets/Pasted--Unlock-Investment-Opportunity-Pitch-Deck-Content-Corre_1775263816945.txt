@@ -1,0 +1,448 @@
+# Unlock — Investment Opportunity
+## Pitch Deck Content | Corrected Reference Version | 2 April 2026
+
+*Extracted and corrected from: UNLOCK_Investment_Opportunity_February_2026.pdf*
+*Corrections applied: 3 compliance fixes — see footer notes per slide*
+*For designer update brief: all corrections marked with ⚠️*
+
+---
+
+## COMPLIANCE CORRECTIONS APPLIED
+
+| Slide | Issue | Original | Corrected |
+|---|---|---|---|
+| 14 — Founding Investor Offer | Wrong instrument name | "ASA via SeedLegals" | "Instant Investment via SeedLegals" |
+| 14 — Founding Investor Offer | Incorrect minimum ticket | "Early investors can participate from £10K" | Removed — minimum is £40,000 |
+| 10 & 11 — Business Model / Financials | LTV:CAC inconsistency | Slide 10: 10:1, 3-month payback / Slide 11: 18.8:1, 8-month payback | ⚠️ Requires Financial Model verification — one figure must be removed |
+| 15 — Tax Benefits | SEIS loss relief imprecision | "Real risk: ~30p in the pound" (tax rate unspecified) | "Real risk: ~27.5p in the pound (at 45% additional rate)" |
+
+---
+
+# SLIDE 01 — The Problem
+
+**Headline:** The Problem
+
+**Subhead:** Most investors don't have a centralised, insightful view of their portfolio.
+
+**Four problem statements:**
+
+**1. Fragmentation**
+Assets spread across platforms, wrappers, PDFs and people. The truth has to be rebuilt manually — whenever you need it, it isn't there.
+
+**2. Adviser Gap**
+IFAs can't advise on alternatives — gold, collectibles, EIS, crypto. The most interesting parts of your portfolio sit in a blind spot.
+
+**3. No Operational Layers**
+Platforms handle transactions. Nobody handles the operational reality: what you own, how it got there, and what it means.
+
+**4. Tax as Reconstruction**
+Year-end tax prep means reconstructing a year's worth of changes from scattered statements. Error-prone and expensive.
+
+---
+
+# SLIDE 02 — The Unlock Solution
+
+**Headline:** The Unlock Solution
+
+**Subhead:** A private, read-only portfolio intelligence system. One source of truth for your investment portfolio.
+
+**Pull quote:** The Asset Register is the heartbeat of Unlock. Everything else builds on it.
+
+**Three principles:**
+
+**1. Truth First**
+A dependable record of what you own, how you got there, and what the evidence says.
+
+**2. Interpretation Second**
+Early warnings, risk checks and plain-English explanations — grounded in facts, not opinions. Unlock surfaces what matters, when it matters — on your terms.
+
+**3. Control Always Yours**
+Read-only. No trading. No advice. Clarity you can act on, with advisers or independently.
+
+---
+
+# SLIDE 03 — The Asset Register
+
+**Headline:** The Asset Register
+
+**Subhead:** Your single source of financial truth.
+
+**Six features:**
+
+**Lot-Level Tracking**
+Every holding decomposed into original purchase lots — date, units, price. Cost basis evolution to current value.
+
+**Snapshot Comparison**
+Compare month-to-month or year-to-year. Separate market movement from your own actions.
+
+**Document Linkage**
+Statements, contract notes and valuations tied directly to the numbers they support.
+
+**Income Visible**
+Tracks every dividend, interest payment and coupon. Shows routing: reinvested, paid out, or held in custody.
+
+**Household View**
+One picture across people, wrappers, accounts and entities. Hidden exposures surface naturally.
+
+**Plain Language Queries**
+Ask questions in natural language: 'Show assets bought above £100K now worth less than £80K.'
+
+---
+
+# SLIDE 04 — What Investors Can Ask
+
+**Headline:** What Investors Can Ask
+
+**Subhead:** Natural language over structured truth — the register answers in plain English with evidence trails.
+
+**Five query examples with outcomes:**
+
+| Query | Outcome |
+|---|---|
+| "Show assets bought above £100K now worth less than £80K." | Instant loss identification across every wrapper and asset class — no spreadsheet required. |
+| "What's my true cost basis across all wrappers?" | Lot-level precision that most platforms can't provide, even for simple portfolios. |
+| "Where did income go last quarter — reinvested or paid out?" | Income routing visibility that usually requires cross-referencing multiple statements. |
+| "Flag positions with illiquidity risk and show supporting evidence." | Safety lights grounded in actual data, not assumptions — with linked source documents. |
+| "Generate a tax-year pack from the register — no reconstruction." | Year-end reporting that takes minutes, not weeks. Adviser-ready, audit-friendly. |
+
+---
+
+# SLIDE 05 — Beyond the Register
+
+**Headline:** Beyond the Register
+
+**Subhead:** Add-on tools that layer intelligence on top of your source of truth.
+
+**Four tools:**
+
+**Onboarding & Safety Lights**
+Red/amber/green checks on concentration, liquidity and cash. Explained in plain English with specific levers.
+
+**Tax Intelligence**
+CGT optimisation, EIS/SEIS tracking, inheritance modelling. Year-end stops being reconstruction.
+
+**Reports & Adviser Packs**
+Structured summaries for tax returns, probate, and adviser meetings — generated from the register, not rebuilt.
+
+**Portfolio Simulator**
+Scenario testing and stress modelling grounded in your actual positions, not hypothetical portfolios.
+
+---
+
+# SLIDE 06 — Who Unlock Serves
+
+**Headline:** Who Unlock Serves
+
+**Subhead:** Most investors carry elements of all three Personas — but one usually dominates.
+
+**Three personas:**
+
+**The Preserver — PROTECT & MAINTAIN**
+Stress-test portfolios. Confirm risk controls. Model defensive strategies. Ensure wealth is properly documented for estate planning.
+
+**The Growth Seeker — CALCULATED RISK**
+Access vetted opportunities. Compare upside vs downside transparently. Track performance with lot-level precision across the whole portfolio.
+
+**The Legacy Builder — INTERGENERATIONAL TRANSFER**
+Model family scenarios and IHT efficiency. Maximise EIS/SEIS benefits. Create continuity so the next generation inherits clarity, not chaos.
+
+---
+
+# SLIDE 07 — The EIS & SEIS Opportunity
+
+**Headline:** The EIS & SEIS Opportunity
+
+**Subhead:** The UK's most powerful and most underused investment incentive.
+
+**Four market statistics:**
+
+| Stat | Figure |
+|---|---|
+| Invested through EIS/SEIS since inception | £34B+ |
+| Invested in 2023/24 (EIS + SEIS combined) | £1.8B |
+| UK businesses funded through the schemes | 59,000+ |
+| UK unicorns that received EIS investment | 46.5% |
+
+**Revolut: The EIS Success Story**
+Revolut raised EIS-qualifying funding in its early stages. The company went on to become Europe's most valuable fintech — valued at $75B (November 2025). Early EIS investors received 30% income tax relief upfront. Their gains on exit? Entirely tax-free. This is what government-backed early-stage investing looks like when it works.
+
+**Unlock's HNW Service**
+Most investors know EIS/SEIS exists — but few have the tools to optimise it. Tracking eligibility across tax years, modelling allocation, and claiming reliefs properly still depends on expensive advisers. Unlock provides the platform. EIS/SEIS guidance is the high-net-worth service: tracking relief eligibility, modelling tax-efficient allocation across tax years, and ensuring nothing is left on the table. The register makes it possible. The guidance makes it valuable.
+
+---
+
+# SLIDE 08 — Market Opportunity
+
+**Headline:** Market Opportunity
+
+**Subhead (implied):** Market Size & Business Model
+
+**Three market statistics:**
+
+| Stat | Figure |
+|---|---|
+| Active UK investors (2025) | 22.8M |
+| Estimated UK retail & HNW alternative investment activity | £26B+ |
+| Brits who say investing is too complex | 68% |
+
+**Market gap statement:**
+The operational layer is the gap nobody has filled. Robo-advisors are retail-focused. Private banks are exclusive. Nobody has built an investor-first platform combining a dependable record of wealth with institutional-grade interpretation — at consumer cost.
+
+**Why Now:**
+AI enables investor-grade analysis at consumer cost. UK policy tailwinds (EIS/SEIS) make early-stage investing uniquely attractive. And April 2026 rule changes create genuine urgency around inheritance tax planning.
+
+---
+
+# SLIDE 09 — Competitive Landscape
+
+**Headline:** Competitive Landscape
+
+**Subhead:** Unlock fills the gap between fragmented tools and inaccessible private banking.
+
+**Competitive table:**
+
+| Category | What They Offer | What's Missing |
+|---|---|---|
+| IFAs / Wealth Managers | Personalised advice, portfolio management. | No access to alternatives. Opaque fees. No unified record. |
+| Spreadsheets / DIY | Full control, flexible. | Error-prone. No interpretation. Silently degrades. |
+| Portfolio Aggregators | Connect accounts, surface balances. | No lot-level data. No documents. No tax intelligence. |
+| Private Banks | Full-service wealth management. | £1M+ minimums. Locked into their product shelf. |
+
+**Unlock's Advantage:**
+A dependable, evidence-backed asset register with interpretation layer — handling alternatives, lot-level tracking, tax intelligence and household views that no existing tool combines.
+
+---
+
+# SLIDE 10 — Business Model
+
+**Headline:** Business Model
+
+**Subhead (implied):** Financials
+
+**Core Revenue:**
+Three subscription tiers (Free / £99 / £249 per month) targeting investors with £250K–£5M+ portfolios. Freemium conversion model with natural upgrade triggers as portfolio complexity grows.
+
+*Note: Specific tier prices are for internal reference only and must not appear in investor-facing documents.*
+
+**Unit Economics:**
+⚠️ LTV:CAC ratio stated as 10:1 with ~3-month payback on this slide. Slide 11 states 18.8:1 with 8-month payback. **Requires Financial Model verification before next deck update. One figure must be removed.**
+
+**Pull quote:** Recurring SaaS subscription revenue with high retention and strong unit economics.
+
+**Future Expansion Revenue:**
+
+| Stream | Addressable Market | Revenue Model |
+|---|---|---|
+| Challenger Bank DD-as-a-Service | Est. £50M+ | Per-enquiry or licensing fee |
+| Family Office Wealth Intelligence | Est. £30–84M | Enterprise subscription |
+| White-Label Reporting & API | Institutional | Usage-based + annual licence |
+
+---
+
+# SLIDE 11 — Financial Projections
+
+**Headline:** Financial Projections
+
+**Five headline metrics:**
+
+| Metric | Figure |
+|---|---|
+| Projected 5-Year Revenue | £16.3M |
+| Year 5 EBITDA | ~£5.7M |
+| Year 5 Paid Users | 5,605 |
+| LTV:CAC Ratio | ⚠️ 18.8:1 (verify against Financial Model — conflicts with Slide 10) |
+| Payback Period | ⚠️ 8 months (verify against Financial Model — conflicts with Slide 10) |
+
+**Revenue trajectory (£,000s):**
+
+| Year | Revenue |
+|---|---|
+| Year 1 | £44K |
+| Year 2 | £749K |
+| Year 3 | £2,428K |
+| Year 4 | £5,265K |
+| Year 5 | £8,355K |
+
+---
+
+# SLIDE 12 — Use of Funds
+
+**Headline:** Use of Funds
+
+**Subhead:** £1.2M is the only external capital required before profitability.
+
+**Four allocation buckets:**
+
+| Bucket | % | Amount | Detail |
+|---|---|---|---|
+| Product & AI Engine | 35% | £420K | Alpha → beta build. AI interpretation engine — the technology that enables 70% operating margins. Security, hosting, and compliance infrastructure. |
+| Go-to-Market & Sales | 32% | £380K | 2 sales hires expanding founder-led team. Content marketing and SEO. Activation of 30K investor database. First 12 months of acquisition spend. |
+| Team & Operations | 21% | £250K | Core team (CEO, CTO, compliance). Operational overhead, tools, insurance. EIS/SEIS administration and legal costs. |
+| Working Capital Buffer | 12% | £150K | 4-month runway buffer beyond projected breakeven. Contingency for slower-than-expected conversion. Eliminates need for emergency bridge round. |
+
+**Runway statement:** 18–24 months to Year 3 profitability. Designed as the only raise required — with contingency built in for slower-than-projected conversion.
+
+---
+
+# SLIDE 13 — Traction & Validation
+
+**Headline:** Traction & Validation
+
+**Three validation pillars:**
+
+**Product Progress**
+40+ market interviews completed. UX prototype tested. Functional pre-alpha in use for live demos. Alpha build in progress.
+
+**User Demand**
+70% of surveyed investors would pay for better portfolio tools. Weekly user sessions validating usability. Demand confirmed for asset register and tax intelligence.
+
+**Investor Momentum**
+Funding raised at £6.5M pre-money. LOIs active with feedback shaping roadmap. Backing from former chairman of Barclays and director general of TISA.
+
+---
+
+# SLIDE 14 — The Founding Investor Offer
+
+**Headline:** The Founding Investor Offer
+
+**Subhead:** Exceptional terms for investors who bring strategic value beyond capital.
+
+**Round terms:**
+
+| Item | Details |
+|---|---|
+| Pre-Money Valuation | £6.5M |
+| Ticket Size | £40K – £500K |
+| Investment Structure | ~~ASA via SeedLegals~~ **Instant Investment via SeedLegals** + EIS/SEIS eligible ⚠️ CORRECTED |
+| Available Slots | Limited (by invitation) |
+| Founding Discount | Negotiated individually (based on strategic value) |
+
+*Note: The original deck stated "Early investors can participate from £10K with standard terms." This has been removed. The current minimum is £40,000. Founding investor benefits are reserved for £40K+ commitments.* ⚠️ CORRECTED
+
+**Lifetime Benefits:**
+1. Lifetime platform access (no subscription, ever)
+2. White-glove onboarding with your actual holdings
+3. Direct product roadmap influence
+4. Priority access to future opportunities
+5. Quarterly updates + investor events
+
+---
+
+# SLIDE 15 — EIS & SEIS Tax Relief
+
+**Headline:** EIS & SEIS Tax Relief
+
+**Subhead:** UK government policy makes early-stage investing uniquely attractive.
+
+**SEIS — Seed Enterprise Investment Scheme:**
+- 50% income tax relief on investments up to £200K/year
+- Capital gains tax exemption after 3 years
+- Loss relief available
+
+**EIS — Enterprise Investment Scheme:**
+- 30% income tax relief on investments up to £1M/year
+- CGT exemption and deferral available
+- Loss relief available
+
+**Worked example:**
+Invest: £50K (SEIS).
+Claim 50% relief = £25K back.
+Your real cost: £25K.
+If it exits successfully, profits are tax-free.
+If it fails, loss relief cushions the downside.
+Real risk: **~27.5p in the pound (at 45% additional rate).** ⚠️ CORRECTED from "~30p in the pound" — 30p applies at 40% higher rate; this example uses a 45% taxpayer.
+
+---
+
+# SLIDE 16 — Exit Strategy
+
+**Headline:** Exit Strategy
+
+**Implied valuation:** ~£20.5M (DCF-based, 8× Year 5 EBITDA, 25% discount rate)
+
+**Four exit pathways:**
+
+**Y3–4 — Secondary Share Sales**
+Future fundraising rounds may enable structured secondary liquidity for early investors once annual revenue exceeds £2M.
+
+**Y4–5 — Strategic Acquisition**
+Likely acquirers include investor platforms, private market fintechs, and asset managers. Triggered once ARR exceeds £4M with 40K+ active users.
+
+**Y5+ — Dividends/Buybacks**
+As profitability stabilises (Year 5 EBITDA ~£5.7M), excess cash may return capital to investors via buybacks or dividends.
+
+**Y6+ — Public Listing (IPO)**
+Could be explored if Unlock secures market leadership, global user base expansion, and sustainable profit margins.
+
+---
+
+# SLIDE 17 — Our Team
+
+**Headline:** Our Team
+
+**Thomas King — Founder & CEO**
+A certified Scaling Up coach and seasoned CEO with a rich technology, innovation, marketing, and finance background.
+
+**William Corke — Head of Service Delivery & Compliance**
+EIS & SEIS Accredited advisor with many years experience in Alternative Investment markets.
+
+**Claudia Chavez — Co-Founder & Commercial Director**
+A specialist in commercial strategy, project planning and account management for companies in the financial space.
+
+**Werner Snyman — Head of Product**
+Experienced product manager with over 15 years at Nedbank South Africa, leading digital transformation projects in the financial industry.
+
+---
+
+# SLIDE 18 — Next Steps
+
+**Headline:** Next Steps
+
+**Three steps:**
+
+**Discovery Call (20 mins)**
+Confirm fit, discuss allocation.
+
+**Platform Demo (30 mins)**
+See the product LIVE.
+
+**Reserve Allocation**
+Instant Investment execution → EIS submission ⚠️ CORRECTED from "ASA execution" in original
+
+---
+
+# SLIDE 19 (Back Cover)
+
+**Contact:**
+UNLOCKDD.COM
+TOM@UNLOCKDD.COM
+
+---
+
+## Designer Update Brief
+
+Four changes required in the live deck file:
+
+**1. Slide 14 — Investment Structure row**
+Change: *"ASA via SeedLegals + EIS/SEIS eligible"*
+To: *"Instant Investment via SeedLegals + EIS/SEIS eligible"*
+
+**2. Slide 14 — Remove footnote**
+Delete: *"Early investors can participate from £10K with standard terms — founding investor benefits are reserved for £40K+ commitments."*
+
+**3. Slides 10 and 11 — LTV:CAC and payback period**
+Verify against Financial Model. Slide 10 states 10:1 / ~3-month. Slide 11 states 18.8:1 / 8-month. Remove one. Until verified, flag both slides as requiring Financial Model input.
+
+**4. Slide 15 — SEIS loss relief figure**
+Change: *"Real risk: ~30p in the pound"*
+To: *"Real risk: ~27.5p in the pound (at 45% additional rate)"*
+
+**5. Slide 18 — Next Steps (if text appears on slide)**
+If "ASA execution" appears in the Reserve Allocation step, change to "Instant Investment execution".
+
+---
+
+*Document status: CORRECTED REFERENCE VERSION | For designer use and Content Intelligence Platform registry*
+*Source: UNLOCK_Investment_Opportunity_February_2026.pdf*
+*Corrections applied: 2 April 2026*
+*Registry entry: Pending — add as 195_DECK_Investment_Opportunity_V1_CORRECTED when registered*

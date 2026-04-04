@@ -168,7 +168,9 @@ Anthropic client configured via Replit AI Integrations proxy. No API key needed.
 
 ## Seed Data
 
-- 17 documents in registry.json covering investor packs, case studies, briefs, email templates, persona guides. Content loaded from `src/data/content/` during seeding (matched by doc ID prefix). Currently 2 docs (520, 700) have content files; others seed with null content.
+- 26 active documents (17 seeded + 3 SQL-inserted + 3 imported PDFs + 3 Tier 1). All 26 have content and are CLEAN.
+- Content loaded from ZIP archive, PDF imports, and SQL inserts. All docs received compliance fixes (BPR qualifiers, loss relief percentage framing, capital at risk warnings, tagline, FCA status, adviser confirmation, investment advice disclaimers, Decumulation Planner status).
+- QC sweep completed: 30 total QC runs across 17 documents. Remaining QC findings are deep editorial issues requiring manual business review (e.g. table formatting, specific phraseology). QC history preserved per-document.
 - 3 sample leads at different pipeline stages
 - Compliance constants (BPR cap, VCT relief rate, pension IHT changes, EIS/SEIS rates, loss relief, annual limits, etc.)
 - Coverage matrix config (`lib/coverage-matrix.ts`): 18 archetype×stage cells + 6 required doc types + 7 compliance field expectations
