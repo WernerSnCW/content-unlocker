@@ -1,0 +1,92 @@
+# UNLOCK — Content Generation Pack
+## Three Documents — Ready to Generate (No Blockers)
+## Date: 4 April 2026
+
+Paste each brief into the tool's content generation pipeline in this order.
+Priority 1 first — it unblocks Pack 1.
+
+---
+
+## PRIORITY 1 — AI Investment Thesis
+### Why Unlock: The AI Case for the Founding Round
+
+**Paste this into:** POST /api/content/generate-brief
+
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "Why Unlock: The AI Case for the Founding Round",
+  "description": "A whitepaper making the investment case for Unlock as an AI platform at founding round stage. Covers: (1) Why AI wealth management winners will be defined by structural independence and clean data, not product features — the co-pilot vs library distinction; (2) How incumbents (HL, AJ Bell, Nutmeg) are structurally prevented from providing neutral portfolio intelligence — their AI optimises for retention not for the investor; (3) Unlock as decision infrastructure, not product — the moat that product-first platforms cannot replicate; (4) The data flywheel — each investor's portfolio data makes the platform more valuable for every other investor; (5) Why demand for intelligent portfolio intelligence goes up in corrections, not down — Unlock is more valuable in uncertainty; (6) The exit narrative — PitchBook sold to Morningstar for $225M in 2016; Bureau van Dijk sold to Moody's for €3bn in 2017; Refinitiv sold to LSEG for $27bn in 2021. Pattern: neutral independent data intelligence acquired at strategic premium by established financial data businesses. Unlock sits in this category at individual HNW investor level; (7) EIS on the Unlock investment itself — HMRC co-invests at 30%, effective entry cost 70p in the pound, 5-6x return on effective cost at base case, all gains CGT-free; (8) The founding round terms — anti-dilution to Series A, pro-rata rights, £6.5M pre-money, founder-funded through to launch so the £1.2M is deployment capital not bridge financing; (9) The co-creation story — five founding investors including senior figures from TISA and Barclays Stockbroking actively using the platform and shaping it weekly. This is not pre-idea validation. Target reader: Growth Seeker who believes in AI and early-stage investing but hasn't yet connected the thesis to Unlock specifically.",
+  "persona_tags": ["Growth Seeker"],
+  "stage_tags": ["Called", "Demo Booked", "Demo Complete"],
+  "compliance_notes": "Return figure must be stated as 5-6x on effective cost — not as a gross return. The 3.8x gross model base case must be described as Unlock's own model output calibrated to NESTA distributional findings — not as a NESTA headline figure. Always include: subject to individual tax circumstances. Do not use 7.8x in any form. VCT relief is 20% from April 6 2026. January 2027 two-year structure: do not include — legal sign-off pending."
+}
+```
+
+**After generating:** Run QC. Promote to CURRENT. This document is the F0 gate — Pack 1 cannot be sent until F0 is established and this document has been sent first.
+
+---
+
+## PRIORITY 2 — Cold Advice Gap Explainer
+### The Advice Gap: Why the Investments That Could Help You Most Are the Ones No One Will Advise On
+
+**Paste this into:** POST /api/content/generate-brief
+
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Outreach",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The Advice Gap: Why the Investments That Could Help You Most Are the Ones No One Will Advise On",
+  "description": "A cold-prospect educational whitepaper on the advice gap in alternative investing. No Unlock branding in the body — this is pure education. Covers: (1) What regulated financial advice covers and what it doesn't — IFAs advise on mainstream products, EIS funds, and VCTs; individual EIS company shares sit outside their practical scope due to suitability obligations and network compliance policies; (2) Why this matters — the investments with the highest potential returns are precisely the ones investors are left to evaluate alone; (3) The practical reality for sophisticated investors — they have the capital and the appetite but not the infrastructure to evaluate these opportunities properly without institutional tools; (4) What self-directed investors actually do — rely on sales material, word of mouth, or skip these opportunities entirely; (5) What proper infrastructure looks like — independent research, portfolio stress-testing, sequencing advice free from product conflicts. The document does NOT mention Unlock by name in the main body. It ends with a single paragraph describing what the ideal solution would look like — which naturally describes Unlock without naming it. Target reader: cold HNW prospect who has never heard of EIS and has an IFA they trust.",
+  "persona_tags": ["Growth Seeker", "Legacy Builder"],
+  "stage_tags": ["Outreach", "Called", "Demo Booked"],
+  "compliance_notes": "Do not name Unlock in the body. Do not describe IFAs as prohibited from advising on EIS — the approved framing is that they cannot practically advise due to suitability obligations and network compliance policies, not that they are legally barred. Capital at risk declaration required. No return figures in this document — it is education only."
+}
+```
+
+**After generating:** Run QC. Promote to CURRENT. This is the cold version of document 330 — needed for outreach to prospects who don't know EIS.
+
+---
+
+## PRIORITY 3 — EIS Risk Plain English (Cold Version)
+### What You Actually Risk When You Invest in EIS: The Numbers Most People Get Wrong
+
+**Paste this into:** POST /api/content/generate-brief
+
+```json
+{
+  "archetype": "Preserver",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "What You Actually Risk When You Invest in EIS: The Numbers Most People Get Wrong",
+  "description": "A plain-English cold-prospect explainer on EIS risk mechanics. No prior EIS knowledge assumed. Covers: (1) The common misconception — most people assess EIS risk as the gross investment amount; (2) How income tax relief changes the calculation — 30% returned immediately; effective cost is 70p per pound, not £1; (3) If the company fails entirely — loss relief at the marginal rate (45% for additional rate taxpayers) applies to the remaining 70p; total relief recovered approximately 61.5p; maximum effective loss approximately 38.5p per pound; (4) The same calculation for SEIS — 50% relief upfront, loss relief on remaining 50%; maximum effective loss 27.5p per pound for additional rate taxpayers; (5) An important note: acknowledge explicitly that most EIS companies fail, and that this is why portfolio construction matters — the platform only needs a few to succeed; (6) What changes when you understand the real downside — the risk appetite question deserves a different answer once you know you are not betting the full amount; (7) Why this matters before any discussion of EIS specifically — understanding the mechanics is a prerequisite for assessing whether any EIS opportunity fits your risk profile. Target reader: cold HNW prospect who has dismissed EIS as too risky without understanding the loss relief mechanics.",
+  "persona_tags": ["Preserver", "Growth Seeker", "Legacy Builder"],
+  "stage_tags": ["Called", "Demo Booked"],
+  "compliance_notes": "Loss relief figures are canonical: 38.5p per pound (EIS additional rate) and 27.5p per pound (SEIS additional rate). Always include: subject to individual tax circumstances. Do not use 22p in any form — this figure is wrong and will trigger a QC failure. Do not state EIS is low risk — capital is at risk. The point is that the downside is smaller than the investor assumes, not that there is no downside."
+}
+```
+
+**After generating:** Run QC. Promote to CURRENT. This document establishes U4 (EIS risk mechanics) for cold prospects — required before any risk-appetite question is asked.
+
+---
+
+## BLOCKED — Do Not Generate Yet
+
+**January 2027 Opportunity Explainer** — brief is written and ready. Legal sign-off on the Instant Investment + ASA two-year structure required before this document can be generated or deployed. Do not generate until Unlock legal confirms.
+
+---
+
+## Generation Order Summary
+
+| Priority | Document | Blocks | Status |
+|---|---|---|---|
+| 1 | AI Investment Thesis | F0 gate — Pack 1 cannot go without it | Generate now |
+| 2 | Cold Advice Gap Explainer | Phase 1 outreach to cold prospects | Generate now |
+| 3 | EIS Risk Plain English | U4 for cold prospects | Generate now |
+| — | January 2027 Explainer | Tax Optimiser track | BLOCKED — legal pending |

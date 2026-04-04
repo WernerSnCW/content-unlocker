@@ -1,0 +1,154 @@
+# UNLOCK TOOL — Gap Assessment Prompt
+## Date: 4 April 2026
+## Purpose: Full current status and content gap analysis before content generation begins
+
+Paste this prompt into the tool's master context (065) or directly into the content gap analysis interface.
+
+---
+
+## STEP 1 — Run Current Status Check
+
+Call these endpoints and return the full output:
+
+```
+GET /api/documents
+GET /api/content/gaps
+GET /api/content/gaps?save=true
+GET /api/analytics/personas
+GET /api/dashboard/summary
+```
+
+From the output, produce a status table in this format:
+
+| Doc ID | Title | Status | Stage | Persona | Issues |
+|---|---|---|---|---|---|
+
+Flag any document that is:
+- REQUIRES_REVIEW — what specifically needs fixing
+- BLOCKED — why it is blocked
+- Missing from the registry entirely but referenced in the matrix
+
+---
+
+## STEP 2 — Content Pillar Gap Analysis
+
+Check coverage against each of the six content pillars defined in the master document. For each pillar, state: what exists, what is missing, and what the priority is.
+
+**Pillar 1 — The Advice Gap (Belief: U1)**
+- Warm version (document 330): exists?
+- Cold/awareness version: exists?
+- 2-minute video script: exists?
+- LinkedIn article series: exists?
+
+**Pillar 2 — EIS Risk Mechanics (Belief: U4)**
+- Core document (150): exists? Status?
+- Cold version for EIS-naive prospects: exists?
+- Case studies (160): exists? Status?
+
+**Pillar 3 — January 2027 Opportunity (Beliefs: P1, L3)**
+- January 2027 explainer: exists?
+- Status: BLOCKED pending legal sign-off — do not flag as a generation gap until legal confirms
+
+**Pillar 4 — IHT Problem (Beliefs: L1, L2)**
+- Pension Problem whitepaper (340): exists? Status?
+- IHT/EIS Estate Planning (170): exists? Status?
+- Rolling EIS Programme (320): exists? Status?
+
+**Pillar 5 — Portfolio Intelligence (Belief: U2)**
+- Iran Effect whitepaper (350): exists? Status?
+- Recession demand angle: added?
+
+**Pillar 6A — Unlock as Infrastructure (Beliefs: U3, F0)**
+- AI Investment Thesis: exists? ← CRITICAL — Pack 1 cannot go without this
+
+**Pillar 6B — Unlock as Investment (Beliefs: F1-F3)**
+- Pack 1 (120): exists? Status? Exit narrative added?
+- Pack 2 (130): exists? Status?
+- Pitch deck: exists?
+
+---
+
+## STEP 3 — Document Usage Matrix Gap Check
+
+Check the following documents are in the registry. Flag any that are missing:
+
+| Code | Title | Expected Status |
+|---|---|---|
+| 100 | One-Pager | CLEAN after cascade |
+| 110 | Three-Pager | CLEAN after cascade |
+| 120 | Pack 1 — Founding Investor Brief | CLEAN |
+| 130 | Pack 2 — Information Memorandum | CLEAN |
+| 140 | Access Service Explainer | CLEAN |
+| 150 | EIS: Investor's Secret Weapon | CLEAN after cascade |
+| 160 | Five EIS Case Studies | CLEAN after cascade |
+| 170 | IHT/EIS Planning — £5M Estate | CLEAN after cascade |
+| 180 | Duncan Stewart Bespoke Brief | CLEAN |
+| 190 | UK Investment Landscape 2026 | CLEAN after cascade |
+| 241 | Adviser/Accountant Briefing Note | May be missing |
+| 320 | IHT-Proof Estate: Rolling EIS Programme | CLEAN |
+| 330 | The Advice Gap (warm) | CLEAN |
+| 340 | The Pension Problem | CLEAN |
+| 350 | The Iran Effect | CLEAN |
+| AI Thesis | Why Unlock: The AI Case | MISSING — generate now |
+| Cold Advice Gap | Advice Gap (cold/awareness) | MISSING — generate now |
+| EIS Risk Cold | EIS Risk Plain English (cold) | MISSING — generate now |
+
+---
+
+## STEP 4 — Produce Prioritised Action List
+
+Based on steps 1-3, produce a single prioritised action list:
+
+**Generate immediately (no blockers):**
+List documents that are missing and have no blockers to generation.
+
+**Fix before use (cascades needed):**
+List documents in REQUIRES_REVIEW with specific action required.
+
+**Hold (external blockers):**
+List documents that cannot be generated or deployed until external sign-off.
+
+**Do not send (compliance risk):**
+List any CLEAN documents that contain April 6 deadline language or 22p figure that have not yet been updated by the cascades.
+
+---
+
+## COMPLIANCE REFERENCE — Use These Figures
+
+Before generating any document, verify against these canonical values:
+
+| Constant | Value | Notes |
+|---|---|---|
+| EIS income tax relief | 30% | No qualifier needed |
+| SEIS income tax relief | 50% | No qualifier needed |
+| VCT income tax relief | 20% | Reduced from 30% on April 6 2026 |
+| EIS loss relief (additional rate) | ~38.5p per pound | Always include: subject to individual tax circumstances |
+| SEIS loss relief (additional rate) | ~27.5p per pound | Always include: subject to individual tax circumstances |
+| 22p (SEIS) | ❌ PROHIBITED | Wrong figure — triggers QC failure |
+| Founding investor minimum | £40,000 | |
+| Founding investor maximum | £500,000 | |
+| Pre-money valuation | £6.5M | |
+| Canonical return figure | 5-6x on effective cost | Not a gross return — always describe as return on effective cost after 30% income tax relief |
+| BPR cap | £2,500,000 | Always add: subject to final enactment |
+| Pension IHT | April 2027 | Always add: subject to final legislation |
+| Decumulation Planner | Specification complete. Prototype build commencing. | Exact phrase only |
+| January 2027 structure | ⛔ DO NOT DEPLOY | Legal sign-off pending |
+| April 6 as deadline | ❌ PROHIBITED | April 6 is a rule change date, not a deadline |
+
+---
+
+## OUTPUT FORMAT REQUIRED
+
+Return a single document with four sections:
+
+**SECTION A — Current Registry Status**
+Full table of all documents with current status, issues flagged.
+
+**SECTION B — Content Pillar Coverage**
+Six pillars with what exists, what is missing, priority.
+
+**SECTION C — Prioritised Action List**
+Generate / Fix / Hold / Do Not Send.
+
+**SECTION D — Readiness Verdict**
+One paragraph: is the tool ready to support the investor campaign? What must happen before the first call goes out?
