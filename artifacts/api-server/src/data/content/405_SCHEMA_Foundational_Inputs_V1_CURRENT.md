@@ -1,7 +1,8 @@
 # 405 — UNLOCK FOUNDATIONAL INPUTS SCHEMA
 ## Templates & Population Instructions for Tier 1 & Tier 2 Source Documents
-**Version:** 1.0 | **Status:** CURRENT | **Owner:** Tom King
-**Last updated:** April 2026 | **Companion to:** 410_SCHEMA_Information_V2_CURRENT.md
+**Version:** 1.1 | **Status:** CURRENT | **Owner:** Tom King
+**Last updated:** April 4, 2026 | **Companion to:** 410_SCHEMA_Information_V2_CURRENT.md
+**Change log:** v1.1 — P2W Choices 4–5 populated from Content Bank. SB7 full 7-part confirmed. VP Canvas gains fully mapped with lifecycle layers and gain creators expanded. Financial Model narrative fields populated. Completeness audit updated.
 
 ---
 
@@ -18,11 +19,11 @@ If the 410 schema is the assembly line, this document is the raw materials speci
 
 | # | Framework | Tier | Status |
 |---|---|---|---|
-| 1 | Play to Win Workshop | Tier 1 | Partially complete — winning aspiration locked, others need review |
-| 2 | Storybrand SB7 | Tier 1 | One-liner complete — full 7-part not formally documented |
-| 3 | Value Proposition Canvas | Tier 1 | Partially complete — per-persona work incomplete |
+| 1 | Play to Win Workshop | Tier 1 | Complete — all 5 choices populated. Choices 1–3 LOCKED. Choices 4–5 populated from Content Bank (Werner TBDs flagged). |
+| 2 | Storybrand SB7 | Tier 1 | Complete — one-liner LOCKED, full 7-part formally documented with Unlock answers |
+| 3 | Value Proposition Canvas | Tier 1 | Complete — all 3 personas: jobs, pains (starred), gains (with lifecycle layers), pain relievers, gain creators, VP statements |
 | 4 | 19-Persona Suitability Guide | Tier 1 | Complete for 3 archetypes, 19 full personas in 520 |
-| 5 | Financial Model | Tier 1 | Exists as spreadsheet — narrative guidance only here |
+| 5 | Financial Model | Tier 1 | Narrative fields populated from Content Bank (ARR, CAC, LTV, exits). Spreadsheet not in library. Valuation basis TBD. |
 | 6 | Business Plan | Tier 2 | Referenced but not in project library |
 | 7 | Marketing & Investor Conversion Brief | Tier 2 | Largely complete in 220 |
 | 8 | Competitive Analysis | Tier 2 | Referenced but not in project library |
@@ -177,31 +178,64 @@ HOW TO WIN IS NOT:
 ```
 CAPABILITY 1: UK tax modelling engine
 What: Accurate, continuously-updated, HMRC-rule-compliant modelling for EIS, SEIS, 
-CGT, IHT, pension, AIM BPR across all asset classes.
-Status: In active build (Werner). Decumulation Engine v1.5 spec complete.
-Gap: [Assess against spec — Werner to confirm build status]
+CGT, IHT, pension drawdown, AIM BPR across all asset classes. Year-indexed tax 
+parameters for multi-decade plans. Toggleable scenarios for proposed rule changes.
+Status: Decided capability. Core moat. 18–24 months minimum to replicate. Full build 
+funded by this raise. Tax Intelligence Engine in active development (Werner). 
+Decumulation Engine technical specification v1.5 complete — covers full UK tax matrix 
+per asset class, four drawdown strategies (tax-optimised, IHT-optimised, income-first, 
+growth-first), trust/gifting logic (NEFI, CLT 7-year rolling window, PET taper), 
+toggleable BPR cap (£2.5M) and April 2027 pension IHT scenarios, 35-year shadow 
+projection. Prototype build commencing.
+Gap: Werner to confirm build progress against spec. Integration count for automated 
+platform connections TBD.
 
 CAPABILITY 2: Automated portfolio data collection
 What: Local-first automation (Electron/SQLite) that pulls from platforms without APIs.
-Status: Founding-stage desktop application in build.
-Gap: [Integration count — how many platforms currently automated?]
+Browser automation running on investor's own machine — correct architecture for the 
+problem, not a workaround. Portfolio summary data pushed to cloud layer for web/mobile.
+Status: Founding-stage desktop application operational for founding investor onboarding. 
+Automated connections for Fundsmith, True Potential, and others live via browser 
+automation. White-glove onboarding with manual lot-level entry for founding investors.
+Gap: Full integration count TBD (Werner). Automated connections for additional platforms 
+on roadmap — full automation requires additional build time and funding.
 
 CAPABILITY 3: Investor trust and content authority
 What: The educational content layer that makes complex tax and planning decisions 
 legible to sophisticated investors without crossing into advice.
-Status: Document library (100–190) built. Education Centre not yet built.
-Gap: Education Centre spec pending (blocked on Replit scan).
+Status: Document library (100–190) built and maintained in Content Intelligence 
+Platform. 42 documents in registry. Content Bank V4 consolidated as single source of 
+truth. Tone of Voice & Style Guide (020) formalised. Compliance constants tracked and 
+enforced via automated QC. Three generation pack documents (AI Investment Thesis, Cold 
+Advice Gap, EIS Risk Plain English) produced via AI generation with 4-round QC, 
+promoted to CURRENT/CLEAN. Education Centre not yet built.
+Gap: Education Centre spec pending. Adviser/Accountant Briefing Note (241) not yet 
+produced. Content calendar to be built after content bank is complete.
 
 CAPABILITY 4: Distribution (founding round)
 What: Systematic outreach from 30K database to 25 founding investors.
-Status: Active. Pipedrive/Aircall running. April 6 deadline.
-Gap: [Current pipeline status — see 200_PLAN]
+Status: Active. Pipedrive/Aircall running. April 6, 2026 share issuance deadline. 
+£1.2M target at £6.5M pre-money valuation. Campaign launched November 2025. Backing 
+secured from former Chairman of Barclays Stockbroking and former Director General of 
+TISA. HMRC advance assurance confirmed for SEIS. 40+ market interviews completed — 
+70% of surveyed investors said they would pay for better portfolio tools. Weekly user 
+sessions validating usability.
+Gap: Current pipeline conversion rates (Outreach → Called → Demo → Decision) — 
+see 200_PLAN. Committed investor count vs target TBD.
 
 CAPABILITY 5: Regulatory positioning
-What: Clarity on what Unlock is and isn't (not FCA regulated, not providing advice,
-not a fund). Must be maintained precisely as platform grows.
-Status: Governance language in Content Bank Section 18.
-Gap: Legal review recommended as platform scales.
+What: Clarity on what Unlock is and isn't (not FCA regulated, not providing advice, 
+not a fund). Must be maintained precisely as platform grows. Unlock Access transparency 
+framing (raises for own pipeline companies — stated openly, not hidden). IFA 
+positioning as structural partners, not competitors.
+Status: Governance language formalised in Content Bank Section 12 and Section 18. 
+Compliance constants tracked in compliance_constants.json with automated enforcement. 
+020 Tone of Voice guide includes 13-point compliance checklist. Key constants locked: 
+BPR cap £2.5M (April 2026), VCT relief 20% (not 30%), pension IHT "subject to final 
+legislation", Unlock Access = disclosure framework not scoring/advice, EIS loss relief 
+~38.5p / SEIS ~27.5p (never 22p).
+Gap: Legal review recommended as platform scales toward public launch Q1 2027. FCA 
+proximity and data protection frameworks to be reviewed for Growth Capital round.
 ```
 
 **Propagates into:** Pack 2 risk section, roadmap in Business Plan, Werner's build priorities, investor questions about defensibility.
@@ -217,15 +251,21 @@ Gap: Legal review recommended as platform scales.
 FOUNDING ROUND KPIs:
 - Investors committed: target 25 by April 6, 2026
 - Capital committed: target £1.2M
-- Pipeline conversion rate: [track Outreach → Called → Demo → Decision]
+- Pipeline conversion rate: track Outreach → Called → Demo Booked → Demo Complete → Decision
 - Average ticket size: target £48K (£1.2M / 25)
+- Minimum ticket: £40,000 (hard minimum, no exceptions)
+- Maximum ticket: £500,000 (hard maximum per founding investor)
 
-PLATFORM KPIs (post-launch):
-- ARR trajectory: [from Financial Model — populate here]
-- CAC: [from Financial Model]
-- LTV: [from Financial Model]
-- Churn: [from Financial Model]
-- NPS: [to be set post-launch]
+PLATFORM KPIs (post-launch — from Financial Model):
+- ARR trajectory: ~£1.4M (2026) → ~£3.0M (2027) → ~£5.0M (2028) → £8.25–9.25M (2029)
+- CAC: £200 (driven by warm introductions, referrals, and content — not paid advertising)
+- LTV: £3,000–£3,250 (3–5 year average lifetime)
+- LTV:CAC ratio: 10:1 to 15:1
+- Payback period: ~3 months at steady state
+- Churn: 5% monthly Year 1–2, declining to 3% by Year 4–5 (data flywheel increases switching cost)
+- Gross margin: 90%+ on syndicate fees
+- Break-even: projected at Year 2 ARR (~£3M)
+- NPS: to be set post-launch
 
 DOCUMENT GOVERNANCE (active):
 - Content Bank as single source of truth
@@ -600,21 +640,73 @@ The Value Proposition Canvas (Osterwalder) maps customer jobs, pains, and gains 
 ```
 [PRESERVER]
 Essential: Portfolio risk confirmed and legible before decumulation decisions
-Expected: Single view across all providers
+  → Unlock delivers: Portfolio Simulator stress-tests 30+ downside scenarios on 
+    the investor's actual positions (not a model portfolio). Safety lights 
+    (red/amber/green) flag concentration, liquidity, and cash runway issues.
+Expected: Single view across all providers — no more manual spreadsheet aggregation
+  → Unlock delivers: Asset Register consolidates all asset classes, all providers, 
+    lot-level cost basis in one connected view.
 Desired: Stress-test results comparable to institutional analysis
+  → Unlock delivers: Macro belief integration (growth, inflation, rates, currency, 
+    credit). Upside vs downside comparison. Consistent with actual holdings.
 Unexpected: Real-time tax interaction modelling that catches issues before they cost money
+  → Unlock delivers: Tax Intelligence Engine models CGT crystallisation timing, 
+    pension drawdown sequencing, and wrapper optimisation (including Bed & ISA) 
+    continuously — not once a year at accountant review.
+Lifecycle-specific (decumulation): Ensure the portfolio sustains income without 
+catastrophic sequencing errors. Know which assets to draw first, in what order, with 
+what tax impact. Errors are irreversible.
+  → Unlock delivers: Decumulation Planner models four drawdown strategies 
+    (tax-optimised, IHT-optimised, income-first, growth-first) across all asset 
+    classes simultaneously.
 
 [GROWTH SEEKER]
-Essential: Transparent EIS deal information before committing
+Essential: Transparent EIS deal information before committing capital
+  → Unlock delivers: Unlock Access — 24 defined criteria disclosure framework. 
+    Investor reviews directly. Direct portfolio building, not a fund. 8–10% fees 
+    vs 9–14% market norm.
 Expected: Tax impact of each new position modelled in advance
-Desired: Access to curated deal flow at fair fees
+  → Unlock delivers: Tax Intelligence Engine models EIS/SEIS relief, CGT deferral, 
+    and portfolio impact before capital is committed. Every allocation decision 
+    modelled, not hoped.
+Desired: Access to curated deal flow at fair fees — deals normally closed to retail
+  → Unlock delivers: Syndicate access at 8–10% fees. Priority allocation for 
+    founding investors. Curated, not open crowdfunding.
 Unexpected: Lot-level portfolio intelligence that compounds in value over time
+  → Unlock delivers: Asset Register flywheel — cost basis, holding periods, tax 
+    interactions build a proprietary dataset impossible to reconstruct 
+    retrospectively. Switching cost grows with every position added.
+Lifecycle-specific (accumulation): Maximise risk-adjusted returns. Know before you 
+commit — model upside and downside on every position before deploying capital.
+  → Unlock delivers: Portfolio Simulator models every new position within existing 
+    risk framework before commitment.
 
 [LEGACY BUILDER]
-Essential: Complete IHT picture — estate value, exposure, planned relief
+Essential: Complete IHT picture — estate value, exposure, planned relief across all 
+asset classes in one place
+  → Unlock delivers: Tax Intelligence Engine models IHT position including BPR, EIS, 
+    pension, property — continuously, not at annual review. April 2026 BPR cap 
+    (£2.5M at 100%, 50% above) toggleable as scenario.
 Expected: EIS/BPR programme tracking with qualifying period alerts
+  → Unlock delivers: Decumulation Planner tracks cohort-level BPR qualification. 
+    Two-year qualifying period monitored per position. Alerts on timing.
 Desired: Rolling programme modeller showing year-by-year outcome
+  → Unlock delivers: Year-indexed tax parameters for multi-decade plans. 35-year 
+    shadow projection runs alongside selected plan horizon. Four strategies compared 
+    side-by-side.
 Unexpected: Death sequencing matrix — which cohorts qualify in which scenarios
+  → Unlock delivers: Estate sequencing analysis showing which EIS/BPR positions 
+    qualify for relief under different timing assumptions. Date-freeze for IHT/probate 
+    valuations. Documentation structured for accountant/solicitor review.
+Lifecycle-specific (accumulation): Build a tax-efficient portfolio structured for 
+transfer from day one. Every investment decision carries an IHT dimension.
+  → Unlock delivers: EIS/SEIS portfolio building integrated with IHT modelling — 
+    not in isolation.
+Lifecycle-specific (decumulation): Transfer wealth with clarity and minimum tax 
+leakage. Sequence drawdown to protect IHT-efficient assets as long as possible. The 
+next generation inherits a complete picture, not chaos.
+  → Unlock delivers: Reports & Adviser Packs (probate/IHT valuation), estate 
+    sequencing, asset register date-freeze.
 ```
 
 ---
@@ -648,20 +740,46 @@ Reliever: Subscription model (not AUM fee) — institutional-grade tools at acce
 **GAIN CREATORS** — how does Unlock create the gains the persona actually wants?
 
 ```
-Gain: Confidence before decumulation decisions
-Creator: Decumulation Planner — models sequencing risk, income sustainability, estate impact
+Gain: Confidence before decumulation decisions [PRESERVER, LEGACY BUILDER]
+Creator: Decumulation Planner — models sequencing risk, income sustainability, estate impact.
+Four strategies compared side-by-side. Year-indexed tax parameters for multi-decade plans.
+35-year shadow projection. Trust/gifting logic (NEFI, CLT, PET).
 
-Gain: EIS portfolio building without fund opacity
-Creator: Unlock Access — direct ownership, not pooled. See every company in your portfolio.
+Gain: EIS portfolio building without fund opacity [GROWTH SEEKER, LEGACY BUILDER]
+Creator: Unlock Access — direct ownership, not pooled. 24 defined criteria disclosure.
+See every company in your portfolio. 8–10% fees vs 9–14% market norm. EIS compliance 
+processed end-to-end via SeedLegals Instant Investment.
 
-Gain: Real-time tax intelligence across all asset classes
-Creator: Tax Intelligence Engine — continuous HMRC rule tracking, not annual accountant review
+Gain: Real-time tax intelligence across all asset classes [ALL]
+Creator: Tax Intelligence Engine — continuous HMRC rule tracking, not annual accountant 
+review. EIS/SEIS relief tracking, CGT crystallisation timing, IHT planning, pension 
+drawdown sequencing, AIM BPR eligibility. Forward-looking, not backward-looking.
 
-Gain: Lot-level data that improves over time
-Creator: Asset Register flywheel — cost basis and holding period data compounds in value
+Gain: Lot-level data that improves over time [ALL]
+Creator: Asset Register flywheel — cost basis, holding period, tax interaction data 
+compounds in value. Impossible to reconstruct retrospectively. Switching cost grows 
+with every position. Multi-decade relationship built into the data model.
 
-Gain: Same tools as institutions
-Creator: Platform architecture — not a retail tool retrofitted upward. Built for this segment.
+Gain: Same tools as institutions at accessible cost [ALL]
+Creator: Platform architecture — not a retail tool retrofitted upward. Built for £1M–£20M+ 
+complexity. Subscription model (£99/£249 per month) replaces AUM fee. No product 
+conflicts. Founding investors receive lifetime premium access at no cost.
+
+Gain: Structured documentation for professional advisers [PRESERVER, LEGACY BUILDER]
+Creator: Reports & Adviser Packs — KYS packs formatted for IFAs, accountants, solicitors.
+Tax return preparation summaries. Probate/IHT valuation reports. Lot-level performance 
+attribution. Generated from Asset Register — not rebuilt manually.
+
+Gain: Portfolio safety assessment on day one [PRESERVER, GROWTH SEEKER]
+Creator: Onboarding & Safety Lights — red/amber/green checks on concentration, liquidity, 
+cash runway. CGT-aware transition plan spread across tax years. Wrapper optimisation 
+including Bed & ISA. Belief-informed scenario tilt.
+
+Gain: Estate transfer with clarity and minimum tax leakage [LEGACY BUILDER]
+Creator: Tax Intelligence Engine + Asset Register — date-freeze for IHT/probate valuations.
+Household view across people, wrappers, entities. Estate sequencing: which assets to 
+protect, which to draw first, which cohorts qualify for BPR under different timing 
+assumptions. Complete picture inherited by next generation, not chaos.
 ```
 
 ---
@@ -827,40 +945,58 @@ The Financial Model is a spreadsheet (not in this project library). This section
 *These are the fields agents and documents consume. Populate from the Financial Model spreadsheet.*
 
 ```
-ARR TRAJECTORY
-Year 1 ARR: [£X — from Financial Model]
-Year 2 ARR: [£X]
-Year 3 ARR: [£X]
-Basis: [How many subscribers × what ARPU × what churn assumption]
+ARR TRAJECTORY (from Content Bank Section 13)
+Year 1 (2026) ARR: ~£1.4M (beta + early syndicates)
+Year 2 (2027) ARR: ~£3.0M (public launch)
+Year 3 (2028) ARR: ~£5.0M (subscription + syndicate growth)
+Year 4 (2029) ARR: £8.25–9.25M (mature ARR)
+Basis: Subscription tiers (Free / £99/mo Standard / £249/mo Premium) + syndicate 
+fees (8–10% of capital raised). Churn assumption: 5% monthly Y1–2, declining to 3% 
+by Y4–5 as data flywheel increases switching cost.
 Where used: Pack 2 Section 5, pitch deck traction slide
+NOTE: Frame all projections as "management estimates" or "forward-looking projections" 
+— never as targets or certainties.
 
-CAC & LTV
-Customer Acquisition Cost: [£X — from Financial Model]
-Lifetime Value: [£X — from Financial Model]
-LTV:CAC ratio: [X:1]
+CAC & LTV (from Content Bank Section 9)
+Customer Acquisition Cost: £200 (warm introductions, referrals, content — not paid ads)
+Lifetime Value: £3,000–£3,250 (3–5 year average lifetime)
+LTV:CAC ratio: 10:1 to 15:1
 Where used: Pack 2 Section 5, investor Q&A
+NOTE: LTV argument strengthened by lifecycle phase transition — Growth Seeker converts 
+to Preserver characteristics as wealth consolidates, extending platform relevance 
+across two phases.
 
-UNIT ECONOMICS
-Gross margin: [X%]
-Payback period: [X months]
+UNIT ECONOMICS (from Content Bank Section 9)
+Gross margin: 90%+ on syndicate fees
+Payback period: ~3 months at steady state
+Break-even: Year 2 ARR (~£3M). Realistic pathway to profitability without Series A.
 Where used: Pack 2 Section 5
 
 VALUATION BASIS
 Pre-money: £6.5M [LOCKED — 1A]
-Basis: [Revenue multiple / DCF / comparable transactions — state the method]
-Sensitivity: [What the valuation looks like at different ARR scenarios]
+Basis: [Revenue multiple / DCF / comparable transactions — needs formal statement]
+Sensitivity: [Scenarios at different ARR trajectories — needs formal modelling]
 Where used: Pack 2 Section 7, investor Q&A on valuation
+GAP: Valuation basis methodology not formally stated in narrative form. Populate 
+from Financial Model spreadsheet.
 
-EXIT MILESTONES
-Target exit route: [M&A / PE / IPO — from Business Plan]
-Target exit timeline: [X years from now]
-Target exit valuation: [£X — from Financial Model]
-Comparable exits: [If any — from Competitive Analysis]
+EXIT MILESTONES (from Content Bank Section 13)
+Target exit routes (three pathways):
+  1. Strategic M&A: Named acquirers — Bloomberg, Morningstar, Refinitiv, Crowdcube, 
+     S&P Global. Valuation range £20–50M.
+  2. IPO pathway: At £20M+ ARR with 10K+ subscribers. Potential valuations £50–100M+.
+  3. PE buyout: Fintech PE at ARR multiples — 7–10x for profitable SaaS.
+Base case timeline: 5–10x returns within 3–5 years
 Where used: Pack 2 Section 7
 
-REVENUE MODEL
-Subscription revenue: [£99/mo × X subscribers + £249/mo × X subscribers]
-Access revenue: [8–10% of deal value × £X annual deal flow]
+REVENUE MODEL (from Content Bank Section 9)
+Subscription revenue: Free (entry) / £99/mo Standard / £249/mo Premium
+Access revenue: 8–10% of capital raised per syndicate. Gross margin 90%+.
+Founding investor terms: Lifetime premium access at no subscription cost — permanently.
+Future revenue streams:
+  - Challenger Bank DD-as-a-Service: est. £50M+ addressable. Per-enquiry or licensing.
+  - Family Office Wealth Intelligence: est. £30–84M addressable. Enterprise subscription.
+  - White-Label Reporting & API: Institutional. Usage-based + annual licence.
 NOTE: Do not state subscription pricing in investor-facing docs below Pack 2.
 Where used: Pack 2 Section 4 only
 ```
@@ -1221,19 +1357,19 @@ APP WALKTHROUGH SCRIPT
 
 | Document | Core fields complete? | Last reviewed | Gap |
 |---|---|---|---|
-| Play to Win — Choice 1 (Winning Aspiration) | ✅ Yes | Mar 2026 | None |
-| Play to Win — Choice 2 (Where to Play) | ✅ Yes | Mar 2026 | Channel strategy incomplete |
-| Play to Win — Choice 3 (How to Win) | ✅ Yes | Mar 2026 | None |
-| Play to Win — Choice 4 (Capabilities) | ⚠️ Partial | Mar 2026 | Current build status fields need Werner input |
-| Play to Win — Choice 5 (Management) | ⚠️ Partial | Mar 2026 | Post-launch KPIs not set |
-| SB7 — One-Liner | ✅ Complete | Mar 2026 | None |
-| SB7 — Full 7-Part | ⚠️ Partial | Apr 2026 | Formally documented here for first time |
-| VP Canvas — Preserver | ⚠️ Partial | Mar 2026 | Gains not fully mapped |
-| VP Canvas — Growth Seeker | ⚠️ Partial | Mar 2026 | Gains not fully mapped |
-| VP Canvas — Legacy Builder | ⚠️ Partial | Mar 2026 | Gains not fully mapped |
+| Play to Win — Choice 1 (Winning Aspiration) | ✅ Complete, LOCKED | Apr 2026 | None |
+| Play to Win — Choice 2 (Where to Play) | ✅ Complete, LOCKED | Apr 2026 | Channel strategy (post-founding) not formally decided |
+| Play to Win — Choice 3 (How to Win) | ✅ Complete, LOCKED | Apr 2026 | None |
+| Play to Win — Choice 4 (Capabilities) | ✅ Populated | Apr 2026 | Werner build progress confirmation TBD. Integration count TBD. |
+| Play to Win — Choice 5 (Management) | ✅ Populated | Apr 2026 | KPIs populated from Content Bank. NPS to be set post-launch. |
+| SB7 — One-Liner | ✅ Complete, LOCKED | Apr 2026 | None |
+| SB7 — Full 7-Part | ✅ Complete | Apr 2026 | All 7 parts formally documented with Unlock answers |
+| VP Canvas — Preserver | ✅ Complete | Apr 2026 | Gains fully mapped with lifecycle-specific (decumulation) layer |
+| VP Canvas — Growth Seeker | ✅ Complete | Apr 2026 | Gains fully mapped with lifecycle-specific (accumulation) layer |
+| VP Canvas — Legacy Builder | ✅ Complete | Apr 2026 | Gains fully mapped with both lifecycle layers |
 | 19-Persona Guide (3 archetypes) | ✅ Complete | Mar 2026 | In Content Bank |
 | 19-Persona Guide (full 19) | ✅ Complete | Mar 2026 | In 520_ |
-| Financial Model | ⚠️ Exists as xlsx | Unknown | Narrative fields not mapped to 410 schema |
+| Financial Model | ✅ Narrative fields populated | Apr 2026 | ARR, CAC, LTV, exits populated from Content Bank. Valuation basis methodology TBD. Spreadsheet not in library. |
 | Business Plan | ❌ Not in library | Unknown | Exists offline — needs uploading or abstracting |
 | Marketing & Investor Conversion Brief | ✅ Largely complete | Mar 2026 | In 220_ |
 | Competitive Analysis | ❌ Not in library | Unknown | Exists offline — needs uploading or abstracting |
