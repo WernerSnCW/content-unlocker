@@ -10,12 +10,12 @@
 
 | Metric | Count |
 |---|---|
-| Total Documents | 40 |
-| Active (non-archived) | 33 |
-| CURRENT | 30 |
+| Total Documents | 45 |
+| Active (non-archived) | 38 |
+| CURRENT | 35 |
 | DRAFT | 3 |
 | ARCHIVED | 7 |
-| CLEAN (sendable) | 4 |
+| CLEAN (sendable) | 7 |
 | REQUIRES_REVIEW | 29 |
 | Total Leads | 4 |
 | Documents Sent This Week | 6 |
@@ -39,6 +39,9 @@
 | 210 | 210_PIPELINE | Pipedrive_Aircall_Setup | CURRENT | REQUIRES_REVIEW | 2 | — | — | Internal ops doc — cascade flagged |
 | 220 | 220_STRATEGY | Marketing_Investor_Conversion | CURRENT | REQUIRES_REVIEW | 2 | — | — | Internal ops doc — cascade flagged |
 | 230 | 230_EMAILS | Pack1_Email_Templates | CURRENT | REQUIRES_REVIEW | 2 | — | — | Internal ops doc — cascade flagged |
+| 240 | 240_PLAN | Business_Plan | CURRENT | CLEAN | 2 | GS, P, LB | All | **NEW** — 12-section business plan from consulting templates + Content Bank |
+| 250 | 250_PLAN | Sales_Strategy | CURRENT | CLEAN | 2 | GS, P, LB | All | **NEW** — Sales strategy: belief ladder, funnel, objection handling, call framework |
+| 260 | 260_PLAN | Communication_Strategy | CURRENT | CLEAN | 2 | GS, P, LB | All | **NEW** — Comms strategy: brand positioning, SB7 messaging, 4-channel plan, approved phrasing |
 | 400 | 400_SPEC | Decumulation_Engine | CURRENT | REQUIRES_REVIEW | 1 | — | — | Tier 1 spec — cascade flagged |
 | 500 | 500_SCRIPT | Cold_Call | CURRENT | REQUIRES_REVIEW | 3 | — | — | Cascade flagged |
 | 510 | 510_PLAYBOOK | Agent_Training | CURRENT | REQUIRES_REVIEW | 3 | — | — | Cascade flagged |
@@ -210,6 +213,9 @@ No CLEAN documents currently contain April 6 deadline language or the prohibited
 
 | Expected | Status |
 |---|---|
+| ~~Business Plan~~ | **RESOLVED** — now 240_PLAN_Business_Plan_V1_CURRENT.md |
+| ~~Sales Strategy~~ | **RESOLVED** — now 250_PLAN_Sales_Strategy_V1_CURRENT.md |
+| ~~Communication Strategy~~ | **RESOLVED** — now 260_PLAN_Communication_Strategy_V1_CURRENT.md |
 | 241 — Adviser/Accountant Briefing Note | NOT IN REGISTRY — needs generation or import |
 | Pitch Deck | NOT IN REGISTRY |
 | 2-minute Advice Gap video script | NOT IN REGISTRY — Phase 2 |

@@ -24,7 +24,7 @@ If the 410 schema is the assembly line, this document is the raw materials speci
 | 3 | Value Proposition Canvas | Tier 1 | Complete — all 3 personas: jobs, pains (starred), gains (with lifecycle layers), pain relievers, gain creators, VP statements |
 | 4 | 19-Persona Suitability Guide | Tier 1 | Complete for 3 archetypes, 19 full personas in 520 |
 | 5 | Financial Model | Tier 1 | Narrative fields populated from Content Bank (ARR, CAC, LTV, exits). Spreadsheet not in library. Valuation basis TBD. |
-| 6 | Business Plan | Tier 2 | Referenced but not in project library |
+| 6 | Business Plan | Tier 2 | **Complete** — 240_PLAN_Business_Plan_V1_CURRENT.md. 12 sections: exec summary, problem/market, solution, business model, GTM, financials, team, risk, roadmap, org, competitive, SWOT. |
 | 7 | Marketing & Investor Conversion Brief | Tier 2 | Largely complete in 220 |
 | 8 | Competitive Analysis | Tier 2 | Referenced but not in project library |
 | 9 | App Walkthrough Script | Tier 2 | Referenced but not in project library |
