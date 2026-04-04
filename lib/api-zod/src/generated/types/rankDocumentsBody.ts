@@ -13,4 +13,7 @@ export interface RankDocumentsBody {
   pipeline_stage: string;
   transcript_summary: string;
   objections?: string[];
+  eis_familiar?: boolean;
+  iht_confirmed?: boolean;
+  adviser_mentioned?: boolean;
 }

@@ -6,15 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface RankedDocument {
+export interface ExcludedDocument {
   document_id: string;
   file_code: string;
   name: string;
-  description: string;
-  tier: number;
-  priority: number;
-  rationale: string;
-  /** @nullable */
-  relevance_score?: number | null;
-  worth_it?: number;
+  reason: string;
 }

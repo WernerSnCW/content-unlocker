@@ -135,6 +135,9 @@ export interface RankDocumentsBody {
   pipeline_stage: string;
   transcript_summary: string;
   objections?: string[];
+  eis_familiar?: boolean;
+  iht_confirmed?: boolean;
+  adviser_mentioned?: boolean;
 }
 
 export interface RankedDocument {
@@ -145,6 +148,9 @@ export interface RankedDocument {
   tier: number;
   priority: number;
   rationale: string;
+  /** @nullable */
+  relevance_score?: number | null;
+  worth_it?: number;
 }
 
 export interface DocumentSummary {
@@ -161,10 +167,18 @@ export interface BlockedDocument {
   reason: string;
 }
 
+export interface ExcludedDocument {
+  document_id: string;
+  file_code: string;
+  name: string;
+  reason: string;
+}
+
 export interface RecommendationResult {
   ranked_documents: RankedDocument[];
   already_sent: DocumentSummary[];
   blocked_documents: BlockedDocument[];
+  excluded_documents?: ExcludedDocument[];
   /** @nullable */
   all_sent_message?: string | null;
 }

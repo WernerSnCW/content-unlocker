@@ -13,6 +13,7 @@ import personaGuide from "../../data/content/520_GUIDE_Investor_Personas_19_V1_C
 import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt";
 import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
 import { generateBriefFromGap } from "../content/gaps";
+import { shouldExclude, getWorthItWeight, getPersonaRoute, getStageRule, DOCUMENT_RULES } from "../../data/document-usage-matrix";
 import multer from "multer";
 import mammoth from "mammoth";
 
@@ -605,7 +606,16 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     return;
   }
 
-  const { lead_id, detected_persona, pipeline_stage, transcript_summary, objections } = parsed.data;
+  const {
+    lead_id,
+    detected_persona,
+    pipeline_stage,
+    transcript_summary,
+    objections,
+    eis_familiar = false,
+    iht_confirmed = false,
+    adviser_mentioned = false,
+  } = parsed.data;
 
   let sentDocIds: string[] = [];
   if (lead_id) {
@@ -670,7 +680,11 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       reason: `Document requires review before it can be recommended`,
     }));
 
-  const eligible = allDocs.filter(
+  const sentShortCodes = allDocs
+    .filter((d) => sentDocIds.includes(d.id))
+    .map((d) => d.id);
+
+  const preEligible = allDocs.filter(
     (d) =>
       d.lifecycle_status === "CURRENT" &&
       d.review_state === "CLEAN" &&
@@ -678,6 +692,39 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       matchesPersona(d) &&
       !sentDocIds.includes(d.id)
   );
+
+  const sortedPreEligible = [...preEligible].sort((a, b) => {
+    const wa = getWorthItWeight(a.id);
+    const wb = getWorthItWeight(b.id);
+    return wb - wa;
+  });
+
+  const excludedDocs: { document_id: string; file_code: string; name: string; reason: string }[] = [];
+  const matrixResultCodes: string[] = [];
+
+  const eligible = sortedPreEligible.filter((d) => {
+    const shortCode = d.id;
+    const result = shouldExclude(shortCode, {
+      archetype: resolvedArchetype || "",
+      stage: pipeline_stage,
+      alreadySent: sentShortCodes,
+      currentResults: matrixResultCodes,
+      eisFamiliar: eis_familiar,
+      ihtConfirmed: iht_confirmed,
+      adviserMentioned: adviser_mentioned,
+    });
+    if (result.excluded) {
+      excludedDocs.push({
+        document_id: d.id,
+        file_code: d.file_code,
+        name: d.name,
+        reason: result.reason || "Excluded by usage matrix rules",
+      });
+      return false;
+    }
+    matrixResultCodes.push(shortCode);
+    return true;
+  });
 
   if (eligible.length === 0) {
     const gapReasons: string[] = [];
@@ -722,6 +769,7 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       ranked_documents: [],
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      excluded_documents: excludedDocs,
       recommendation_gap,
       recommended_videos: recommendedVideos,
       all_sent_message:
@@ -736,9 +784,13 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     name: d.name,
     description: d.description,
     tier: d.tier,
+    worth_it: getWorthItWeight(d.id),
     pipeline_stage_relevance: d.pipeline_stage_relevance,
     persona_relevance: d.persona_relevance,
   }));
+
+  const personaRoute = resolvedArchetype ? getPersonaRoute(resolvedArchetype) : undefined;
+  const stageRule = getStageRule(pipeline_stage);
 
   try {
     const message = await anthropic.messages.create({
@@ -754,6 +806,16 @@ CONTEXT:
 - Pipeline stage: ${pipeline_stage}
 - Transcript summary: ${transcript_summary}
 - Objections raised: ${(objections || []).join("; ") || "None"}
+${personaRoute ? `\nPERSONA ROUTING (${resolvedArchetype}):
+- Core sequence: ${personaRoute.core_sequence.join(" → ")}
+- Key insight: ${personaRoute.key_insight}
+- Supplementary triggers: ${personaRoute.supplementary_triggers}` : ""}
+${stageRule ? `\nSTAGE OBJECTIVE (${pipeline_stage}):
+- Objective: ${stageRule.objective}
+- Timing: ${stageRule.timing}` : ""}
+
+WORTH-IT RATINGS (use as base weight — 3=★★★ highest leverage, 2=★★, 1=★):
+Documents rated 3 should be preferred unless context strongly favours a lower-rated doc.
 
 ELIGIBLE DOCUMENTS (already filtered — rank only these):
 ${JSON.stringify(candidateList, null, 2)}
@@ -804,6 +866,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       const doc = eligible.find((d) => d.id === r.document_id);
       const normRank = r.rank !== undefined ? r.rank : (r.ranking !== undefined ? r.ranking : null);
       const normScore = r.relevance_score !== undefined ? r.relevance_score : (r.score !== undefined ? r.score : null);
+      const worthIt = doc ? getWorthItWeight(doc.id) : 2;
       return {
         document_id: r.document_id,
         file_code: doc?.file_code || "",
@@ -813,6 +876,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
         priority: r.priority,
         rank: normRank,
         relevance_score: normScore,
+        worth_it: worthIt,
         rationale: r.rationale,
       };
     });
@@ -826,6 +890,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       ranked_documents: rankedWithDetails,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      excluded_documents: excludedDocs,
       recommended_videos: recommendedVideos2,
       all_sent_message: null,
     };

@@ -194,12 +194,21 @@ export const AnalyzeTranscriptResponse = zod.object({
 /**
  * @summary Pass 2: Rank eligible documents
  */
+export const rankDocumentsBodyEisFamiliarDefault = false;
+export const rankDocumentsBodyIhtConfirmedDefault = false;
+export const rankDocumentsBodyAdviserMentionedDefault = false;
+
 export const RankDocumentsBody = zod.object({
   lead_id: zod.string().nullish(),
   detected_persona: zod.string(),
   pipeline_stage: zod.string(),
   transcript_summary: zod.string(),
   objections: zod.array(zod.string()).optional(),
+  eis_familiar: zod.boolean().default(rankDocumentsBodyEisFamiliarDefault),
+  iht_confirmed: zod.boolean().default(rankDocumentsBodyIhtConfirmedDefault),
+  adviser_mentioned: zod
+    .boolean()
+    .default(rankDocumentsBodyAdviserMentionedDefault),
 });
 
 export const RankDocumentsResponse = zod.object({
@@ -212,6 +221,8 @@ export const RankDocumentsResponse = zod.object({
       tier: zod.number(),
       priority: zod.number(),
       rationale: zod.string(),
+      relevance_score: zod.number().nullish(),
+      worth_it: zod.number().optional(),
     }),
   ),
   already_sent: zod.array(
@@ -230,6 +241,16 @@ export const RankDocumentsResponse = zod.object({
       reason: zod.string(),
     }),
   ),
+  excluded_documents: zod
+    .array(
+      zod.object({
+        document_id: zod.string(),
+        file_code: zod.string(),
+        name: zod.string(),
+        reason: zod.string(),
+      }),
+    )
+    .optional(),
   all_sent_message: zod.string().nullish(),
 });
 

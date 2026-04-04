@@ -27,6 +27,7 @@ export * from "./documentSummary";
 export * from "./emailDraft";
 export * from "./emailDraftBody";
 export * from "./errorResponse";
+export * from "./excludedDocument";
 export * from "./featureUpdateQueue";
 export * from "./featureUpdateQueueDoc";
 export * from "./featureUpdateRequest";

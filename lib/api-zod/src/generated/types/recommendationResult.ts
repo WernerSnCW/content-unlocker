@@ -7,12 +7,14 @@
  */
 import type { BlockedDocument } from "./blockedDocument";
 import type { DocumentSummary } from "./documentSummary";
+import type { ExcludedDocument } from "./excludedDocument";
 import type { RankedDocument } from "./rankedDocument";
 
 export interface RecommendationResult {
   ranked_documents: RankedDocument[];
   already_sent: DocumentSummary[];
   blocked_documents: BlockedDocument[];
+  excluded_documents?: ExcludedDocument[];
   /** @nullable */
   all_sent_message?: string | null;
 }
