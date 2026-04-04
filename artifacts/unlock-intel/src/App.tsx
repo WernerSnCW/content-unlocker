@@ -19,6 +19,8 @@ import FeatureUpdates from "./pages/feature-updates";
 import CallPrep from "./pages/call-prep";
 import PersonaAnalytics from "./pages/persona-analytics";
 import ACUPage from "./pages/acu";
+import CampaignsPage from "./pages/campaigns";
+import CampaignDetailPage from "./pages/campaign-detail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +49,8 @@ function Router() {
         <Route path="/call-prep" component={CallPrep} />
         <Route path="/analytics/personas" component={PersonaAnalytics} />
         <Route path="/acu" component={ACUPage} />
+        <Route path="/campaigns" component={CampaignsPage} />
+        <Route path="/campaigns/:id" component={CampaignDetailPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

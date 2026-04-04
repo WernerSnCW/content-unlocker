@@ -1499,3 +1499,324 @@ export const CascadeACUResponse = zod.object({
   affected: zod.number(),
   document_ids: zod.array(zod.string()).optional(),
 });
+
+/**
+ * @summary List all campaigns
+ */
+export const ListCampaignsResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "GENERATING",
+    "QC_PENDING",
+    "READY",
+    "ACTIVE",
+    "PAUSED",
+    "COMPLETED",
+  ]),
+  target_cluster: zod.string(),
+  personas: zod.array(zod.string()).optional(),
+  entry_stage: zod.string(),
+  target_stage: zod.string(),
+  channels: zod.array(zod.string()),
+  duration_weeks: zod.number(),
+  daily_volume: zod.number().nullish(),
+  primary_belief: zod.string().nullish(),
+  secondary_beliefs: zod.array(zod.string()).optional(),
+  primary_cta: zod.string().nullish(),
+  secondary_cta: zod.string().nullish(),
+  compliance_constraints: zod.array(zod.string()).optional(),
+  blocked_content: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  sequence: zod.array(zod.object({}).passthrough()).optional(),
+  qc_status: zod.string(),
+  asset_count: zod.number(),
+  assets_passed_qc: zod.number(),
+  created_at: zod.string(),
+  activated_at: zod.string().nullish(),
+});
+export const ListCampaignsResponse = zod.array(ListCampaignsResponseItem);
+
+/**
+ * @summary Create a campaign from a brief
+ */
+export const CreateCampaignBody = zod.object({
+  campaign_id: zod.string(),
+  name: zod.string(),
+  target_cluster: zod.string(),
+  personas: zod.array(zod.string()).optional(),
+  entry_stage: zod.string(),
+  target_stage: zod.string(),
+  channels: zod.array(zod.string()).optional(),
+  duration_weeks: zod.number().optional(),
+  daily_volume: zod.number().optional(),
+  primary_belief: zod.string().optional(),
+  secondary_beliefs: zod.array(zod.string()).optional(),
+  primary_cta: zod.string().optional(),
+  secondary_cta: zod.string().optional(),
+  compliance_constraints: zod.array(zod.string()).optional(),
+  blocked_content: zod.array(zod.string()).optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Get full campaign detail with assets and channel summary
+ */
+export const GetCampaignParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCampaignResponse = zod.object({
+  campaign: zod.object({
+    id: zod.string(),
+    name: zod.string(),
+    status: zod.enum([
+      "DRAFT",
+      "GENERATING",
+      "QC_PENDING",
+      "READY",
+      "ACTIVE",
+      "PAUSED",
+      "COMPLETED",
+    ]),
+    target_cluster: zod.string(),
+    personas: zod.array(zod.string()).optional(),
+    entry_stage: zod.string(),
+    target_stage: zod.string(),
+    channels: zod.array(zod.string()),
+    duration_weeks: zod.number(),
+    daily_volume: zod.number().nullish(),
+    primary_belief: zod.string().nullish(),
+    secondary_beliefs: zod.array(zod.string()).optional(),
+    primary_cta: zod.string().nullish(),
+    secondary_cta: zod.string().nullish(),
+    compliance_constraints: zod.array(zod.string()).optional(),
+    blocked_content: zod.array(zod.string()).optional(),
+    notes: zod.string().nullish(),
+    sequence: zod.array(zod.object({}).passthrough()).optional(),
+    qc_status: zod.string(),
+    asset_count: zod.number(),
+    assets_passed_qc: zod.number(),
+    created_at: zod.string(),
+    activated_at: zod.string().nullish(),
+  }),
+  assets: zod.array(
+    zod.object({
+      id: zod.string(),
+      campaign_id: zod.string(),
+      node_id: zod.string(),
+      channel: zod.string(),
+      output_type: zod.string(),
+      content: zod.string().nullish(),
+      title: zod.string(),
+      day: zod.number(),
+      sequence_position: zod.number(),
+      branch_condition: zod.string().nullish(),
+      word_count: zod.number().nullish(),
+      status: zod.string(),
+      qc_status: zod.string(),
+      qc_report: zod.object({}).passthrough().nullish(),
+      metadata: zod.object({}).passthrough().optional(),
+    }),
+  ),
+  channel_summary: zod.object({}).passthrough(),
+});
+
+/**
+ * @summary Get all content assets for a campaign
+ */
+export const GetCampaignAssetsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCampaignAssetsResponseItem = zod.object({
+  id: zod.string(),
+  campaign_id: zod.string(),
+  node_id: zod.string(),
+  channel: zod.string(),
+  output_type: zod.string(),
+  content: zod.string().nullish(),
+  title: zod.string(),
+  day: zod.number(),
+  sequence_position: zod.number(),
+  branch_condition: zod.string().nullish(),
+  word_count: zod.number().nullish(),
+  status: zod.string(),
+  qc_status: zod.string(),
+  qc_report: zod.object({}).passthrough().nullish(),
+  metadata: zod.object({}).passthrough().optional(),
+});
+export const GetCampaignAssetsResponse = zod.array(
+  GetCampaignAssetsResponseItem,
+);
+
+/**
+ * @summary Generate all pending content assets from the campaign brief
+ */
+export const GenerateCampaignAssetsParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GenerateCampaignAssetsResponse = zod.object({
+  message: zod.string(),
+  generated: zod.number(),
+  total_pending: zod.number(),
+  generated_ids: zod.array(zod.string()).optional(),
+});
+
+/**
+ * @summary Run QC across all campaign assets
+ */
+export const RunCampaignQCParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const RunCampaignQCResponse = zod.object({
+  overall_status: zod.enum(["PASSED", "FAILED", "PENDING"]),
+  checks: zod.array(zod.object({}).passthrough()),
+  asset_results: zod.array(zod.object({}).passthrough()),
+  summary: zod.object({
+    total_checks: zod.number(),
+    passed: zod.number(),
+    failed: zod.number(),
+    warnings: zod.number(),
+  }),
+});
+
+/**
+ * @summary Activate campaign (blocks if QC not passed)
+ */
+export const ActivateCampaignParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ActivateCampaignResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "GENERATING",
+    "QC_PENDING",
+    "READY",
+    "ACTIVE",
+    "PAUSED",
+    "COMPLETED",
+  ]),
+  target_cluster: zod.string(),
+  personas: zod.array(zod.string()).optional(),
+  entry_stage: zod.string(),
+  target_stage: zod.string(),
+  channels: zod.array(zod.string()),
+  duration_weeks: zod.number(),
+  daily_volume: zod.number().nullish(),
+  primary_belief: zod.string().nullish(),
+  secondary_beliefs: zod.array(zod.string()).optional(),
+  primary_cta: zod.string().nullish(),
+  secondary_cta: zod.string().nullish(),
+  compliance_constraints: zod.array(zod.string()).optional(),
+  blocked_content: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  sequence: zod.array(zod.object({}).passthrough()).optional(),
+  qc_status: zod.string(),
+  asset_count: zod.number(),
+  assets_passed_qc: zod.number(),
+  created_at: zod.string(),
+  activated_at: zod.string().nullish(),
+});
+
+/**
+ * @summary Get machine-readable sequence specification
+ */
+export const GetCampaignSequenceParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCampaignSequenceResponse = zod.object({
+  campaign_id: zod.string(),
+  campaign_name: zod.string(),
+  sequence: zod.array(zod.object({}).passthrough()),
+  duration_weeks: zod.number(),
+  channels: zod.array(zod.string()),
+});
+
+/**
+ * @summary Get ActiveCampaign build instructions
+ */
+export const GetCampaignACBuildParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCampaignACBuildResponse = zod.object({}).passthrough();
+
+/**
+ * @summary Get Aircall tag trigger table
+ */
+export const GetCampaignTagTableParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetCampaignTagTableResponse = zod.object({}).passthrough();
+
+/**
+ * @summary List all channel configurations
+ */
+export const ListChannelsResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  format: zod.string(),
+  max_words: zod.number().nullish(),
+  max_links: zod.number().nullish(),
+  max_ctas: zod.number().nullish(),
+  max_lines: zod.number().nullish(),
+  max_sentences: zod.number().nullish(),
+  max_duration_seconds: zod.number().nullish(),
+  headline_max_chars: zod.number().nullish(),
+  body_max_chars: zod.number().nullish(),
+  subject_max_words: zod.number().nullish(),
+  subject_max_chars: zod.number().nullish(),
+  prohibited: zod.array(zod.string()).optional(),
+  formats: zod.array(zod.string()).optional(),
+  cta_options: zod.array(zod.string()).optional(),
+  requires_meta_approval: zod.boolean().optional(),
+  requires_cta_button: zod.boolean().optional(),
+  video_thumbnail: zod.boolean().optional(),
+  from_address: zod.string().nullish(),
+  goal: zod.string().nullish(),
+  max_objection_responses: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+export const ListChannelsResponse = zod.array(ListChannelsResponseItem);
+
+/**
+ * @summary Get a single channel configuration
+ */
+export const GetChannelParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetChannelResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  format: zod.string(),
+  max_words: zod.number().nullish(),
+  max_links: zod.number().nullish(),
+  max_ctas: zod.number().nullish(),
+  max_lines: zod.number().nullish(),
+  max_sentences: zod.number().nullish(),
+  max_duration_seconds: zod.number().nullish(),
+  headline_max_chars: zod.number().nullish(),
+  body_max_chars: zod.number().nullish(),
+  subject_max_words: zod.number().nullish(),
+  subject_max_chars: zod.number().nullish(),
+  prohibited: zod.array(zod.string()).optional(),
+  formats: zod.array(zod.string()).optional(),
+  cta_options: zod.array(zod.string()).optional(),
+  requires_meta_approval: zod.boolean().optional(),
+  requires_cta_button: zod.boolean().optional(),
+  video_thumbnail: zod.boolean().optional(),
+  from_address: zod.string().nullish(),
+  goal: zod.string().nullish(),
+  max_objection_responses: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});

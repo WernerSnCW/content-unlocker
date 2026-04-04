@@ -11,6 +11,7 @@ import callFrameworkRouter from "./call-framework";
 import analyticsRouter from "./analytics";
 import videosRouter from "./videos";
 import acuRouter from "./acu";
+import campaignsRouter from "./campaigns";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(callFrameworkRouter);
 router.use(analyticsRouter);
 router.use(videosRouter);
 router.use(acuRouter);
+router.use(campaignsRouter);
 
 export default router;

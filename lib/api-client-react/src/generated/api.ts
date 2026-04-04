@@ -22,7 +22,16 @@ import type {
   Acu,
   AnalyzeTranscriptBody,
   ApproveACUBody,
+  Campaign,
+  CampaignAsset,
+  CampaignBriefInput,
+  CampaignCreateResult,
+  CampaignDetail,
+  CampaignGenerateResult,
+  CampaignQCResult,
+  CampaignSequence,
   ChangelogEntry,
+  Channel,
   ComplianceConstants,
   ConfirmSendBody,
   ContentBank,
@@ -45,6 +54,8 @@ import type {
   GenerateFromBriefRequest,
   GenerationBrief,
   GenerationResult,
+  GetCampaignACBuild200,
+  GetCampaignTagTable200,
   GetContentBankParams,
   GetRecentActivityParams,
   HealthStatus,
@@ -3713,3 +3724,1016 @@ export const useCascadeACU = <
 > => {
   return useMutation(getCascadeACUMutationOptions(options));
 };
+
+/**
+ * @summary List all campaigns
+ */
+export const getListCampaignsUrl = () => {
+  return `/api/campaigns`;
+};
+
+export const listCampaigns = async (
+  options?: RequestInit,
+): Promise<Campaign[]> => {
+  return customFetch<Campaign[]>(getListCampaignsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCampaignsQueryKey = () => {
+  return [`/api/campaigns`] as const;
+};
+
+export const getListCampaignsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCampaigns>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCampaigns>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCampaignsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCampaigns>>> = ({
+    signal,
+  }) => listCampaigns({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCampaigns>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCampaignsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCampaigns>>
+>;
+export type ListCampaignsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all campaigns
+ */
+
+export function useListCampaigns<
+  TData = Awaited<ReturnType<typeof listCampaigns>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listCampaigns>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCampaignsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a campaign from a brief
+ */
+export const getCreateCampaignUrl = () => {
+  return `/api/campaigns`;
+};
+
+export const createCampaign = async (
+  campaignBriefInput: CampaignBriefInput,
+  options?: RequestInit,
+): Promise<CampaignCreateResult> => {
+  return customFetch<CampaignCreateResult>(getCreateCampaignUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(campaignBriefInput),
+  });
+};
+
+export const getCreateCampaignMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCampaign>>,
+    TError,
+    { data: BodyType<CampaignBriefInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCampaign>>,
+  TError,
+  { data: BodyType<CampaignBriefInput> },
+  TContext
+> => {
+  const mutationKey = ["createCampaign"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCampaign>>,
+    { data: BodyType<CampaignBriefInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCampaign(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCampaignMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCampaign>>
+>;
+export type CreateCampaignMutationBody = BodyType<CampaignBriefInput>;
+export type CreateCampaignMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a campaign from a brief
+ */
+export const useCreateCampaign = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCampaign>>,
+    TError,
+    { data: BodyType<CampaignBriefInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCampaign>>,
+  TError,
+  { data: BodyType<CampaignBriefInput> },
+  TContext
+> => {
+  return useMutation(getCreateCampaignMutationOptions(options));
+};
+
+/**
+ * @summary Get full campaign detail with assets and channel summary
+ */
+export const getGetCampaignUrl = (id: string) => {
+  return `/api/campaigns/${id}`;
+};
+
+export const getCampaign = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CampaignDetail> => {
+  return customFetch<CampaignDetail>(getGetCampaignUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}`] as const;
+};
+
+export const getGetCampaignQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaign>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaign>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCampaign>>> = ({
+    signal,
+  }) => getCampaign(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaign>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaign>>
+>;
+export type GetCampaignQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get full campaign detail with assets and channel summary
+ */
+
+export function useGetCampaign<
+  TData = Awaited<ReturnType<typeof getCampaign>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaign>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get all content assets for a campaign
+ */
+export const getGetCampaignAssetsUrl = (id: string) => {
+  return `/api/campaigns/${id}/assets`;
+};
+
+export const getCampaignAssets = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CampaignAsset[]> => {
+  return customFetch<CampaignAsset[]>(getGetCampaignAssetsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignAssetsQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}/assets`] as const;
+};
+
+export const getGetCampaignAssetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaignAssets>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignAssetsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCampaignAssets>>
+  > = ({ signal }) => getCampaignAssets(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaignAssets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignAssetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaignAssets>>
+>;
+export type GetCampaignAssetsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get all content assets for a campaign
+ */
+
+export function useGetCampaignAssets<
+  TData = Awaited<ReturnType<typeof getCampaignAssets>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignAssets>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignAssetsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate all pending content assets from the campaign brief
+ */
+export const getGenerateCampaignAssetsUrl = (id: string) => {
+  return `/api/campaigns/${id}/generate`;
+};
+
+export const generateCampaignAssets = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CampaignGenerateResult> => {
+  return customFetch<CampaignGenerateResult>(getGenerateCampaignAssetsUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getGenerateCampaignAssetsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateCampaignAssets>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateCampaignAssets>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["generateCampaignAssets"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateCampaignAssets>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return generateCampaignAssets(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateCampaignAssetsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateCampaignAssets>>
+>;
+
+export type GenerateCampaignAssetsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Generate all pending content assets from the campaign brief
+ */
+export const useGenerateCampaignAssets = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateCampaignAssets>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateCampaignAssets>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getGenerateCampaignAssetsMutationOptions(options));
+};
+
+/**
+ * @summary Run QC across all campaign assets
+ */
+export const getRunCampaignQCUrl = (id: string) => {
+  return `/api/campaigns/${id}/qc`;
+};
+
+export const runCampaignQC = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CampaignQCResult> => {
+  return customFetch<CampaignQCResult>(getRunCampaignQCUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getRunCampaignQCQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}/qc`] as const;
+};
+
+export const getRunCampaignQCQueryOptions = <
+  TData = Awaited<ReturnType<typeof runCampaignQC>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof runCampaignQC>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getRunCampaignQCQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof runCampaignQC>>> = ({
+    signal,
+  }) => runCampaignQC(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof runCampaignQC>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type RunCampaignQCQueryResult = NonNullable<
+  Awaited<ReturnType<typeof runCampaignQC>>
+>;
+export type RunCampaignQCQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Run QC across all campaign assets
+ */
+
+export function useRunCampaignQC<
+  TData = Awaited<ReturnType<typeof runCampaignQC>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof runCampaignQC>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getRunCampaignQCQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Activate campaign (blocks if QC not passed)
+ */
+export const getActivateCampaignUrl = (id: string) => {
+  return `/api/campaigns/${id}/activate`;
+};
+
+export const activateCampaign = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Campaign> => {
+  return customFetch<Campaign>(getActivateCampaignUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getActivateCampaignMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activateCampaign>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof activateCampaign>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["activateCampaign"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof activateCampaign>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return activateCampaign(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ActivateCampaignMutationResult = NonNullable<
+  Awaited<ReturnType<typeof activateCampaign>>
+>;
+
+export type ActivateCampaignMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Activate campaign (blocks if QC not passed)
+ */
+export const useActivateCampaign = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof activateCampaign>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof activateCampaign>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getActivateCampaignMutationOptions(options));
+};
+
+/**
+ * @summary Get machine-readable sequence specification
+ */
+export const getGetCampaignSequenceUrl = (id: string) => {
+  return `/api/campaigns/${id}/sequence`;
+};
+
+export const getCampaignSequence = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CampaignSequence> => {
+  return customFetch<CampaignSequence>(getGetCampaignSequenceUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignSequenceQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}/sequence`] as const;
+};
+
+export const getGetCampaignSequenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaignSequence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignSequence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignSequenceQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCampaignSequence>>
+  > = ({ signal }) => getCampaignSequence(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaignSequence>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignSequenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaignSequence>>
+>;
+export type GetCampaignSequenceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get machine-readable sequence specification
+ */
+
+export function useGetCampaignSequence<
+  TData = Awaited<ReturnType<typeof getCampaignSequence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignSequence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignSequenceQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get ActiveCampaign build instructions
+ */
+export const getGetCampaignACBuildUrl = (id: string) => {
+  return `/api/campaigns/${id}/ac-build`;
+};
+
+export const getCampaignACBuild = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GetCampaignACBuild200> => {
+  return customFetch<GetCampaignACBuild200>(getGetCampaignACBuildUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignACBuildQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}/ac-build`] as const;
+};
+
+export const getGetCampaignACBuildQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaignACBuild>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignACBuild>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignACBuildQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCampaignACBuild>>
+  > = ({ signal }) => getCampaignACBuild(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaignACBuild>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignACBuildQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaignACBuild>>
+>;
+export type GetCampaignACBuildQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get ActiveCampaign build instructions
+ */
+
+export function useGetCampaignACBuild<
+  TData = Awaited<ReturnType<typeof getCampaignACBuild>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignACBuild>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignACBuildQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get Aircall tag trigger table
+ */
+export const getGetCampaignTagTableUrl = (id: string) => {
+  return `/api/campaigns/${id}/tag-table`;
+};
+
+export const getCampaignTagTable = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GetCampaignTagTable200> => {
+  return customFetch<GetCampaignTagTable200>(getGetCampaignTagTableUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCampaignTagTableQueryKey = (id: string) => {
+  return [`/api/campaigns/${id}/tag-table`] as const;
+};
+
+export const getGetCampaignTagTableQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCampaignTagTable>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignTagTable>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCampaignTagTableQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCampaignTagTable>>
+  > = ({ signal }) => getCampaignTagTable(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCampaignTagTable>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCampaignTagTableQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCampaignTagTable>>
+>;
+export type GetCampaignTagTableQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get Aircall tag trigger table
+ */
+
+export function useGetCampaignTagTable<
+  TData = Awaited<ReturnType<typeof getCampaignTagTable>>,
+  TError = ErrorType<unknown>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCampaignTagTable>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCampaignTagTableQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all channel configurations
+ */
+export const getListChannelsUrl = () => {
+  return `/api/channels`;
+};
+
+export const listChannels = async (
+  options?: RequestInit,
+): Promise<Channel[]> => {
+  return customFetch<Channel[]>(getListChannelsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListChannelsQueryKey = () => {
+  return [`/api/channels`] as const;
+};
+
+export const getListChannelsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listChannels>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listChannels>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListChannelsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannels>>> = ({
+    signal,
+  }) => listChannels({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listChannels>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListChannelsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listChannels>>
+>;
+export type ListChannelsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all channel configurations
+ */
+
+export function useListChannels<
+  TData = Awaited<ReturnType<typeof listChannels>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listChannels>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListChannelsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a single channel configuration
+ */
+export const getGetChannelUrl = (id: string) => {
+  return `/api/channels/${id}`;
+};
+
+export const getChannel = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Channel> => {
+  return customFetch<Channel>(getGetChannelUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetChannelQueryKey = (id: string) => {
+  return [`/api/channels/${id}`] as const;
+};
+
+export const getGetChannelQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChannel>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChannel>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetChannelQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannel>>> = ({
+    signal,
+  }) => getChannel(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getChannel>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetChannelQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChannel>>
+>;
+export type GetChannelQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a single channel configuration
+ */
+
+export function useGetChannel<
+  TData = Awaited<ReturnType<typeof getChannel>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChannel>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChannelQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

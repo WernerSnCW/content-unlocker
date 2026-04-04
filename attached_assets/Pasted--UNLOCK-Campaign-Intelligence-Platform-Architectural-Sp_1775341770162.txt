@@ -1,0 +1,300 @@
+# UNLOCK — Campaign Intelligence Platform
+## Architectural Specification: From Document Tool to Campaign Brain
+## Date: 4 April 2026
+
+---
+
+## The Shift
+
+Current state: The tool recommends and generates documents.
+
+Target state: The tool plans, generates, and coordinates multi-channel investor campaigns — producing every content output type from a single brief, all drawing from the same approved ACUs, belief system, and persona routing.
+
+The intelligence is the same. The output types expand.
+
+---
+
+## What a Campaign Is
+
+A campaign is a coordinated sequence of touchpoints across multiple channels, targeting a specific persona cluster, designed to move a contact from a pipeline stage to the next one.
+
+Each campaign has:
+- A target persona / cluster
+- A starting pipeline stage and a target pipeline stage
+- A set of channels (email, call, WhatsApp, LinkedIn, display, Meta)
+- A sequence of touchpoints with timing and branch logic
+- A set of content assets — one per touchpoint
+- A set of compliance constraints — inherited from the master document and ACU framework
+
+The tool generates all of it from a single campaign brief.
+
+---
+
+## The Content Output Types
+
+Expand the document registry to support these output types alongside whitepapers and one-pagers:
+
+| Type | Description | Examples |
+|---|---|---|
+| `whitepaper` | Long-form investor document | Iran Effect, AI Investment Thesis |
+| `one-pager` | Short investor summary | Preserver one-pager |
+| `email` | Email sequence item | E1 cold outreach, E3 social proof |
+| `call-script` | Call framework for agents | CS1 first call, voicemail VM1 |
+| `whatsapp-template` | Pre-approved WhatsApp template | WA1 report delivery, WA2 meeting confirmation |
+| `ad-brief` | Creative brief for ad production | AD1 Meta cold, AD2 LinkedIn warm |
+| `linkedin-message` | LinkedIn InMail copy | LI1 warm InMail |
+| `landing-page-brief` | Brief for landing page build | LANDING01 report download |
+| `campaign-plan` | Full multi-channel sequence plan | Layer 2 outreach plan |
+| `sequence` | Email or message sequence | Sequence A cold, Sequence B warm |
+
+---
+
+## The Campaign Brief
+
+A campaign is generated from a structured brief. Tom fills in the brief; the tool generates the full plan and all content assets.
+
+```json
+{
+  "campaign_id": "cam_growth_seeker_phase1",
+  "name": "Phase 1 — Growth Seeker Education",
+  "target_cluster": "Growth Builders",
+  "personas": ["P003", "P006", "P015"],
+  "entry_stage": "Outreach",
+  "target_stage": "Called",
+  "channels": ["email", "call", "linkedin", "meta", "display"],
+  "duration_weeks": 8,
+  "daily_volume": 100,
+  "primary_belief": "U1",
+  "secondary_beliefs": ["U4", "G1"],
+  "primary_cta": "report_download",
+  "secondary_cta": "book_call",
+  "compliance_constraints": ["acu_capital_at_risk", "acu_tax_circumstances"],
+  "blocked_content": ["acu_jan_2027_structure"],
+  "notes": "Cold education only. No investment ask. No Unlock branding in primary content."
+}
+```
+
+From this brief the tool generates:
+1. Full campaign sequence plan with timing
+2. All email copy (E1 through E5 variants)
+3. Call script framework (CS1, VM1)
+4. WhatsApp templates (WA1, WA2)
+5. Ad creative briefs (AD1, AD2, AD3, LI1)
+6. Landing page brief
+7. Branch logic map
+8. Aircall tag → automation mapping
+9. ActiveCampaign sequence build instructions
+10. Compliance checklist for each asset
+
+All content draws from locked ACUs. All compliance figures are injected verbatim. All prohibited content is excluded.
+
+---
+
+## The Channel Layer
+
+Add a channel configuration system that knows the constraints of each channel:
+
+```json
+{
+  "channels": {
+    "email_cold": {
+      "format": "plain_text",
+      "max_words": 120,
+      "max_links": 1,
+      "max_ctas": 1,
+      "prohibited": ["PDF attachments", "video embeds", "spam trigger words"],
+      "from_address": "tom@unlock.co.uk",
+      "subject_max_words": 7
+    },
+    "email_warm": {
+      "format": "light_html",
+      "max_words": 150,
+      "max_links": 2,
+      "max_ctas": 2,
+      "video_thumbnail": true
+    },
+    "whatsapp": {
+      "format": "template_only",
+      "max_lines": 5,
+      "requires_meta_approval": true,
+      "prohibited": ["corporate sign-offs", "pitch language"]
+    },
+    "linkedin_message": {
+      "format": "plain_text",
+      "max_sentences": 3,
+      "subject_max_chars": 60,
+      "requires_cta_button": true
+    },
+    "meta_ad": {
+      "formats": ["1200x628", "1200x1200", "1080x1920"],
+      "headline_max_chars": 40,
+      "body_max_chars": 125,
+      "cta_options": ["Download", "Learn More", "Book Now"]
+    },
+    "call_script": {
+      "max_duration_seconds": 45,
+      "goal": "book_meeting_not_sell",
+      "max_objection_responses": 3
+    }
+  }
+}
+```
+
+The generation engine applies channel constraints automatically. An email brief never produces ad-length copy. A WhatsApp template never produces a whitepaper.
+
+---
+
+## The Sequence Builder
+
+A campaign sequence is a directed graph of touchpoints. Each node is a touchpoint (channel + content). Each edge is a timing rule or branch condition.
+
+The tool generates the sequence as:
+1. A visual flow map (for Tom to review)
+2. A machine-readable specification (for ActiveCampaign build)
+3. The Aircall tag trigger table (for the caller)
+4. The Zapier Zap specifications (for the tech build)
+
+Example sequence node:
+```json
+{
+  "node_id": "touch_01_email",
+  "day": 0,
+  "channel": "email_cold",
+  "content_id": "E1_growth_seeker",
+  "next_nodes": [
+    {
+      "condition": "opened_no_click",
+      "node_id": "touch_03a_email",
+      "day": 4
+    },
+    {
+      "condition": "no_open",
+      "node_id": "touch_03b_email",
+      "day": 4
+    },
+    {
+      "condition": "clicked",
+      "node_id": "touch_03c_email",
+      "day": 4
+    }
+  ]
+}
+```
+
+---
+
+## The QC Layer for Campaigns
+
+Every content asset in a campaign goes through QC before the campaign is activated. The campaign cannot be marked READY until all assets pass QC.
+
+Campaign QC adds two new checks:
+- **CHANNEL_COMPLIANCE** — does the content respect the channel constraints (word count, format, link count)?
+- **SEQUENCE_INTEGRITY** — do all branch conditions have corresponding content assets? Are there any dead ends in the sequence graph?
+
+---
+
+## New API Endpoints Required
+
+```
+POST /api/campaigns                   — create campaign from brief
+GET  /api/campaigns                   — list all campaigns with status
+GET  /api/campaigns/:id               — full campaign with sequence and assets
+GET  /api/campaigns/:id/assets        — all content assets for this campaign
+POST /api/campaigns/:id/generate      — generate all content assets from brief
+GET  /api/campaigns/:id/qc            — run QC across all campaign assets
+PATCH /api/campaigns/:id/activate     — activate campaign (blocks if QC not passed)
+GET  /api/campaigns/:id/sequence      — machine-readable sequence spec
+GET  /api/campaigns/:id/ac-build      — ActiveCampaign build instructions
+GET  /api/campaigns/:id/tag-table     — Aircall tag trigger table
+```
+
+---
+
+## New Document Registry Fields
+
+Add to the existing document schema:
+
+```sql
+ALTER TABLE documents ADD COLUMN output_type TEXT DEFAULT 'whitepaper';
+ALTER TABLE documents ADD COLUMN channel TEXT;
+ALTER TABLE documents ADD COLUMN campaign_id TEXT REFERENCES campaigns(id);
+ALTER TABLE documents ADD COLUMN sequence_position INTEGER;
+ALTER TABLE documents ADD COLUMN sequence_id TEXT;
+ALTER TABLE documents ADD COLUMN word_count INTEGER;
+ALTER TABLE documents ADD COLUMN branch_condition TEXT;
+```
+
+---
+
+## The UI — Campaign View
+
+Add a new section to the tool: `/campaigns`
+
+**Campaign list view:**
+- Summary cards per campaign: name, cluster, status, asset count, QC status
+- Create campaign button → campaign brief form
+
+**Campaign detail view:**
+- Visual sequence map — nodes as cards, edges as arrows, branch conditions visible
+- Asset list — one row per touchpoint, status pill, QC status, edit button
+- Channel summary — which channels are active, which assets cover each channel
+- Compliance summary — which ACUs are injected, which are prohibited
+- Generate all assets button
+- Run campaign QC button
+- Activate campaign button (disabled until all assets pass QC)
+
+**Asset detail view (within campaign):**
+- Full content with channel constraints shown in sidebar
+- ACUs injected highlighted in the content
+- QC results per check
+- Edit → re-run QC → approve
+
+---
+
+## Relationship to Existing Systems
+
+| Existing system | How campaign layer uses it |
+|---|---|
+| ACU framework | All campaign content draws from locked ACUs — same as document generation |
+| Document registry | Campaign assets are registered as documents with campaign_id and output_type |
+| QC engine | Runs per asset + new campaign-level checks |
+| Belief system | Campaign brief specifies target beliefs — sequence is designed to establish them in order |
+| Persona routing | Campaign brief targets specific personas — channel selection and content tone adapt |
+| Pipeline stages | Campaign entry/target stages map directly to canonical Replit stages |
+
+---
+
+## Build Priority
+
+| Priority | Item |
+|---|---|
+| 🔴 Critical | Output types on document schema — emails, call scripts, WhatsApp templates |
+| 🔴 Critical | Channel configuration system |
+| 🟡 High | Campaign brief → asset generation |
+| 🟡 High | Sequence builder (directed graph) |
+| 🟡 High | Campaign QC (channel compliance + sequence integrity) |
+| 🟡 High | /campaigns UI |
+| 🟠 Medium | ActiveCampaign build instruction export |
+| 🟠 Medium | Aircall tag table export |
+| 🟠 Medium | Visual sequence map |
+
+---
+
+## What This Enables
+
+With this build complete, Tom fills in a campaign brief and the tool produces:
+
+- Every email in the sequence, correctly formatted for its channel
+- The call script and voicemail
+- WhatsApp template copy ready for 360dialog submission
+- Ad creative briefs for Meta, LinkedIn, and display
+- A LinkedIn InMail copy
+- A landing page brief
+- The full ActiveCampaign build specification
+- The Aircall tag trigger table
+- The Zapier Zap specifications
+- A compliance checklist for the whole campaign
+
+All from a single brief. All drawing from locked ACUs. All passing the same QC engine. All registered in the document registry with their campaign context.
+
+The tool stops being a document library. It becomes the campaign brain.

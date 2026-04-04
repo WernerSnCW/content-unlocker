@@ -31,6 +31,10 @@ tags:
     description: Dashboard summaries
   - name: acu
     description: Approved Content Units
+  - name: campaigns
+    description: Campaign intelligence and multi-channel sequences
+  - name: channels
+    description: Channel configuration and constraints
 
 paths:
   /healthz:
@@ -948,6 +952,256 @@ paths:
                 $ref: "#/components/schemas/ACUCascadeResult"
         "404":
           description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign from a brief
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignBriefInput"
+      responses:
+        "201":
+          description: Campaign created with sequence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignCreateResult"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Campaign already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get full campaign detail with assets and channel summary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignDetail"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}/assets:
+    get:
+      operationId: getCampaignAssets
+      tags: [campaigns]
+      summary: Get all content assets for a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of campaign assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CampaignAsset"
+
+  /campaigns/{id}/generate:
+    post:
+      operationId: generateCampaignAssets
+      tags: [campaigns]
+      summary: Generate all pending content assets from the campaign brief
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignGenerateResult"
+
+  /campaigns/{id}/qc:
+    get:
+      operationId: runCampaignQC
+      tags: [campaigns]
+      summary: Run QC across all campaign assets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign QC result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignQCResult"
+
+  /campaigns/{id}/activate:
+    patch:
+      operationId: activateCampaign
+      tags: [campaigns]
+      summary: Activate campaign (blocks if QC not passed)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Cannot activate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}/sequence:
+    get:
+      operationId: getCampaignSequence
+      tags: [campaigns]
+      summary: Get machine-readable sequence specification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sequence specification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignSequence"
+
+  /campaigns/{id}/ac-build:
+    get:
+      operationId: getCampaignACBuild
+      tags: [campaigns]
+      summary: Get ActiveCampaign build instructions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ActiveCampaign build instructions
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /campaigns/{id}/tag-table:
+    get:
+      operationId: getCampaignTagTable
+      tags: [campaigns]
+      summary: Get Aircall tag trigger table
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aircall tag table
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /channels:
+    get:
+      operationId: listChannels
+      tags: [channels]
+      summary: List all channel configurations
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+
+  /channels/{id}:
+    get:
+      operationId: getChannel
+      tags: [channels]
+      summary: Get a single channel configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channel configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "404":
+          description: Channel not found
           content:
             application/json:
               schema:
@@ -2351,3 +2605,294 @@ components:
           items:
             type: string
       required: [message, affected]
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, GENERATING, QC_PENDING, READY, ACTIVE, PAUSED, COMPLETED]
+        target_cluster:
+          type: string
+        personas:
+          type: array
+          items:
+            type: string
+        entry_stage:
+          type: string
+        target_stage:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        duration_weeks:
+          type: integer
+        daily_volume:
+          type: ["integer", "null"]
+        primary_belief:
+          type: ["string", "null"]
+        secondary_beliefs:
+          type: array
+          items:
+            type: string
+        primary_cta:
+          type: ["string", "null"]
+        secondary_cta:
+          type: ["string", "null"]
+        compliance_constraints:
+          type: array
+          items:
+            type: string
+        blocked_content:
+          type: array
+          items:
+            type: string
+        notes:
+          type: ["string", "null"]
+        sequence:
+          type: array
+          items:
+            type: object
+        qc_status:
+          type: string
+        asset_count:
+          type: integer
+        assets_passed_qc:
+          type: integer
+        created_at:
+          type: string
+        activated_at:
+          type: ["string", "null"]
+      required: [id, name, status, target_cluster, entry_stage, target_stage, channels, duration_weeks, qc_status, asset_count, assets_passed_qc, created_at]
+
+    CampaignAsset:
+      type: object
+      properties:
+        id:
+          type: string
+        campaign_id:
+          type: string
+        node_id:
+          type: string
+        channel:
+          type: string
+        output_type:
+          type: string
+        content:
+          type: ["string", "null"]
+        title:
+          type: string
+        day:
+          type: integer
+        sequence_position:
+          type: integer
+        branch_condition:
+          type: ["string", "null"]
+        word_count:
+          type: ["integer", "null"]
+        status:
+          type: string
+        qc_status:
+          type: string
+        qc_report:
+          type: ["object", "null"]
+        metadata:
+          type: object
+      required: [id, campaign_id, node_id, channel, output_type, title, day, sequence_position, status, qc_status]
+
+    CampaignBriefInput:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+        name:
+          type: string
+        target_cluster:
+          type: string
+        personas:
+          type: array
+          items:
+            type: string
+        entry_stage:
+          type: string
+        target_stage:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        duration_weeks:
+          type: integer
+        daily_volume:
+          type: integer
+        primary_belief:
+          type: string
+        secondary_beliefs:
+          type: array
+          items:
+            type: string
+        primary_cta:
+          type: string
+        secondary_cta:
+          type: string
+        compliance_constraints:
+          type: array
+          items:
+            type: string
+        blocked_content:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+      required: [campaign_id, name, target_cluster, entry_stage, target_stage]
+
+    CampaignCreateResult:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/Campaign"
+        sequence:
+          type: array
+          items:
+            type: object
+        asset_count:
+          type: integer
+      required: [campaign, sequence, asset_count]
+
+    CampaignDetail:
+      type: object
+      properties:
+        campaign:
+          $ref: "#/components/schemas/Campaign"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignAsset"
+        channel_summary:
+          type: object
+      required: [campaign, assets, channel_summary]
+
+    CampaignGenerateResult:
+      type: object
+      properties:
+        message:
+          type: string
+        generated:
+          type: integer
+        total_pending:
+          type: integer
+        generated_ids:
+          type: array
+          items:
+            type: string
+      required: [message, generated, total_pending]
+
+    CampaignQCResult:
+      type: object
+      properties:
+        overall_status:
+          type: string
+          enum: [PASSED, FAILED, PENDING]
+        checks:
+          type: array
+          items:
+            type: object
+        asset_results:
+          type: array
+          items:
+            type: object
+        summary:
+          type: object
+          properties:
+            total_checks:
+              type: integer
+            passed:
+              type: integer
+            failed:
+              type: integer
+            warnings:
+              type: integer
+          required: [total_checks, passed, failed, warnings]
+      required: [overall_status, checks, asset_results, summary]
+
+    CampaignSequence:
+      type: object
+      properties:
+        campaign_id:
+          type: string
+        campaign_name:
+          type: string
+        sequence:
+          type: array
+          items:
+            type: object
+        duration_weeks:
+          type: integer
+        channels:
+          type: array
+          items:
+            type: string
+      required: [campaign_id, campaign_name, sequence, duration_weeks, channels]
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        format:
+          type: string
+        max_words:
+          type: ["integer", "null"]
+        max_links:
+          type: ["integer", "null"]
+        max_ctas:
+          type: ["integer", "null"]
+        max_lines:
+          type: ["integer", "null"]
+        max_sentences:
+          type: ["integer", "null"]
+        max_duration_seconds:
+          type: ["integer", "null"]
+        headline_max_chars:
+          type: ["integer", "null"]
+        body_max_chars:
+          type: ["integer", "null"]
+        subject_max_words:
+          type: ["integer", "null"]
+        subject_max_chars:
+          type: ["integer", "null"]
+        prohibited:
+          type: array
+          items:
+            type: string
+        formats:
+          type: array
+          items:
+            type: string
+        cta_options:
+          type: array
+          items:
+            type: string
+        requires_meta_approval:
+          type: boolean
+        requires_cta_button:
+          type: boolean
+        video_thumbnail:
+          type: boolean
+        from_address:
+          type: ["string", "null"]
+        goal:
+          type: ["string", "null"]
+        max_objection_responses:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+      required: [id, name, format]

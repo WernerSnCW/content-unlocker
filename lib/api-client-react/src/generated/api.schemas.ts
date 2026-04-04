@@ -744,6 +744,201 @@ export interface ACUCascadeResult {
   document_ids?: string[];
 }
 
+export type CampaignStatus =
+  (typeof CampaignStatus)[keyof typeof CampaignStatus];
+
+export const CampaignStatus = {
+  DRAFT: "DRAFT",
+  GENERATING: "GENERATING",
+  QC_PENDING: "QC_PENDING",
+  READY: "READY",
+  ACTIVE: "ACTIVE",
+  PAUSED: "PAUSED",
+  COMPLETED: "COMPLETED",
+} as const;
+
+export type CampaignSequencePropertyItem = { [key: string]: unknown };
+
+export interface Campaign {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  target_cluster: string;
+  personas?: string[];
+  entry_stage: string;
+  target_stage: string;
+  channels: string[];
+  duration_weeks: number;
+  /** @nullable */
+  daily_volume?: number | null;
+  /** @nullable */
+  primary_belief?: string | null;
+  secondary_beliefs?: string[];
+  /** @nullable */
+  primary_cta?: string | null;
+  /** @nullable */
+  secondary_cta?: string | null;
+  compliance_constraints?: string[];
+  blocked_content?: string[];
+  /** @nullable */
+  notes?: string | null;
+  sequence?: CampaignSequencePropertyItem[];
+  qc_status: string;
+  asset_count: number;
+  assets_passed_qc: number;
+  created_at: string;
+  /** @nullable */
+  activated_at?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type CampaignAssetQcReport = { [key: string]: unknown } | null;
+
+export type CampaignAssetMetadata = { [key: string]: unknown };
+
+export interface CampaignAsset {
+  id: string;
+  campaign_id: string;
+  node_id: string;
+  channel: string;
+  output_type: string;
+  /** @nullable */
+  content?: string | null;
+  title: string;
+  day: number;
+  sequence_position: number;
+  /** @nullable */
+  branch_condition?: string | null;
+  /** @nullable */
+  word_count?: number | null;
+  status: string;
+  qc_status: string;
+  /** @nullable */
+  qc_report?: CampaignAssetQcReport;
+  metadata?: CampaignAssetMetadata;
+}
+
+export interface CampaignBriefInput {
+  campaign_id: string;
+  name: string;
+  target_cluster: string;
+  personas?: string[];
+  entry_stage: string;
+  target_stage: string;
+  channels?: string[];
+  duration_weeks?: number;
+  daily_volume?: number;
+  primary_belief?: string;
+  secondary_beliefs?: string[];
+  primary_cta?: string;
+  secondary_cta?: string;
+  compliance_constraints?: string[];
+  blocked_content?: string[];
+  notes?: string;
+}
+
+export type CampaignCreateResultSequenceItem = { [key: string]: unknown };
+
+export interface CampaignCreateResult {
+  campaign: Campaign;
+  sequence: CampaignCreateResultSequenceItem[];
+  asset_count: number;
+}
+
+export type CampaignDetailChannelSummary = { [key: string]: unknown };
+
+export interface CampaignDetail {
+  campaign: Campaign;
+  assets: CampaignAsset[];
+  channel_summary: CampaignDetailChannelSummary;
+}
+
+export interface CampaignGenerateResult {
+  message: string;
+  generated: number;
+  total_pending: number;
+  generated_ids?: string[];
+}
+
+export type CampaignQCResultOverallStatus =
+  (typeof CampaignQCResultOverallStatus)[keyof typeof CampaignQCResultOverallStatus];
+
+export const CampaignQCResultOverallStatus = {
+  PASSED: "PASSED",
+  FAILED: "FAILED",
+  PENDING: "PENDING",
+} as const;
+
+export type CampaignQCResultChecksItem = { [key: string]: unknown };
+
+export type CampaignQCResultAssetResultsItem = { [key: string]: unknown };
+
+export type CampaignQCResultSummary = {
+  total_checks: number;
+  passed: number;
+  failed: number;
+  warnings: number;
+};
+
+export interface CampaignQCResult {
+  overall_status: CampaignQCResultOverallStatus;
+  checks: CampaignQCResultChecksItem[];
+  asset_results: CampaignQCResultAssetResultsItem[];
+  summary: CampaignQCResultSummary;
+}
+
+export type CampaignSequenceSequenceItem = { [key: string]: unknown };
+
+export interface CampaignSequence {
+  campaign_id: string;
+  campaign_name: string;
+  sequence: CampaignSequenceSequenceItem[];
+  duration_weeks: number;
+  channels: string[];
+}
+
+export interface Channel {
+  id: string;
+  name: string;
+  format: string;
+  /** @nullable */
+  max_words?: number | null;
+  /** @nullable */
+  max_links?: number | null;
+  /** @nullable */
+  max_ctas?: number | null;
+  /** @nullable */
+  max_lines?: number | null;
+  /** @nullable */
+  max_sentences?: number | null;
+  /** @nullable */
+  max_duration_seconds?: number | null;
+  /** @nullable */
+  headline_max_chars?: number | null;
+  /** @nullable */
+  body_max_chars?: number | null;
+  /** @nullable */
+  subject_max_words?: number | null;
+  /** @nullable */
+  subject_max_chars?: number | null;
+  prohibited?: string[];
+  formats?: string[];
+  cta_options?: string[];
+  requires_meta_approval?: boolean;
+  requires_cta_button?: boolean;
+  video_thumbnail?: boolean;
+  /** @nullable */
+  from_address?: string | null;
+  /** @nullable */
+  goal?: string | null;
+  /** @nullable */
+  max_objection_responses?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
 export type ListLeadsParams = {
   search?: string;
   stage?: string;
@@ -819,3 +1014,7 @@ export type VersionACUBody = {
   source?: string;
   notes?: string;
 };
+
+export type GetCampaignACBuild200 = { [key: string]: unknown };
+
+export type GetCampaignTagTable200 = { [key: string]: unknown };

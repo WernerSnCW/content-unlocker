@@ -1,0 +1,97 @@
+[
+  {
+    "id": "email_cold",
+    "name": "Cold Email",
+    "format": "plain_text",
+    "max_words": 120,
+    "max_links": 1,
+    "max_ctas": 1,
+    "prohibited": ["PDF attachments", "video embeds", "spam trigger words"],
+    "from_address": "tom@unlock.co.uk",
+    "subject_max_words": 7
+  },
+  {
+    "id": "email_warm",
+    "name": "Warm Email",
+    "format": "light_html",
+    "max_words": 150,
+    "max_links": 2,
+    "max_ctas": 2,
+    "video_thumbnail": true,
+    "prohibited": []
+  },
+  {
+    "id": "email_nurture",
+    "name": "Nurture Email",
+    "format": "light_html",
+    "max_words": 200,
+    "max_links": 3,
+    "max_ctas": 2,
+    "video_thumbnail": true,
+    "prohibited": []
+  },
+  {
+    "id": "whatsapp",
+    "name": "WhatsApp Template",
+    "format": "template_only",
+    "max_lines": 5,
+    "requires_meta_approval": true,
+    "prohibited": ["corporate sign-offs", "pitch language"]
+  },
+  {
+    "id": "linkedin_message",
+    "name": "LinkedIn InMail",
+    "format": "plain_text",
+    "max_sentences": 3,
+    "subject_max_chars": 60,
+    "requires_cta_button": true,
+    "prohibited": []
+  },
+  {
+    "id": "meta_ad",
+    "name": "Meta Ad",
+    "format": "ad_creative",
+    "formats": ["1200x628", "1200x1200", "1080x1920"],
+    "headline_max_chars": 40,
+    "body_max_chars": 125,
+    "cta_options": ["Download", "Learn More", "Book Now"],
+    "prohibited": []
+  },
+  {
+    "id": "linkedin_ad",
+    "name": "LinkedIn Ad",
+    "format": "ad_creative",
+    "formats": ["1200x628", "1200x1200"],
+    "headline_max_chars": 70,
+    "body_max_chars": 150,
+    "cta_options": ["Download", "Learn More", "Sign Up"],
+    "prohibited": []
+  },
+  {
+    "id": "display_ad",
+    "name": "Display Ad",
+    "format": "ad_creative",
+    "formats": ["728x90", "300x250", "160x600", "320x50"],
+    "headline_max_chars": 30,
+    "body_max_chars": 90,
+    "cta_options": ["Learn More", "Download"],
+    "prohibited": []
+  },
+  {
+    "id": "call_script",
+    "name": "Call Script",
+    "format": "structured_script",
+    "max_duration_seconds": 45,
+    "goal": "book_meeting_not_sell",
+    "max_objection_responses": 3,
+    "prohibited": []
+  },
+  {
+    "id": "voicemail",
+    "name": "Voicemail Script",
+    "format": "plain_text",
+    "max_duration_seconds": 30,
+    "max_words": 60,
+    "prohibited": []
+  }
+]

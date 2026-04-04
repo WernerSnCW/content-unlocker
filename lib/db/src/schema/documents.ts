@@ -31,6 +31,13 @@ export const documentsTable = pgTable("documents", {
   source_pdf_path: text("source_pdf_path"),
   source_pdf_filename: text("source_pdf_filename"),
   source_pdf_imported_at: text("source_pdf_imported_at"),
+  output_type: text("output_type").notNull().default("whitepaper"),
+  channel: text("channel"),
+  campaign_id: text("campaign_id"),
+  sequence_position: integer("sequence_position"),
+  sequence_id: text("sequence_id"),
+  word_count: integer("word_count"),
+  branch_condition: text("branch_condition"),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable);

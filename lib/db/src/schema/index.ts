@@ -4,3 +4,5 @@ export * from "./changelog";
 export * from "./gap-snapshots";
 export * from "./videos";
 export * from "./acu";
+export * from "./campaigns";
+export * from "./channels";

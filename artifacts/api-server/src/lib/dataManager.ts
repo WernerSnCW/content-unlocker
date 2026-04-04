@@ -1,4 +1,4 @@
-import { db, leadsTable, documentsTable, changelogTable, acuTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, acuTable, channelsTable } from "@workspace/db";
 import { eq, ilike, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { readFileSync, readdirSync } from "fs";
@@ -7,6 +7,7 @@ import registryData from "../data/registry.json" with { type: "json" };
 import leadsData from "../data/leads.json" with { type: "json" };
 import complianceData from "../data/compliance_constants.json" with { type: "json" };
 import acuSeedData from "../data/acu-seed.json" with { type: "json" };
+import channelSeedData from "../data/channels.json" with { type: "json" };
 import { logger } from "./logger";
 
 export async function seedDatabase() {
@@ -112,6 +113,35 @@ export async function seedDatabase() {
     }).onConflictDoNothing();
   }
   logger.info(`Seeded ${(acuSeedData as any[]).length} ACUs`);
+
+  for (const ch of (channelSeedData as any[])) {
+    await db.insert(channelsTable).values({
+      id: ch.id,
+      name: ch.name,
+      format: ch.format,
+      max_words: ch.max_words || null,
+      max_links: ch.max_links || null,
+      max_ctas: ch.max_ctas || null,
+      max_lines: ch.max_lines || null,
+      max_sentences: ch.max_sentences || null,
+      max_duration_seconds: ch.max_duration_seconds || null,
+      headline_max_chars: ch.headline_max_chars || null,
+      body_max_chars: ch.body_max_chars || null,
+      subject_max_words: ch.subject_max_words || null,
+      subject_max_chars: ch.subject_max_chars || null,
+      prohibited: ch.prohibited || [],
+      formats: ch.formats || [],
+      cta_options: ch.cta_options || [],
+      requires_meta_approval: ch.requires_meta_approval || false,
+      requires_cta_button: ch.requires_cta_button || false,
+      video_thumbnail: ch.video_thumbnail || false,
+      from_address: ch.from_address || null,
+      goal: ch.goal || null,
+      max_objection_responses: ch.max_objection_responses || null,
+      notes: ch.notes || null,
+    }).onConflictDoNothing();
+  }
+  logger.info(`Seeded ${(channelSeedData as any[]).length} channels`);
 
   await db.insert(changelogTable).values({
     id: randomUUID(),

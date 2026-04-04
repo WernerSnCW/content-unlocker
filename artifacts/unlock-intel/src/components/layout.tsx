@@ -14,6 +14,7 @@ import {
   Phone,
   BarChart3,
   Shield,
+  Megaphone,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
     { href: "/analytics/personas", label: "Persona Analytics", icon: BarChart3 },
     { href: "/acu", label: "Content Units", icon: Shield },
+    { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   ];
 
   return (
