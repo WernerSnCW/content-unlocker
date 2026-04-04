@@ -1,0 +1,2284 @@
+# UNLOCK — Master Reference Document
+## The Complete Operating Bible
+
+**Version 1.0 | April 2026**
+**Status: DRAFT — Awaiting sign-off before content generation begins**
+**Contributors: Claude (Anthropic) · Perplexity · ChatGPT · Grok · Gemini · Tom King**
+
+---
+
+## How to Use This Document
+
+This is the single source of truth for everything Unlock. It is structured so that:
+
+- **Any section can be pasted standalone** into the Replit tool, Perplexity, ChatGPT, or a new Claude session
+- **The tool can ingest this document** as its master context, replacing the current 065 master context
+- **Content is generated against this document** — not against individual briefs or previous iterations
+- **Compliance is checked against this document** — the figures, approved language, and prohibited phrases here are canonical
+
+**Sections:**
+1. Platform Overview
+2. Strategy Foundation
+3. Compliance Constants
+4. Approved and Prohibited Language
+5. The Belief System
+6. The Persona System
+7. Archetype Clusters
+8. Document Registry
+9. Campaign Architecture
+10. Content Pillars
+11. Qualification System
+12. Objection Handling
+13. Tool Architecture
+14. Content Generation Queue
+15. Research Findings
+16. Open Items and Sign-Off Checklist
+17. Change Log
+
+---
+
+## Section 1 — Platform Overview
+
+### What Unlock Is
+
+Unlock is an AI-powered investment intelligence platform for self-certified sophisticated investors and high-net-worth individuals in the UK. It provides:
+
+- **Portfolio stress-testing** — scenario analysis across 30+ macro events to surface hidden correlation risk
+- **EIS/SEIS deal flow access** — curated pipeline of qualifying companies through Unlock Access
+- **Decumulation sequencing** — intelligent drawdown planning that optimises the order in which assets are drawn to minimise tax and maximise estate value
+- **Independent due diligence** — research on alternative investment opportunities that sit outside the scope of regulated advice
+
+**What Unlock is not:** A financial adviser. An EIS fund. A regulated investment product. A platform that earns from the products it recommends.
+
+**The structural moat:** Unlock earns from investors (platform subscription), not from the products investors buy. This structural independence means Unlock can provide genuinely neutral sequencing and portfolio advice that conflicted platforms — Hargreaves Lansdown, AJ Bell, Nutmeg — cannot.
+
+**The platform evolution:** Unlock began as a due diligence platform. It has evolved into an asset registry with tools layered on top — driven by how founding investors actually use it. This evolution changes the nature of the platform: from episodic tool to persistent infrastructure. Each investor's portfolio data, tracked over time, builds the structured dataset that makes the platform more valuable for every investor on it.
+
+⚠️ **Data governance requirement (CRITICAL — not yet documented):** The asset registry framing means Unlock stores real HNW portfolio data. Before using the data flywheel or co-creation claims in investor communications, an Investor Data Charter must be in place defining: data ownership (investor retains), usage (aggregated and anonymised only), opt-in consent, exit rights, and security standards. Without this, the data flywheel is a liability, not an asset.
+
+### The Founding Round
+
+- **Target:** £1.2M
+- **Slots:** ~25 founding investors
+- **Minimum ticket:** £40,000
+- **Maximum ticket:** £500,000
+- **Pre-money valuation:** £6.5M
+- **EIS advance assurance:** Confirmed for the Unlock equity investment itself. ⚠️ The Instant Investment + ASA two-year structure requires separate legal validation — this is a CRITICAL open item. Do not conflate advance assurance on the Unlock investment with confirmation of the two-year structure.
+- **Key terms:** Anti-dilution to Series A, pro-rata rights on Growth Capital round, lifetime premium platform access, white-glove onboarding
+
+**White-glove onboarding — defined:**
+Every founding investor receives a personally managed onboarding experience. Tom sets up the account, imports the investor's existing portfolio data with them, walks them through the platform's core features in a dedicated session, and ensures they are comfortable before any self-directed use begins. This is not a help article and a login link — it is a personal setup by the founder. Ongoing direct access to Tom throughout the founding period.
+- **Growth Capital round:** Follows the founding round at a higher valuation
+
+### Founding Investor Traction (Social Proof — Surface This Explicitly)
+
+⚠️ This is Unlock's strongest asset and is currently absent from all investor-facing documents. It must be added before any further investor outreach.
+
+**Current status:** 5 founding investors already using the tools, including:
+- **Tony Vine-Lott** — former Director General of TISA (Tax Incentivised Savings Association); founder of Barclays Stockbrokers. Early-stage investor.
+- [Additional founding investor names — pending naming permission]
+
+**What this does for the investment case:**
+1. Reduces social proof risk — the founding cohort is not empty
+2. Increases credibility of the problem — senior market figures validating the tool confirms this is not a founder-invented problem
+3. De-risks product reality — "using the tools" is materially stronger than "interested in the concept"
+
+**Approved framing (once naming permission confirmed):**
+> "The Unlock founding round is not a conventional capital raise. Five founding investors — including senior figures from Barclays Stockbroking and TISA — are actively using the platform and contributing to its development. Their feedback is shaping the product in real time. This is co-creation, not speculation."
+
+**Why this framing matters:**
+This is not "investors trialling a product." This is investors with serious financial services backgrounds actively shaping what gets built. That reduces product-market fit risk more than any market research. The platform is being built with the people it serves — not at them.
+
+**What this does to the investment case:**
+- Removes the "pre-revenue = speculation" objection
+- Converts social proof from passive (names on a list) to active (contributors to the product)
+- Creates a built-in feedback loop that most early-stage platforms do not have
+- Establishes founding investors as advocates, not just backers
+
+**Do NOT use** vague language like "early traction" or "strong interest." The claim is specific and meaningful: senior investors with relevant market experience are using the tools and shaping them. Say exactly that.
+
+**Status:** ⚠️ Tony Vine-Lott naming permission PENDING — listed as CRITICAL open item in Section 16. Do not use name in investor-facing documents until permission is formally confirmed in writing. The approved framing above should be held until this is resolved.
+
+### The Founding Team
+
+**Tom King** — Founder and CEO. Commercial strategy, investor relations, campaign architecture, product vision. Background in alternative investment lead generation; built a 3.5M consumer record database and 17M interaction history across legacy dialler systems. Over 15 years connecting private investors with companies seeking capital.
+
+**Werner Snyman** — Head of Product. Over 15 years in electronic banking, managing pricing, billing, payroll, and accounting integrations for business and corporate banking clients. These services required strict standards for data accuracy, operational reliability, and compliance with financial regulations — all of which directly inform how Unlock delivers portfolio intelligence. This experience positions Unlock to build a trustworthy, transparent, and scalable platform tailored to the needs of private investors.
+
+**William Corke** — Revenue Operations. Leads revenue operations across the investor campaign and outreach infrastructure.
+
+**Tony Vine-Lott** — Strategic Advisor ⚠️ NAMING PERMISSION PENDING. Former Director General of TISA; founder of Barclays Stockbrokers. Founding investor and strategic advisor. Do not include name in any investor-facing document until written permission confirmed.
+
+*Note: Full biographies for each team member to be added before Pack 1 is distributed to investors.*
+
+**Approved framing:**
+> "Unlock is built by a team with deep roots in UK financial services. Tom King leads commercially, Werner Snyman leads tech and product, and William Corke leads revenue operations. Our Strategic Advisor — a former Director General of TISA and founder of Barclays Stockbrokers — is himself a founding investor actively shaping the platform. Tom covers operational costs through to launch — the founding round is deployment capital, not bridge financing." ⚠️ Do not name Tony Vine-Lott until naming permission confirmed in writing.
+
+**What this team signals to investors:**
+- Commercial founder with 15 years alternative investment experience
+- Dedicated tech and product lead — not outsourced or unassigned
+- Revenue operations in place before the first pound is raised
+- Strategic advisor who is also a founding investor — skin in the game, not just a name
+
+### The Aircall Campaign
+
+- **Database:** ~30,000 contacts
+- **Call system:** Aircall
+- **CRM:** Pipedrive
+- **Transcript analysis:** Unlock document tool (analyzes calls to detect persona, belief state, pipeline stage)
+- **Document routing:** Automated recommendation based on transcript analysis
+
+### The Document Tool (Replit)
+
+A bespoke AI-powered document management and recommendation system built to support the investor campaign. Key capabilities:
+
+- Analyzes call transcripts to detect persona, pipeline stage, and blocking objections
+- Belief gap detection per lead: **planned — not yet built** (critical build item, see Section 16b)
+- Recommends the right document at the right time based on persona, stage, and belief state
+- Enforces the document usage matrix — hard rules about what not to send and when
+- Generates new documents through a QC-verified pipeline
+- Tracks what has been sent to each lead
+- Flags documents when compliance figures or messaging needs updating
+
+---
+
+## Section 2 — Strategy Foundation
+
+### Core Narrative Spine
+
+> **"The people who win in private markets are not those with access — but those with the infrastructure to make sense of it."**
+
+Every communication, document, and conversation should be traceable back to this sentence.
+
+### The Moat — Honest Assessment
+
+Structural independence (earning from investors, not products) is the founding claim. It is a genuine and meaningful differentiator today. It is not a permanent moat.
+
+A well-funded competitor could adopt a subscription model and neutral positioning — there is no technical or regulatory barrier preventing this. The real moat is built over time through: the data flywheel (each investor's portfolio data makes the platform more valuable for every other investor), trust relationships with sophisticated investors, and the founding cohort's active participation in product development.
+
+**In investor communications:** Do not present structural independence as an unassailable moat. Present it as the structural condition that enables the data flywheel and trust network to build — those are the durable advantages.
+
+**Approved framing:** "Structural independence is not the end state — it is the condition that allows everything else to develop without conflict."
+
+### The Co-Pilot Positioning
+
+Position Unlock as a co-pilot working alongside the investor — not a library waiting for them to do the work themselves. The platform does the heavy lifting. The investor retains control and makes the final call. This distinction matters: most investors want guided independence, not autonomy.
+
+### The Three-Sentence Pitch
+
+> "Most IFAs practically cannot advise on individual EIS companies — leaving sophisticated investors without structured support on the investments that could benefit them most. Unlock fills that gap with independent portfolio intelligence, deal flow access, and sequencing advice that no conflicted platform can provide. And right now, investing in Unlock itself — via EIS — means HMRC co-invests alongside you at 70p in the pound."
+
+### What Makes Unlock Different From Incumbents
+
+| Platform | Structure | What They Can't Do |
+|---|---|---|
+| Hargreaves Lansdown | Product distribution — earns from platform custody and fund charges | Cannot recommend moving assets off platform. Cannot provide neutral sequencing. Cannot route into direct EIS. |
+| AJ Bell | Product distribution — similar model | Same as above |
+| Nutmeg / Moneyfarm | Discretionary managed portfolios — earn AUM fees | Optimise for retention within their own product set. Cannot access private markets. |
+| IFAs / Wealth managers | Regulated advice — earn from advice fees and sometimes product commissions | Suitability obligations and network compliance policies prevent most from advising on individual EIS company shares. |
+| **Unlock** | Subscription — earns from investors, not products | **Can** provide neutral sequencing, direct EIS access, and portfolio intelligence without conflicts |
+
+### The Exit Thesis
+
+The natural acquirer for Unlock is an established financial data or research business seeking private market intelligence at the individual investor level to complete their multi-asset coverage.
+
+**The category pattern — three confirmed exits:**
+
+**1. PitchBook → Morningstar, 2016, $225M**
+Private market data and research platform, founded 2007. Morningstar's rationale: "combining public and private market data to create comprehensive multi-asset intelligence." Now serves 100,000+ professionals globally. Source: Morningstar announcement, 14 October 2016. ✅ Confirmed
+
+**2. Bureau van Dijk → Moody's, 2017, €3.0 billion**
+European company information and private-company data platform. Moody's rationale: "extends Moody's position as a leader in risk data and analytical insight" and brings "one of the world's most extensive sources of private company information." Source: Moody's press release, 14 May 2017; completion announced 9 August 2017. ✅ Confirmed
+
+**3. Refinitiv → LSEG, 2021, ~$27 billion enterprise value**
+Global financial markets data and trading platform (formerly Thomson Reuters Financial & Risk). LSEG rationale: "transform our position as a leading global Financial Markets Infrastructure group" — "Refinitiv brings highly complementary capabilities in data and capital markets." Source: LSEG press release, 31 July 2019; completion January 2021. ✅ Confirmed
+
+**The pattern:** Neutral, independent data intelligence covering a market the acquirer wants → acquired at significant strategic premia by established financial data and infrastructure businesses (Morningstar, Moody's, LSEG).
+
+**Unlock's position in this pattern:** Early-stage, pre-revenue, subscription-funded, structurally independent platform building individual investor portfolio intelligence. The natural exit path follows the same pattern — a financial data or infrastructure business acquiring the individual investor data layer to complete its multi-asset coverage.
+
+**Approved language for investor communications:**
+> "Three acquisitions in ten years demonstrate the category pattern: PitchBook to Morningstar for $225M in 2016, Bureau van Dijk to Moody's for €3 billion in 2017, and Refinitiv to LSEG for $27 billion in 2021. Each time, an established financial institution paid a significant premium for neutral, independent data intelligence covering a market it wanted. Unlock is building that layer for individual HNW investors."
+
+---
+
+## Section 3 — Compliance Constants
+
+**These figures are canonical. Use them exactly as written, with qualifiers, in all documents.**
+
+### Tax Relief Figures
+
+| Scheme | Relief | Qualifier |
+|---|---|---|
+| EIS income tax relief | 30% | No qualifier needed on the rate itself |
+| SEIS income tax relief | 50% | No qualifier needed on the rate itself |
+| VCT income tax relief | **20%** — current rate from April 6, 2026 (reduced from 30%). Tool compliance_constants.json V4 correct. | Always use 20% |
+| EIS maximum annual investment | £1,000,000 (£2M for KICs) | Per tax year |
+| SEIS maximum annual investment | £200,000 | Per tax year |
+
+### Loss Relief — Canonical Figures (Resolved April 2026)
+
+**EIS — additional rate taxpayer (45%):**
+- Upfront relief: 30% returned immediately
+- Effective cost after relief: 70p per £1 invested
+- If total failure: loss relief at 45% on 70p = 31.5p recovered
+- **Maximum effective loss: ~38.5p per pound** (also expressed as ~38.5% of gross investment)
+- **Maximum protection: ~61.5%**
+
+**SEIS — additional rate taxpayer (45%):**
+- Upfront relief: 50% returned immediately
+- Effective cost after relief: 50p per £1 invested
+- If total failure: loss relief at 45% on 50p = 22.5p recovered
+- **Maximum effective loss: 27.5p per pound** (also expressed as ~27.5% of gross investment / ~72.5% protection)
+- **Maximum protection: 72.5%**
+
+📝 **The 22p figure was wrong and is deleted from all documents.** 27.5p is the correct SEIS figure.
+
+**Canonical formats — both approved for use:**
+- Per-pound format (investor calls): "approximately 38.5p per pound (EIS) / 27.5p per pound (SEIS)"
+- Percentage format (tool/QC): "up to 38.5% effective loss (EIS) / up to 27.5% effective loss (SEIS)"
+- **Prohibited in all formats:** 22p — this figure is wrong and must trigger a QC failure if detected
+
+**Founding investor investment limits (add to tool compliance_constants.json):**
+- founding_investor_minimum: £40,000
+- founding_investor_maximum: £500,000
+- Platform pricing: £99/£249 — NEVER in investor-facing documents (add as explicit prohibition constant)
+
+### IHT and Estate Planning
+
+| Figure | Status | Qualifier Required |
+|---|---|---|
+| BPR cap | £2,500,000 | "Subject to final enactment" |
+| Pension IHT implementation | April 2027 | "Subject to final legislation" |
+| BPR qualifying period | 2 years from date of share issue | No qualifier |
+
+### Investment Minimums and Maximums
+
+| | Amount |
+|---|---|
+| Founding investor minimum | £40,000 |
+| Founding investor maximum | £500,000 |
+
+### Canonical Return Figure
+
+**The approved Unlock return figure is 5-6x on effective cost.**
+
+This must always be accompanied by the logic chain:
+- 30% income tax relief reduces effective cost to 70p per pound
+- Portfolio model base case: 3.8x gross = 5.4x on effective cost
+- All gains CGT-free
+- Subject to individual tax circumstances
+
+**Never state:**
+- 5-6x as a gross return figure
+- "7.8x" in any form — deal value undisclosed, multiple unverifiable, remove from all documents
+- Any return figure without the "effective cost" qualifier and the tax circumstances caveat
+
+### Platform Pricing
+
+**NEVER include platform pricing (£99/£249) in investor-facing documents.**
+
+### Decumulation Planner Status
+
+**Approved phrase only:** "Specification complete. Prototype build commencing."
+
+**Never:** "live," "available," "launching soon," or any language implying current availability.
+
+---
+
+## Section 4 — Approved and Prohibited Language
+
+### The Advice Gap
+
+**Approved:**
+> "Most IFAs cannot practically advise on individual EIS companies. Suitability obligations, network compliance policies, and regulatory friction mean the advice effectively stops at the fund level. For investors evaluating direct EIS opportunities, there is no regulated framework to help them."
+
+**Prohibited:**
+- "IFAs are not permitted to advise on EIS" — overstated, legally inaccurate
+- "IFAs are banned from advising on EIS" — false
+- "IFAs cannot advise on EIS" — technically inaccurate (they can, in theory, if authorised)
+
+### EIS Risk and Loss Relief
+
+**Approved:**
+> "For an additional rate taxpayer, the maximum effective exposure on a total failure — after income tax relief and loss relief — is approximately 38.5p per pound (EIS) or 27.5p per pound (SEIS). Subject to individual tax circumstances."
+
+**Approved (context-setting before risk discussion):**
+> "Most EIS companies fail. The portfolio only needs a few to succeed — and HMRC subsidises the losses on the rest."
+
+**Prohibited:**
+- "EIS is low risk" — false, capital at risk
+- "You can't lose money on EIS" — false
+- "HMRC guarantees your investment" — false
+- "22p per pound" (SEIS) — wrong figure, deleted
+
+### EIS Portfolio Returns — After-Tax Framing
+
+**THE CANONICAL RETURN FIGURE: 5-6x on effective cost**
+
+This is the figure Unlock uses. It is honest, evidenced, and defensible. It must always be described as the return on effective cost — not as a gross return.
+
+**The logic chain — locked in:**
+
+| Step | Figure | Basis |
+|---|---|---|
+| Gross investment | £100,000 | — |
+| Income tax relief (30%) returned immediately | £30,000 | HMRC EIS — confirmed |
+| Effective cost | £70,000 | Arithmetic |
+| Portfolio return at model base case | £380,000 (3.8x gross) | Unlock model, calibrated to NESTA 2009 |
+| All gains CGT-free | £380,000 fully retained | HMRC EIS CGT exemption — confirmed |
+| Return on effective cost | **5.4x** | £380,000 / £70,000 — arithmetic |
+| Presentation range | **5-6x** | Defensible range around the model base case |
+
+**Approved call language — the canonical version:**
+
+> "We target a 5-6x return on the money you actually put at risk. Here's how that works: income tax relief of 30% returns £30,000 immediately on a £100,000 investment — so your effective cost is £70,000. Our portfolio model produces a base case of 3.8x on the gross investment — that's £380,000 — all CGT-free. On the money you actually risked, that's 5.4x. We present it as 5-6x to reflect normal portfolio variance around the base case. Subject to individual tax circumstances."
+
+**Why this is the right number to use:**
+
+The investor never risked £100,000. They risked £70,000 — the rest came back immediately from HMRC. Quoting a gross multiple on the full investment understates the real economic return. 5-6x on effective cost is the correct representation of what the investor actually receives on what they actually deployed.
+
+**The three supporting figures — all approved:**
+
+| Figure | What it is | Source |
+|---|---|---|
+| 3.8x gross | Unlock model output, calibrated to NESTA/Wiltbank 2009 | Unlock model — always describe as such |
+| 5.4x on effective cost | 3.8x gross; effective cost = £70K after 30% relief; £380K/£70K | Arithmetic — fully defensible |
+| 4.7x taxable equivalent | Gross return needed to net £380K after 24% CGT from £100K base | CGT rate confirmed post-October 2024 |
+
+**Named exit evidence (use for the fund-returner claim):**
+**ContentCal/Adobe (December 2021) — REMOVED:**
+Adobe acquired ContentCal in December 2021. Deal value undisclosed. 7.8x multiple has no public source. Do not use in any document or call.
+
+**Approved call language — the fund-returner:**
+
+**⚠️ What is NOT approved:**
+- "7.8x" in any form — no public source confirmed. Remove from all calls and documents.
+- "The average EIS portfolio returns 7.8x" — no published source, deleted
+- "NESTA confirms 3.8x" — NESTA's own mean is ~2.2x; 3.8x is Unlock's model output
+
+**Prohibited:**
+- Any statement presenting 3.8x as a NESTA headline finding
+- Any statement presenting 7.8x as a market average
+- "EIS is low risk" — false, capital at risk
+- "You can't lose money on EIS" — false
+- "HMRC guarantees your investment" — false
+
+### Correlation and Diversification
+
+**Approved:**
+> "EIS investments in early-stage private companies are not priced daily and typically exhibit lower short-term price correlation with public markets. Long-term performance is still influenced by macro conditions — what changes is the mechanism, not the immunity."
+
+**Prohibited:**
+- "EIS is uncorrelated to public markets" — too absolute, not defensible
+- "EIS provides a hedge against market downturns" — not evidenced
+
+### The January 2027 Opportunity
+
+**⛔ DO NOT DEPLOY — LEGAL PENDING**
+The language below is structurally correct and ready to use. It is BLOCKED from deployment until Unlock legal confirms the Instant Investment + ASA two-year structure. Keep here for reference. Deploy only after legal sign-off.
+
+> "Both the 2025/26 and 2026/27 tax years are open simultaneously right now. An Instant Investment made today can be carried back to reduce your January 2027 Self Assessment bill — a bill you haven't yet paid and have nine months to address. A second position, structured through an ASA with shares issued in 2026/27, reduces the January 2028 bill. Two years of annual limits. Two BPR clocks starting. Subject to individual tax advice."
+
+**Approved framing angle (also blocked — legal pending):**
+> "A head start on a bill you already know is coming."
+
+**Current framing — April 6 as rule change date (not deadline):**
+April 6, 2026 is relevant as the date VCT relief reduced from 30% to 20%, and as the start of the new 2026/27 tax year. It is NOT a deadline. Do not use it as urgency language.
+
+**Approved — referencing April 6 as context:**
+> "The new tax year opened on April 6. Both the 2025/26 and 2026/27 EIS allowances are now available simultaneously — meaning you can offset your January 2027 Self Assessment bill through carry-back, and your January 2028 bill through the current year. Two years of relief. Two BPR clocks starting. Subject to individual tax advice."
+
+**Approved — VCT context only:**
+> "VCT income tax relief reduced from 30% to 20% on April 6, 2026. The relief is still valuable — 20% returned immediately on investment."
+
+**Prohibited:**
+- "Act before April 6" — passed, remove entirely
+- "Last chance this tax year" — inaccurate
+- "April 6 deadline" — there is no deadline, April 6 is a rule change date
+- Any forward-looking urgency framing around April 6
+
+### The AI and Platform Thesis
+
+**Approved:**
+> "The winners in AI wealth management will not be the platforms with the best products — they will be the platforms with the cleanest data and the least conflicted incentives. Unlock is decision infrastructure, not product. That structural difference is the moat."
+
+**Prohibited:**
+- "AI is transforming wealth management" — generic, table stakes
+- "Unlock uses AI to..." — too generic without specifics
+
+### Founding Round Terms
+
+**Approved (with evidence):**
+> "The founding round terms include anti-dilution protection to Series A, pro-rata rights on the Growth Capital round, lifetime premium platform access, and white-glove onboarding."
+
+**Approved (founding investor co-creation — use once naming permission confirmed):**
+> "Five founding investors — including senior figures from Barclays Stockbroking and TISA — are actively using the platform and contributing to its development. This is co-creation, not speculation."
+
+**Approved (answering pre-revenue objection):**
+> "This is not a bet on a concept. Senior investors with deep financial services experience are using the tools and shaping what gets built. The founding round is an invitation to join a co-creation process that is already underway."
+
+**Provisional (needs comparable evidence before using):**
+> "More investor-friendly than most early-stage UK fintech rounds."
+
+**Prohibited until comparables are confirmed:**
+- "This is not standard" — cannot state without evidenced comparables
+
+### BPR and Pension IHT
+
+**Always include these qualifiers:**
+- BPR cap: "Subject to final enactment"
+- Pension IHT April 2027: "Subject to final legislation"
+- Loss relief: "Subject to individual tax circumstances"
+- ASA/January 2027 structure: "Subject to individual tax advice"
+
+---
+
+## Section 5 — The Belief System
+
+### Design Principles
+
+Three types of investor state require three different approaches:
+
+**Identity traits** — fixed characteristics. Analytical vs entrepreneurial. Self-directed vs adviser-led. Risk-averse disposition. Do not try to change identity traits. Work with them or disqualify. Never position Unlock as something that will change who someone is.
+
+**Correctable beliefs** — things the investor believes that are factually wrong. "My IFA handles this." "EIS is too risky." "I missed the April 6 deadline." These change fastest. One good explanation is often enough.
+
+**Developmental beliefs** — things the investor does not yet hold but can develop through the right content in the right sequence. The AI investment thesis. Portfolio intelligence value. The long-term BPR rolling programme. These take time and cannot be shortcut.
+
+### Non-Negotiable Sequencing Rule
+
+> **Explain EIS loss relief mechanics before asking about risk appetite.**
+
+An investor who says "I'm risk averse" before understanding that their maximum effective loss is 38.5p per pound (EIS) or 27.5p per pound (SEIS) is responding to the wrong question. Establish U4 first. Then ask Q5. The answer will be materially different.
+
+This rule applies in every call script, every document sequence, and every recommendation made by the tool.
+
+---
+
+### Universal Beliefs — Every Investor Needs These
+
+**U1 — The Practical Advice Gap**
+*Type: Correctable belief*
+
+Statement: "Most IFAs practically cannot advise on individual EIS companies. I am making these decisions without structured professional support."
+
+Evidence basis: FCA COBS rules, network compliance policies, suitability documentation burden. Practical barrier, not legal prohibition.
+
+Document: 330 — Advice Gap whitepaper (warm version exists; cold awareness version needed)
+
+Approved language: "Most IFAs cannot practically advise on individual EIS companies. The advice effectively stops at the fund level."
+
+Prohibited: "IFAs are not permitted to advise on EIS."
+
+---
+
+**U2 — Hidden Correlation Risk**
+*Type: Developmental belief*
+
+Statement: "My portfolio has hidden correlation risk I have not stress-tested. When the next macro shock comes, assets I think are diversified will fall together."
+
+Evidence basis: Portfolio appraisal smoothing, correlation during 2008/2020 downturns. Qualify: not "uncorrelated" — "not marked to market daily, but economically linked at exit."
+
+Document: 350 — The Iran Effect (exists; recession demand angle needs adding)
+
+Approved language: "Assets that appear unrelated often share the same underlying economic driver. A geopolitical shock, a rate spike, a liquidity crisis — these affect property, equities, and pension funds simultaneously."
+
+---
+
+**U3 — Structural Independence as the Moat**
+*Type: Developmental belief*
+
+Statement: "The platforms that win in AI wealth management will have the cleanest data and the least conflicted incentives — not the best products. Structural independence is the moat."
+
+Evidence basis: Incumbent platform analysis — HL, AJ Bell, Nutmeg all earn from product distribution. Their AI optimises for retention, not neutrality.
+
+Document: MISSING — AI Investment Thesis document (critical gap, no blockers)
+
+Approved language: "Unlock is decision infrastructure, not product. That structural difference is the moat."
+
+---
+
+**U4 — EIS Risk Is Manageable If Structured Correctly**
+*Type: Correctable belief (misconception)*
+
+Statement: "EIS risk is genuinely manageable if structured correctly across a portfolio and time horizon. My maximum effective loss, after all reliefs, is approximately 38.5p per pound (EIS) or 27.5p per pound (SEIS). I was assessing risk against the wrong number."
+
+Evidence basis: Loss relief arithmetic confirmed by RSM UK, SeedLegals, WealthClub (April 2026).
+
+Document: 150 — EIS: Investor's Secret Weapon (exists; figures need updating from 22p to 27.5p)
+
+Approved language: "Most EIS companies fail. The portfolio only needs a few to succeed — and HMRC subsidises the losses on the rest. For an additional rate taxpayer, the maximum effective exposure on a total failure is approximately 38.5p per pound."
+
+**This belief must be established before any risk-appetite question is asked.**
+
+---
+
+### Growth Seeker Beliefs
+
+**G1 — Asymmetric Upside in Early-Stage AI and Tech**
+*Type: Developmental belief*
+
+Statement: "Early-stage UK tech and AI businesses are where asymmetric upside lives. By the time they reach public markets, the upside has already been captured by early-stage investors."
+
+Evidence basis: Needed — NESTA/British Business Bank data on direct EIS returns vs fund returns. UK EIS-backed AI/tech company exit data.
+
+Document: MISSING — AI Investment Thesis (critical gap)
+
+---
+
+**G2 — Direct EIS vs Fund Fee Drag**
+*Type: Correctable belief*
+
+Statement: "Direct EIS removes the fund fee layer. Based on current EIS fund structures — typically initial charges of 0-5%, annual management fees of 1-2% for 4-5 years, and performance fees of 20-25% over hurdle — total economic fees over a 5-year hold are often in the low-teens as a percentage of the original subscription. This mechanically improves net returns versus a fund holding the same underlying portfolio. This is a structural fee argument, not a measured empirical claim."
+
+⚠️ Prohibited: Do not state "direct EIS significantly outperforms EIS funds" as an empirical fact.
+Prohibited: Do not cite a specific fee percentage. The approved argument is structural: "Direct EIS removes the fund management layer entirely. EIS funds charge initial fees, annual management fees, and performance fees — Unlock replaces all of that with a platform subscription. The investor keeps the difference."
+
+Evidence basis (Perplexity R2, April 2026):
+- Initial charges: 0-5% of subscription (investor-facing)
+- Annual management fee: 1-2% p.a. for 4-5 years
+- Performance fee: 20-25% over hurdle (commonly 110-120% of subscription)
+- Total: "often in the low-teens percent of the original subscription" in many mainstream funds
+- Sources: EISA fee transparency data, GrowthInvest platform, Wealth Club fund reviews, individual fund KIDs (Guinness EIS, Startup Funding Club)
+- No single published source gives an industry-wide total percentage — EISA explicitly encourages case-by-case calculation
+
+Evidence basis (Perplexity R2 confirmed, April 2026):
+- Initial charges: 0-5% of subscription (investor-facing)
+- Annual management fee: 1-2% p.a. for 4-5 years
+- Performance fee: 20-25% over hurdle (110-120% of subscription)
+- Total: "often low-teens percent of original subscription" — internal estimate, not published external figure
+- Sources: EISA fee transparency, GrowthInvest, Wealth Club, individual fund KIDs
+
+Document: 140 — Access Service Explainer (partial; fee maths section needed)
+
+Fee drag maths framework:
+- On £100,000 growing 3x over 5 years, 8-14% fee drag is not 8-14% of returns — it is the £24,000-£42,000 that the fee capital would have become
+- Direct EIS via Unlock replaces the entire fund management layer with a platform subscription
+
+---
+
+**G3 — Infrastructure Required for Direct EIS**
+*Type: Developmental belief*
+
+Statement: "I need institutional-grade deal flow and portfolio tools to make direct EIS work at scale. I cannot evaluate and manage these positions without infrastructure."
+
+Evidence basis: What institutional EIS investors (angels, family offices) actually use. The complexity of individual EIS diligence without tools.
+
+Document: MISSING — position in Pack 1/2 content
+
+---
+
+### Preserver Beliefs
+
+**P1 — The January 2027 Head Start**
+*Type: Correctable belief (most think they missed the tax year)*
+
+Statement: "I have a January 2027 Self Assessment bill I haven't yet paid. An investment now gives me a head start on that bill. The carry-back window closes when I file."
+
+Evidence basis: SA return for 2025/26 due January 31, 2027. Carry-back election available until filing. Two-year window mechanics confirmed by research.
+
+Document: MISSING — January 2027 Opportunity Explainer (critical gap; ASA structure confirmed, ready to brief)
+
+Lead framing: "A head start on a bill you already know is coming" — not "two years open simultaneously."
+
+---
+
+**P2 — Reassessing Risk Against the Right Number**
+*Type: Correctable belief*
+
+Statement: "The effective downside on a failed EIS company, after all reliefs, is approximately 38.5p per pound at additional rate — not the gross investment. I was assessing risk against the wrong number."
+
+Evidence basis: Loss relief arithmetic confirmed. See Section 3 for full calculation.
+
+Document: 150 (exists, figures need updating), 160 (Case Studies, exists)
+
+---
+
+**P3 — Unlock Is More Valuable in a Correction**
+*Type: Developmental belief*
+
+Statement: "In a period of market uncertainty, demand for intelligent portfolio stress-testing and sequencing advice goes up. Unlock is more valuable when markets are uncertain than when they are calm."
+
+Evidence basis: Product demand argument — not an EIS performance argument. Do not conflate.
+
+Document: 350 — Iran Effect (partial; recession demand angle needs adding)
+
+---
+
+### Legacy Builder Beliefs
+
+**L1 — April 2027 Broke the Estate Plan**
+*Type: Correctable belief — most know something changed but haven't modelled the impact*
+
+Statement: "April 2027 will bring undrawn pensions into the taxable estate. My estate plan, as structured today, is broken."
+
+Evidence basis: HMRC pension IHT consultation. Implementation April 2027. Always add: "Subject to final legislation."
+
+Document: 340 — The Pension Problem (exists)
+
+---
+
+**L2 — Rolling EIS as the BPR Replacement**
+*Type: Developmental belief*
+
+Statement: "A rolling EIS programme, sustained over 5-10 years, can move £2M+ outside my estate entirely through BPR — replacing what the pension used to do as an IHT shelter."
+
+Evidence basis: BPR qualifying period (2 years per cohort). Rolling programme mechanics. IHT planning maths.
+
+Document: 170 — IHT/EIS Planning, £5M Estate (exists)
+
+---
+
+**L3 — The Two-Year Window**
+*Type: Correctable belief — most don't know this structure exists*
+
+Statement: "I have a head start on my January 2027 bill right now. And the 2026/27 year is fresh. Two positions, two years, two BPR clocks. Subject to individual tax advice."
+
+Evidence basis: ASA structure confirmed by research (RW Blears, June 2025). Carry-back mechanics per HMRC HS341.
+
+Document: MISSING — January 2027 Opportunity Explainer (same document as P1)
+
+---
+
+### Founding Round Beliefs
+
+**F0 — Unlock Will Become Structurally Essential**
+*Type: Developmental belief — prerequisite to all other founding round beliefs*
+
+Statement: "Unlock is building the operating system for private investing without regulated advice. As direct investment opportunities proliferate and the advice gap widens, a platform like this is not optional — it becomes essential infrastructure."
+
+This belief must be established before F1-F3. Without F0, the founding round ask is financial engineering. With it, everything else follows logically.
+
+Document: Pitch deck (partial), Pack 1 (partial)
+
+Evidence in hand (use this):
+Five founding investors — including senior figures from Barclays Stockbroking and TISA — are actively using the platform and shaping its development through feedback. This is live evidence that the platform is becoming essential infrastructure, not a forecast. These are not investors who believe it will become essential. They are investors for whom it is already useful enough to engage with seriously. That distinction matters enormously at founding stage.
+
+---
+
+**F1 — Founding Round Terms Are Genuinely Attractive**
+*Type: Developmental belief*
+
+Statement: "The founding round terms — anti-dilution to Series A, pro-rata rights, £6.5M pre-money, lifetime premium access — are genuinely attractive."
+
+Evidence basis: UK AI/fintech comparable seed terms (research needed to anchor "attractive" claim).
+
+Document: Pack 1 (120), Pack 2 (130)
+
+📝 Do not say "this is not standard" without comparable evidence. Use "more investor-friendly than most early-stage UK fintech rounds" until comparables are confirmed.
+
+---
+
+**F2 — HMRC Co-Invests via EIS**
+*Type: Correctable belief*
+
+Statement: "Investing in Unlock via EIS means HMRC co-invests alongside me. My effective entry cost is 70p in the pound. The government subsidises 30% of my founding round ticket."
+
+Evidence basis: EIS advance assurance confirmed for Unlock. 30% income tax relief on EIS investment.
+
+Document: Pack 1 (120)
+
+---
+
+**F3 — The Growth Capital Round and Exit Path**
+*Type: Developmental belief*
+
+Statement: "The Growth Capital round follows the founding round at a higher valuation. Founding investors have pro-rata rights. The natural acquirers for a business like this — financial data and research platforms — have paid significant multiples for comparable assets."
+
+Evidence basis: Three confirmed comparables following an identical acquisition pattern:
+- PitchBook → Morningstar (2016, $225M) — private market data intelligence
+- Bureau van Dijk → Moody's (2017, €3bn) — private company financial data
+- Refinitiv → LSEG (2021, $27bn) — financial data and analytics
+
+Pattern: neutral independent data intelligence → acquired at strategic premium by established financial data businesses.
+
+Document: Pack 1 (120), Pack 2 (130) — exit narrative section to be added
+
+---
+
+## Section 6 — The Persona System
+
+### Hard Qualification Criteria
+
+All three must be confirmed before a prospect enters the full document and belief sequence:
+
+1. **Pays higher or additional rate income tax** — EIS income tax relief is minimal below this threshold
+2. **Can deploy £40,000 or more in the next 12 months** — founding round minimum
+3. **Makes own investment decisions** — or has an adviser who will engage (different sequence applies)
+
+### Routing Outcomes
+
+- **QUALIFY IN** — pursue full belief sequence and document flow
+- **DISQUALIFY** — exit the pipeline (can re-enter later if circumstances change)
+- **DIFFERENT CONVERSATION** — not a founding investor prospect but may have referral, platform user, or later-stage value
+
+### The 19 Personas
+
+| # | Persona | Identity (Fixed) | Routing | First Belief | Key Documents |
+|---|---|---|---|---|---|
+| P001 | Retirement Planner | Capital preservation dominant. Pension-heavy. Long horizon. | QUALIFY IN | P1 — January 2027 head start | 190, 150, 340 |
+| P002 | Property Lover | Asset-heavy, cash-light. IHT often unaddressed. Illiquid-comfortable. | QUALIFY IN (if estate >£2M) | L1 — estate plan broken | 170, 340 |
+| P003 | Crypto Enthusiast | High risk tolerance. Income tax liability uncertain. | QUALIFY (check tax liability) | G1 — AI early stage thesis | 150, 100 |
+| P004 | Old Fashioned Saver | ISA-focused. Low complexity tolerance. Suspicious of alternatives. | DIFFERENT CONVERSATION — longer nurture | U1 then U4 — advice gap and risk mechanics first | 190, 150 |
+| P005 | Legacy Builder | IHT primary. Multi-generational. Estate planning active. | QUALIFY IN | L1 — estate plan broken. L2 — BPR replacement. | 170, 340, 120 |
+| P006 | Tech Worker | Equity-familiar. Growth-oriented. Startup risk understood. | QUALIFY IN | G1 — AI thesis. G2 — direct vs fund. | 100, 150, 140 |
+| P007 | Dividend Seeker | Income-focused. Yield-oriented. CGT appetite lower. | QUALIFY (check IHT exposure) | U1, then L2 if estate concern | 190, 170 |
+| P008 | Young Professional | Capital insufficient. Long-term prospect only. | DISQUALIFY — park 2-3 years | — | — |
+| P009 | Global Nomad | Tax residency complications. EIS eligibility uncertain. | DISQUALIFY pending tax residency check | — | — |
+| P010 | Financial Advisor | Distribution partner, not investor. Completely different conversation. | DIFFERENT CONVERSATION — partner route | — | 241 — Adviser Note |
+| P011 | ISA/SIPP Maximiser | Tax-efficiency sophisticated. Already optimising. January 2027 urgent. | QUALIFY IN | P1 — January 2027. Two years open. | 340, 150, 120 |
+| P012 | Defined Benefit Heavy | Income secure. Capital deployment capacity. IHT often growing. | QUALIFY IN | L1 or P1 depending on estate size | 170, 340, 120 |
+| P013 | Cautious Accumulator | Risk-averse identity. U4 must be established before any risk discussion. | QUALIFY (after U4 established) | U4 — establish real downside first. Then P2. | 150, 190 |
+| P014 | HNW Inheritor | Recent wealth event. IHT now personal and immediate. | QUALIFY IN — high urgency | L1 immediately. Estate plan. | 170, 340, 120 |
+| P015 | Entrepreneur | High risk tolerance. EIS-experienced likely. AI-thesis resonant. | QUALIFY IN | G1 — AI thesis. U3 — Unlock as AI investment. | 100, 140, 120 |
+| P016 | BTL Mogul | Property-heavy. Illiquid. IHT growing. CGT exposure. | QUALIFY IN (if IHT confirmed) | L1 — estate plan. CGT deferral. | 170, 160 |
+| P017 | Pension Drawdown Specialist | April 2027 most urgent persona. Actively decumulating. | QUALIFY IN — highest urgency | L1 — pension IHT change. Immediate. | 340, 170, 120 |
+| P018 | Concentrated Stock Holder | CGT deferral primary motivation. EIS deferral mechanism relevant. | QUALIFY IN | G2 — EIS CGT deferral mechanics. | 150, 160 |
+| P019 | Ultra-Conservative Saver | Risk-averse identity. Structurally misaligned with EIS. | DISQUALIFY unless IHT trigger exists | U4 only if IHT confirmed primary concern | — |
+
+---
+
+## Section 7 — Archetype Clusters
+
+*The 19 personas are for call-level routing in the tool. The 4 clusters are for content creation and campaign execution. Different purposes — but both systems influence the same decisions, so a clear hierarchy is required.*
+
+**Hierarchy rule (from ChatGPT architecture review):**
+- **Cluster = primary strategic driver** — determines content sequence, belief progression, and SPIN sequence
+- **Archetype = secondary behavioural lens** — adjusts tone, framing, and expression variant selection
+
+When the two systems point in different directions (e.g. a lead is detected as Preserver archetype but profiling suggests IHT Warrior cluster), the cluster takes priority for content routing. The archetype adjusts how that content is framed.
+
+The tool must output both cluster and archetype per lead, and the recommendation engine must use cluster as the primary routing signal.
+
+| Cluster | Personas | Primary Motivation | Lead Belief | Phase 2 Track |
+|---|---|---|---|---|
+| **IHT Warriors** | P002, P005, P012, P014, P016, P017 | Estate planning, BPR, pension IHT urgency | L1 — estate plan broken | Legacy Builder track |
+| **Tax Optimisers** | P001, P007, P011, P018 | Tax efficiency, January 2027 bill, CGT deferral | P1 — head start on January bill | Preserver track |
+| **Growth Builders** | P003, P006, P015 | Asymmetric upside, AI thesis, deal flow access | G1 — AI/early stage upside | Growth Seeker track |
+| **Needs Education First** | P004, P013 | Sceptical or risk-averse — U1 and U4 must come first | U1 then U4 — basics only | Extended Phase 1 only |
+
+**Campaign implication:** Phase 1 content (advice gap, risk mechanics) runs to all four clusters. Phase 2 splits by cluster track. Needs Education First stays in Phase 1 content until engagement signals indicate readiness.
+
+---
+
+## Section 8 — Document Registry
+
+### Registry Summary
+
+- **Total documents:** 30 (CURRENT status)
+- **Investor-facing CLEAN:** All 17 core documents
+- **Generated whitepapers (CLEAN):** 320, 330, 340, 350
+- **Imported PDFs:** decum_explainer (CLEAN), duncan_briefing (CLEAN), inv_opp_feb26 (REQUIRES_REVIEW — 4 compliance errors)
+- **Internal/agent documents:** 200, 210, 220, 230, 400, 500, 510, 530 (CLEAN)
+- **Generated gaps (CLEAN):** gap_d53fa534 (FAQ), gap_32e28167 (Preserver Gap 1), gap_b5faed9e (Preserver Gap 5)
+
+### Investor-Facing Documents — Belief and Persona Mapping
+
+| Doc | Title | Belief | Persona/Cluster | Stage | Status | Notes |
+|---|---|---|---|---|---|---|
+| 100 | One-Pager | U1, U4 | All — first filter | Outreach, Called | REQUIRES_REVIEW | ⚠️ April 6 language to remove — cascade not yet run |
+| 110 | Three-Pager | U1, U4, F0 | Growth Seeker, Legacy Builder | Outreach, Called | REQUIRES_REVIEW | ⚠️ April 6 language to remove — cascade not yet run |
+| 120 | Pack 1 — Founding Investor Brief | F0, F1, F2, F3 | All — post-demo | Demo Complete | CLEAN | Exit narrative to add |
+| 130 | Pack 2 — Information Memorandum | F1, F2, F3 | All — due diligence | Decision | CLEAN | Exit narrative to add |
+| 140 | Access Service Explainer | G2, G3 | Growth Seeker, Legacy Builder | Demo Booked, Demo Complete | CLEAN | Fee drag maths to add |
+| 150 | EIS: Investor's Secret Weapon | U4, P2 | All — EIS-naive | Called, Demo Booked | REQUIRES_REVIEW | ⚠️ 22p figure and April 6 language — both cascades must run before this document is used |
+| 160 | Five EIS Case Studies | P2, G2 | Persona-specific cases | Demo Booked, Demo Complete | REQUIRES_REVIEW | ⚠️ April 6 language to remove — cascade not yet run |
+| 170 | IHT/EIS Planning — £5M Estate | L1, L2 | Legacy Builder exclusively (estate >£2M confirmed) | Demo Booked, Demo Complete | CLEAN | Rolling programme update for two-year window |
+| 180 | Duncan Stewart Bespoke Brief | L1, L2, F1 | Named bespoke — Legacy Builder | Pre-call (24-48hrs before) | CLEAN | Not a template — bespoke to Duncan |
+| 190 | UK Investment Landscape 2026 | U1, U2 | All — Preserver (correlation) + Legacy Builder (IHT) primary | Outreach, Called | REQUIRES_REVIEW | ⚠️ April 6 language to remove — cascade not yet run. Recession framing to add. |
+| 145 | Decumulation Planner Explainer | U3, P3 | Legacy Builder, Preserver | Demo Complete, Decision | CLEAN | Status phrase must be "Specification complete. Prototype build commencing." |
+| gap_d53fa534 | Investor FAQs and Objection Handler | U1-U4 | All | Called, Demo Booked, Demo Complete | CLEAN | |
+| gap_32e28167 | Preserver One-Pager (Gap 1) | P1, P2 | Preserver | Demo Booked | CLEAN | |
+| gap_b5faed9e | Preserver Recommendation Doc (Gap 5) | P1, P2, P3 | Preserver | Demo Booked | CLEAN | |
+| 320 | IHT-Proof Estate: Rolling EIS Programme | L2 | Legacy Builder, Preserver | Called, Demo Booked, Demo Complete | CLEAN | |
+| 330 | The Advice Gap: Why Your IFA Can't Help You Here | U1 | Growth Seeker, Legacy Builder | Outreach, Called, Demo Booked | CLEAN | Cold/awareness version needed |
+| 340 | The Pension Problem: What April 2027 Means | L1 | Preserver, Legacy Builder | Called, Demo Booked, Demo Complete | CLEAN | Always include "subject to final legislation" |
+| 350 | The Iran Effect: Hidden Risk in a Concentrated Portfolio | U2 | Growth Seeker, Preserver | Outreach, Called, Demo Booked | CLEAN | Recession demand angle to add |
+
+### Internal Documents (Not Investor-Facing)
+
+| Doc | Title | Purpose | Status |
+|---|---|---|---|
+| 200 | Execution — 30K Database | Aircall campaign execution | CLEAN |
+| 210 | Pipedrive/Aircall Setup | CRM and call system setup | CLEAN |
+| 220 | Marketing/Investor Conversion | Conversion strategy | CLEAN |
+| 230 | Pack 1 Email Templates | Email templates for Pack 1 sends | CLEAN |
+| 400 | Content Bank | Source material for generation | CLEAN |
+| 500 | Cold Call Script | Agent — cold call | CLEAN |
+| 510 | Agent Training Playbook | Agent training | CLEAN |
+| 530 | Agent Quick Reference | Quick-reference during calls | CLEAN |
+
+### Documents Referenced in Matrix But Not Yet Generated
+
+| Doc | Title | Priority | Blocker |
+|---|---|---|---|
+| 241 | Adviser/Accountant Briefing Note | Lower | None |
+| 242 | Welcome Email Template | Lower | None |
+| 243 | Onboarding/Welcome Pack | Lower | None |
+| 510b | Demo Call Script | Lower | None |
+| 230b | Pack 2 Covering Email | Lower | None |
+| 515 | Asset Register Video Script V2 | Lower | None |
+
+---
+
+## Section 9 — Campaign Architecture
+
+### The Three-Month Campaign
+
+**Phase 1 — Weeks 1-4: Education Only (all clusters)**
+
+Goal: Establish U1 (advice gap) and U4 (EIS risk mechanics with correct figures) across the entire database. No investment ask. No Unlock branding in primary content.
+
+- Weeks 1-2: The Advice Gap — why IFAs practically cannot help here (Pillar 1)
+- Weeks 3-4: EIS Risk Mechanics — what you actually risk after all reliefs, with correct figures (Pillar 2)
+
+Formats: newsletter, LinkedIn article, 2-min video. No PDFs at this stage — too heavy for cold awareness.
+
+📝 Phase 1 ends when signals indicate the investor understands (a) they have an advice gap and (b) EIS downside is smaller than they assumed. Without both, Phase 2 content lands cold.
+
+---
+
+**Phase 2 — Weeks 5-8: Cluster-Split Nurture**
+
+Split by cluster signal from Phase 1 engagement or Aircall transcript analysis.
+
+**Growth Builders track:**
+- AI investment thesis → deal flow access → direct vs fund economics (G1, G2, G3)
+- Documents: 140, plus AI thesis doc when generated
+
+**IHT Warriors track:**
+- April 2027 pension IHT → BPR replacement → rolling programme (L1, L2, L3)
+- Documents: 340, 170, 320
+
+**Tax Optimisers track:**
+- January 2027 head start → carry-back mechanics → two-year window (P1, L3)
+- Documents: January 2027 explainer (⛔ BLOCKED — legal sign-off required before deployment), 150, 340
+- ⚠️ This track cannot be fully executed until legal sign-off on the ASA two-year structure is received.
+
+**Needs Education First track:**
+- Continue Phase 1 content only until signals indicate readiness
+
+Formats: whitepapers, case studies, personalised email sequences.
+
+---
+
+**Phase 3 — Weeks 9-12: Unlock Specifically**
+
+Platform introduction, founding round, direct ask. Beliefs are in place. The ask lands on fertile ground.
+
+- Demo booking sequence
+- Pack 1 (120) within 24hrs of demo
+- Pack 2 (130) on explicit investor signal only
+- January 2027 carry-back urgency — practical, not manufactured: "The carry-back window closes when you file your 2025/26 return. Most people file between October and January. The earlier you invest, the earlier the BPR clock starts."
+
+---
+
+### Pipeline Stages (Canonical)
+
+`Outreach → Called → Demo Booked → Demo Complete → Decision`
+
+---
+
+## Section 10 — Content Pillars
+
+| Pillar | Belief(s) | Cluster(s) | Stage | Existing Content | Missing | Priority |
+|---|---|---|---|---|---|---|
+| 1 — The Advice Gap | U1 | All | Awareness | 330 (warm), 190 (partial) | Cold version, 2-min video, LinkedIn series | 🟡 HIGH |
+| 2 — EIS Risk Mechanics | U4 | All, esp. Tax Optimisers | Awareness/Nurture | 150, 160 | Cold version with correct figures (38.5p/27.5p) | 🟡 HIGH |
+| 3 — January 2027 Opportunity | P1, L3 | Tax Optimisers, IHT Warriors | Nurture | NONE | ⛔ BLOCKED — requires legal sign-off before deployment. ASA structure confirmed technically but cannot be used in calls or documents until Unlock legal validates the Instant Investment + ASA two-year sequence. | 🔴 CRITICAL (BLOCKED) |
+| 4 — IHT Problem | L1, L2 | IHT Warriors only | Nurture | 170, 340, 320 | Post-April 6 framing. Two-year window update. | 🟠 MEDIUM |
+| 5 — Portfolio Intelligence | U2 | Tax Optimisers, Growth Builders | Nurture | 350 | Recession demand angle. Video version. | 🟠 MEDIUM |
+| 6A — Unlock as Infrastructure (F0) | U3, F0 | Growth Builders primary; all clusters at Activation | Activation | 110 (partial) | AI Investment Thesis doc (MISSING — no blockers, generate now) | 🔴 CRITICAL |
+| 6B — Unlock as Investment (F1-F3) | F1, F2, F3 | All clusters at Activation | Activation | Pack 1, Pack 2, pitch deck | Exit narrative to add. F0 must be established before 6B content is sent. | 🔴 CRITICAL (gated on 6A) |
+
+---
+
+## Section 11 — Qualification System
+
+### Stage 1 — Hard Qualification (Disqualify If No)
+
+These are identity and circumstance checks. They are not beliefs to shift.
+
+**Q1 — Tax liability**
+"Do you pay higher or additional rate income tax?"
+If no → EIS income tax relief is minimal. Disqualify or defer.
+
+**Q2 — Capital availability**
+"Can you deploy £40,000 or more in the next 12 months?"
+If no → wrong stage. Add to long-term nurture sequence only.
+
+**Q3 — Decision autonomy**
+"Do you make your own investment decisions?"
+If adviser-led → different conversation. Not disqualified, but: route to 241 (Adviser Briefing Note), engage the adviser as gatekeeper, adjust document sequence.
+
+---
+
+### Stage 2 — Belief Detection (After Qualification)
+
+**Q4 — Current process**
+"When something interesting crosses your desk, how do you normally assess whether it's worth pursuing?"
+Detects: sophistication level, current process gaps, openness to tools. Listen for: "I rely on my accountant / IFA / gut feeling / nothing structured."
+
+**Q5 — Risk disposition (ONLY AFTER EXPLAINING LOSS RELIEF)**
+"Now that you understand how loss relief works — that your maximum effective exposure is approximately 38.5p per pound — how does that change your view of early-stage risk?"
+Detects: actual risk disposition after correct framing. Never ask this before U4 is established.
+
+**Q6 — Primary motivation (persona routing)**
+"What's the biggest financial question on your mind right now — growing what you have, protecting it, or passing it on efficiently?"
+Routes to: Growth Builders (growing), Tax Optimisers (protecting), IHT Warriors (passing on)
+Note: investors can hold more than one motivation. The dominant one routes the sequence.
+
+**Q7 — IHT routing (only ask if Legacy Builder signals present)**
+"Do you have an estate above £2M, or is inheritance planning something you're actively thinking about?"
+If yes → full Legacy Builder/IHT Warrior sequence. Never ask this to Growth Seekers or Preservers unless they raise it.
+
+**Q8 — EIS familiarity**
+"Have you invested through EIS or SEIS before?"
+If no → route to 150 (Secret Weapon) or cold EIS explainer before any deal-specific content.
+If yes → skip EIS education layer. Move to platform and deal flow content.
+
+---
+
+### Belief Detection in Transcripts (Tool Configuration)
+
+The tool's analyze endpoint should detect and flag:
+
+| Signal | Detected By | Flag |
+|---|---|---|
+| EIS familiarity | Absence of EIS education gap in information_gaps | eis_familiar: true |
+| IHT concern | Keywords: "inheritance tax", "IHT", "estate", "passing on" — with negation handling | iht_confirmed: true/false |
+| Adviser mentioned | Blocking objections or summary: "accountant", "IFA", "adviser" — with negation handling | adviser_mentioned: true/false |
+
+**Negation handling is active:** "no mention of inheritance tax" returns iht_confirmed: false. "no adviser involved" returns adviser_mentioned: false.
+
+---
+
+## Section 12 — Objection Handling
+
+### "My IFA handles this"
+
+**Reality:** Most IFAs don't handle individual EIS. They handle EIS funds and VCTs.
+**Response:** "Your IFA is probably great with ISAs, pensions, and fund-based EIS — that's their bread and butter. Direct EIS company shares sit outside what most adviser networks allow them to advise on. That's exactly why Unlock exists — to fill the gap that advisers can't."
+
+---
+
+### "EIS is too risky"
+
+**Reality:** They are assessing risk against the gross investment, not the net exposure after reliefs.
+**Response:** Establish U4 first. "Let me show you what the actual downside looks like after income tax relief and loss relief. For an additional rate taxpayer, the maximum effective loss on a total failure is approximately 38.5p per pound. That changes the risk calculation significantly."
+
+**Never say:** "EIS is low risk." Capital is at risk. The point is that the downside is smaller than they think — not that there is no downside.
+
+---
+
+### "I'll speak to my accountant first"
+
+**Response:** "Absolutely — that's exactly the right instinct. We can send your accountant a briefing note that covers the EIS mechanics, the BPR qualifying clock, and the January 2027 carry-back structure. It's designed specifically for advisers who need the detail quickly."
+→ Trigger: send document 241 (Adviser Briefing Note) when it exists.
+
+---
+
+### "I missed the April 6 deadline"
+
+**Reality:** They haven't missed anything. The new tax year just opened.
+**Response:** "You haven't missed anything — you've actually got a better opportunity now. Both the 2025/26 and 2026/27 tax years are open simultaneously. Your January 2027 Self Assessment bill — the one for 2025/26 — is due in nine months and you haven't paid it yet. An investment today can reduce that bill directly."
+
+---
+
+### "Private companies just lag public markets — they're not really uncorrelated"
+
+**Reality:** This is partially correct and should be acknowledged.
+**Response:** "You're right that economic linkage remains — EIS portfolios aren't immune to recessions. What changes is the mechanism. Private companies aren't priced daily, so you don't experience the same daily sentiment swings. And the outcomes are driven by company execution over time, not by what the FTSE does on a Tuesday. The more important point is that in a correction, the demand for intelligent portfolio stress-testing goes up — because the consequences of getting sequencing wrong become visible."
+
+---
+
+### "Why would I invest in Unlock instead of an EIS fund?"
+
+**Two angles:**
+
+1. **As an investment:** You're backing an AI platform at founding round terms (£6.5M pre-money, anti-dilution, pro-rata) with EIS reducing your entry cost to 70p in the pound. The natural acquirers for this category have paid significant multiples — PitchBook sold to Morningstar for $225M, Bureau van Dijk sold to Moody's for €3bn, Refinitiv sold to LSEG for $27bn. All three followed the same pattern: neutral independent data intelligence acquired at strategic premium.
+
+2. **As a portfolio strategy:** Direct EIS via Unlock Access is also available alongside the Unlock investment itself. EIS funds charge 8-14% in fees over a typical hold. Unlock replaces that fee layer with a subscription. The fee drag compounds — and you keep the difference.
+
+---
+
+### "The valuation seems high for a pre-revenue business"
+
+**Response:** "The £6.5M pre-money is pricing the data asset and the infrastructure — not current revenue. And this isn't a pre-product business. Five founding investors — including senior figures from Barclays Stockbroking and TISA — are actively using the platform and feeding their experience back into the product. The comparable is PitchBook at founding stage, not a SaaS business at Series A. The terms reflect execution risk: anti-dilution to Series A means you're protected if the path is harder than expected. But the validation already in place — senior people using the tools and shaping what gets built — is exactly the signal you want at this stage."
+
+**The co-creation point is critical here.** It answers "pre-revenue" by reframing what the founding round actually is: not a bet on a concept, but participation in a product being built with the people it serves.
+
+---
+
+## Section 13 — Tool Architecture
+
+### System Overview
+
+The Unlock Document Intelligence Tool is a Node.js/Express application built in Replit. It has two main interfaces:
+- A React frontend for agent use during calls
+- An API used by the recommendation engine
+
+### Canonical Pipeline Stages
+
+`Outreach → Called → Demo Booked → Demo Complete → Decision`
+
+### Canonical Archetypes (for tool routing)
+
+`Growth Seeker | Preserver | Legacy Builder`
+
+### Canonical Document Statuses
+
+`CLEAN | REQUIRES_REVIEW | BLOCKED`
+
+### Canonical Lifecycle Statuses
+
+`DRAFT | CURRENT | ARCHIVED`
+
+### Key API Endpoints
+
+**Recommendation Engine:**
+- `POST /api/recommendation/analyze` — analyze call transcript, return persona/stage/matrix_context (eis_familiar, iht_confirmed, adviser_mentioned flags only). ⚠️ Belief gap detection NOT yet implemented — planned capability only. Do not document as current state.
+- `POST /api/recommendation/rank` — rank eligible documents for this lead's context
+- `POST /api/recommendation/generate-email` — generate personalised follow-up email
+- `POST /api/recommendation/confirm-send` — log immutable send record
+
+**Document Management:**
+- `GET /api/documents` — list all CURRENT documents
+- `PATCH /api/documents/:id` — update document metadata (including persona_relevance, stage_relevance)
+- `POST /api/documents/import-pdf` — import PDF as registry document
+- `POST /api/documents/:id/export-pdf` — export document as branded HTML/PDF
+
+**Content Generation:**
+- `POST /api/content/generate-brief` — generate a content brief from a gap definition
+- `POST /api/content/generate-from-brief` — generate document content from brief
+- `POST /api/generation/:id/qc-rerun` — run 19-check QC on generated content
+- `POST /api/generation/:id/promote` — promote generated content to CURRENT registry
+
+**Feature Updates:**
+- `POST /api/content/feature-update` — detect affected documents and flag for review
+- `dry_run: true` parameter available — runs detection without writing to DB
+
+**Content Gaps:**
+- `GET /api/content/gaps` — current gap analysis across matrix, types, and recommendations
+- `GET /api/content/gaps?save=true` — save gap snapshot
+
+**Lead Management:**
+- `GET /api/leads` — list all leads
+- `POST /api/leads` — create new lead
+- `PATCH /api/leads/:id` — update lead (pipeline stage, persona)
+- `POST /api/leads/:id/confirm-persona` — confirm or correct detected persona
+
+**Analytics:**
+- `GET /api/analytics/personas` — persona detection accuracy, distribution, confirmation rates
+- `GET /api/dashboard/summary` — total leads, documents, sends, pipeline breakdown
+
+**Batch:**
+- `POST /api/recommendation/parse-transcripts` — upload multiple transcript files
+- `POST /api/recommendation/analyze-batch` — batch analysis with matrix_context per result
+
+### Document Usage Matrix
+
+The matrix is encoded in `api-server/src/data/document-usage-matrix.ts` and contains three layers:
+
+1. **DOCUMENT_RULES** — per-document metadata, worth-it rating (1-3 stars), positive triggers, hard exclusions ("don't send when"), prerequisites, never-send-simultaneously pairs, persona-never-first rules
+
+2. **PIPELINE_SEQUENCE** — ordered send rules per pipeline stage with explicit exclusion rules
+
+3. **PERSONA_ROUTING** — archetype-specific core sequences and never-first rules
+
+The `shouldExclude()` function runs as a pre-filter in the rank endpoint before Claude scores relevance. Hard rules are enforced deterministically — Claude only scores documents that survive the matrix filter.
+
+### Matrix Context Flags
+
+Three boolean flags are auto-derived from transcript analysis and passed to the rank endpoint:
+
+| Flag | Derived From | Effect |
+|---|---|---|
+| `eis_familiar` | Absence of EIS education gaps in analysis | If true: doc 150 (Secret Weapon) excluded from recommendations |
+| `iht_confirmed` | IHT keywords in transcript summary (with negation handling) | If false: doc 170 (IHT planning) excluded |
+| `adviser_mentioned` | Adviser references in objections or summary (with negation handling) | If true: doc 241 (Adviser Note) surfaces |
+
+Manual override available in the Context Signals panel in the UI. Toggle re-runs rank immediately.
+
+### QC Engine
+
+19 mandatory checks run on every generated document. Chunking applied for documents >15,000 characters. False positives auto-resolved (auto_resolved_count tracked). The 19 checks include:
+
+- Compliance figure verification (BPR cap, VCT rate, loss relief figures)
+- Approved/prohibited language checks
+- Decumulation Planner status phrase check
+- Minimum investment check (£40,000)
+- Capital at risk declaration
+- "Subject to" qualifier checks
+
+### Worth-It Weighting
+
+Documents have a worth_it rating (★=1, ★★=2, ★★★=3) from the document usage matrix. This is passed to Claude's ranking prompt as a base weight. Higher worth-it documents are sorted first before conflict resolution, so ★★★ documents survive never-simultaneously exclusion over ★★ documents.
+
+### Excluded Documents Response
+
+The rank endpoint returns `excluded_documents[]` with per-document reasons. The frontend shows these in a collapsible "Filtered by Matrix" panel in the recommendations view.
+
+---
+
+## Section 14 — Content Generation Queue
+
+### Ready to Generate (No Blockers)
+
+**DOC: AI Investment Thesis**
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "Why Unlock: The AI Case for the Founding Round",
+  "description": "⚠️ NOTE ON 3.8x: The 3.8x gross return figure is Unlock's model output derived from a 4/3/2/1 distribution framework calibrated to Wiltbank's NESTA/BBAA 2009 study findings. NESTA shows mean returns of ~2-2.5x. The 3.8x must be described as Unlock's illustrative base case, not as NESTA's headline finding. Do NOT state 'NESTA confirms 3.8x average return.'
+
+A whitepaper making the investment case for Unlock as an AI platform at founding round stage. Covers: (1) Why AI wealth management winners will be defined by structural independence and clean data, not product features — the co-pilot vs library distinction; (2) How incumbents (HL, AJ Bell, Nutmeg) are structurally prevented from providing neutral portfolio intelligence — their AI optimises for retention not for the investor; (3) Unlock as decision infrastructure, not product — the moat that product-first platforms cannot replicate; (4) The data flywheel — each investor's portfolio data makes the platform more valuable for every other investor; (5) Why demand for intelligent portfolio intelligence goes up in corrections, not down — Unlock is more valuable in uncertainty; (6) The exit narrative — PitchBook sold to Morningstar for $225M in 2016; the natural acquirers for Unlock are financial data and research platforms seeking private market intelligence at the individual investor level; (7) EIS on the Unlock investment itself — HMRC co-invests at 30%, effective entry cost 70p in the pound; (8) The founding round terms — anti-dilution to Series A, pro-rata rights, £6.5M pre-money. Target reader: Growth Seeker who believes in AI and early-stage investing but hasn't yet connected the thesis to Unlock specifically."
+}
+```
+Persona tags: `["Growth Seeker"]`
+Stage tags: `["Called", "Demo Booked", "Demo Complete"]`
+
+---
+
+**DOC: January 2027 Opportunity Explainer — ⛔ BLOCKED**
+
+⚠️ This document is BLOCKED pending legal sign-off. Do not generate until Unlock legal confirms the Instant Investment + ASA two-year structure is safe to use in investor communications. The content brief below is ready — the deployment is not.
+
+```json
+{
+  "archetype": "Preserver",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The January 2027 Opportunity: A Head Start on a Bill You Already Know Is Coming",
+  "description": "A whitepaper explaining the January 2027 tax opportunity for sophisticated investors. Covers: (1) The practical reality — the 2025/26 Self Assessment bill is due January 31, 2027 and hasn't been paid yet; most investors think they missed the April 6 EIS window, but they haven't; (2) How the carry-back election works — an EIS investment made now can be treated as issued in 2025/26, reducing the January 2027 bill directly; (3) The two-year window — both the 2025/26 (carry-back) and 2026/27 (current year) annual limits are available simultaneously for a few months after April 6, before the 2025/26 return is filed; (4) The Instant Investment + ASA structure — an Instant Investment provides immediate share issuance (carry-back eligible), an ASA signed now with shares issued in 2026/27 accesses the current year's limits; two positions, two BPR clocks starting; (5) What this means in practice — for a £100,000 investment, the income tax saving and carry-back mechanics are explained with worked examples; (6) The BPR clock — every month of delay is a month later before BPR qualifying status is reached; starting now matters; (7) ALWAYS include: 'Subject to individual tax advice' and 'Subject to EIS tax counsel confirmation on the two-year structure'. Target reader: Preserver or Legacy Builder who has paid attention to the April 6 deadline and assumes they have missed this tax year."
+}
+```
+Persona tags: `["Preserver", "Legacy Builder"]`
+Stage tags: `["Called", "Demo Booked", "Demo Complete"]`
+
+---
+
+**DOC: Cold Advice Gap Explainer (Awareness Version)**
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Outreach",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The Advice Gap: Why the Investments That Could Help You Most Are the Ones No One Will Advise On",
+  "description": "A cold-prospect educational whitepaper on the advice gap in alternative investing. No Unlock branding in the body — this is pure education. Covers: (1) What regulated financial advice covers and what it doesn't — IFAs advise on mainstream products, EIS funds, and VCTs; individual EIS company shares sit outside their practical scope due to suitability obligations and network compliance policies; (2) Why this matters — the investments with the highest potential returns (direct EIS companies, pre-IPO equity, certain alternatives) are precisely the ones investors are left to evaluate alone; (3) The practical reality for sophisticated investors — they have the capital and the appetite but not the infrastructure to evaluate these opportunities properly without institutional tools; (4) What self-directed investors actually do — rely on sales material, word of mouth, or skip these opportunities entirely; (5) What proper infrastructure looks like — independent research, portfolio stress-testing, sequencing advice free from product conflicts. This document does NOT mention Unlock by name in the main body. It ends with a one-paragraph note on what the ideal solution would look like, which naturally describes Unlock without naming it. Target reader: cold HNW prospect who has never heard of EIS and has an IFA they trust."
+}
+```
+Persona tags: `["Growth Seeker", "Legacy Builder"]`
+Stage tags: `["Outreach", "Called", "Demo Booked"]`
+
+---
+
+**DOC: EIS Risk Plain English (Cold Version)**
+```json
+{
+  "archetype": "Preserver",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "What You Actually Risk When You Invest in EIS: The Numbers Most People Get Wrong",
+  "description": "A plain-English cold-prospect explainer on EIS risk mechanics. No prior EIS knowledge assumed. Covers: (1) The common misconception — most people assess EIS risk as the gross investment amount; (2) How income tax relief changes the calculation — 30% returned immediately; effective cost is 70p per pound, not £1; (3) If the company fails entirely — loss relief at the marginal rate (45% for additional rate taxpayers) applies to the remaining 70p; total relief recovered approximately 61.5p; maximum effective loss approximately 38.5p per pound; (4) The same calculation for SEIS — 50% relief upfront, loss relief on remaining 50%; maximum effective loss 27.5p per pound for additional rate taxpayers; (5) An important note: acknowledge explicitly that most EIS companies fail, and that this is why portfolio construction matters — the platform only needs a few to succeed; (6) What changes when you understand the real downside — the risk appetite question deserves a different answer once you know you are not betting the full amount; (7) Why this matters before any discussion of EIS specifically — understanding the mechanics is a prerequisite for assessing whether any EIS opportunity fits your risk profile. Always include: 'Subject to individual tax circumstances.' Loss relief figures: 38.5p EIS / 27.5p SEIS at additional rate. Target reader: cold HNW prospect who has dismissed EIS as 'too risky' without understanding the loss relief mechanics."
+}
+```
+Persona tags: `["Preserver", "Growth Seeker", "Legacy Builder"]`
+Stage tags: `["Called", "Demo Booked"]`
+
+---
+
+### Cascade Instructions (Run Immediately — No Blockers)
+
+**Cascade 1 — Post-April 6 Deadline Language Removal**
+
+✅ **DRY RUN COMPLETE** — 16 documents detected. 10 confirmed (100, 120, 130, 150, 170, 190, 230, 500, 520, 700). Ready to run live.
+
+**Approved replacement language:**
+> "Both the 2025/26 and 2026/27 tax years are open simultaneously. An investment now can offset your January 2027 Self Assessment bill through carry-back, and your January 2028 bill through the current year. Two years of relief. Two BPR clocks starting. Subject to individual tax advice."
+
+
+Feature update for the tool:
+```
+Description: "The April 6, 2026 EIS tax year deadline has now passed. Remove all references to April 6 as an investment deadline across investor-facing documents. Replace with January 2027 framing: investors have a head start on their Self Assessment bill (due January 31, 2027), which is the next practical urgency. Both the 2025/26 (carry-back) and 2026/27 (current year) annual limits are available simultaneously."
+
+Affected documents: 100, 110, 150, 160, 190
+Change type: messaging_update
+dry_run: false
+```
+
+**Cascade 2 — Loss Relief Figure Update**
+
+✅ **DRY RUN COMPLETE** — 18 documents detected. Priority fix: Document 700 (Content Bank) line 1680 — replace "approximately 22p in the pound" with "approximately 27.5p in the pound". Ready to run live.
+
+
+Feature update for the tool:
+```
+Description: "SEIS loss relief figure correction: the figure of 22p per pound was incorrect. The correct figure for an additional rate taxpayer is 27.5p per pound (50% income tax relief upfront, then 45% loss relief on the remaining 50%). The correct EIS figure is approximately 38.5p per pound (30% income tax relief upfront, then 45% loss relief on the remaining 70%). Update all references to loss relief per-pound figures across all investor-facing documents."
+
+Affected documents: all investor-facing documents referencing loss relief per-pound figures (likely 100, 110, 120, 130, 150, 160)
+Change type: compliance_update
+dry_run: false
+```
+
+---
+
+## Section 15 — Research Findings
+
+### Confirmed by Research (April 2026 — Perplexity pass)
+
+**Key corrections from Perplexity review:**
+
+| Claim | Status | Correction |
+|---|---|---|
+| 7.8x average EIS return | ❌ WRONG — no published source | Use 3.8x gross — but label as Unlock model output, not NESTA headline figure |
+| 3.8x as "NESTA confirmed" | ⚠️ INACCURATE SOURCING | NESTA/BBAA 2009 shows mean ~2-2.5x. 3.8x is derived from Unlock's 4/3/2/1 model. Must be described as model output, not study finding. |
+| 8-14% EIS fund fee drag | ❌ REMOVED as cited figure | No single published source confirms this band. Removed from documents. Fee drag argument stands on structural grounds (subscription vs fund layer) without citing a specific percentage. |
+| VCT income tax relief | ✅ RESOLVED | Rate is 20% from April 6, 2026 (reduced from 30%). Tool compliance_constants.json V4 is correct. Master document previously stated 30% — now corrected throughout. |
+| Direct EIS outperforms funds | ⚠️ OVERSTATED | Structural (fee removal) argument only — no market-wide empirical data |
+| EIS fundraising crisis data | ✅ Confirmed with precision | 2007-08: £707M → 2008-09: £518M → 2009-10: £623M → 2010-11: £878M |
+| FCA 6.4% advice figure | ✅ Confirmed | FCA Financial Lives 2024, Chart W4_1 |
+| PitchBook $225M acquisition 2016 | ✅ Confirmed | Morningstar announcement 14 October 2016 |
+| Bureau van Dijk €3.0B → Moody's 2017 | ✅ Confirmed | Moody's press release 14 May 2017; completion 9 August 2017 |
+| Refinitiv ~$27B → LSEG 2021 | ✅ Confirmed | LSEG press release 31 July 2019; EU clearance January 2021 |
+| EIS loss relief 38.5p / 27.5p | ✅ Confirmed | RSM UK, SeedLegals, WealthClub (2025-26) |
+| 5.4x return on effective cost | ✅ Confirmed arithmetic | 3.8x gross on £100K = £380K; effective cost = £70K after 30% relief; £380K/£70K = 5.43x |
+| 4.7x taxable equivalent | ✅ Confirmed arithmetic | CGT at 24% post-October 2024; to net £380K from £100K taxable requires ~£468K gross = 4.68x |
+| ContentCal/Adobe acquisition | ❌ REMOVED | Adobe acquired ContentCal December 2021 but deal value undisclosed and 7.8x multiple has no public source. Removed from all documents. Do not use. |
+| NESTA mean return 2.2x | ✅ Confirmed | Wiltbank 2009 "Siding with the Angels", NESTA/BBAA — UK angel investment mean multiple |
+| 56% of exits fail to return capital | ✅ Confirmed | Wiltbank 2009 — consistent with 4/10 failure rate in Unlock model |
+| SFC Capital distribution model | ✅ Real EIS fund corroboration | SFC December 2024: 4 fail, 2 return 1x, 2 return 2x, 1 returns 4x, 1 returns 10x |
+| EIS market £1,957M / 4,205 companies | ✅ Confirmed | HMRC National Statistics 2022-23 |
+| 2023-24 provisional | ✅ Confirmed | £1,575M / 3,780 companies |
+| Not marked to market daily | ✅ Defensible | Standard in private capital literature |
+| BPR/pension IHT qualifiers | ✅ Correct | "Subject to final enactment/legislation" is essential |
+| COBS regulatory basis | ⚠️ INCOMPLETE | Should reference Article 53 RAO + COBS 4 + COBS 9 + COBS 10/10A + network policies |
+
+
+
+**Advice Gap:**
+- Article 53 RAO: advising on investments including unlisted shares is a regulated activity. Not prohibited where authorised — but FCA high-risk investment rules (COBS 4, COBS 10/10A) create substantial compliance friction for retail-facing advice on NMPIs.
+- Most IFA networks explicitly restrict individual EIS company recommendations. Practical barrier, not legal prohibition.
+- FCA Financial Lives 2024: 6.4% of UK adults received regulated financial advice in the previous 12 months. ~22M adults have unmet advice needs.
+
+**EIS Market (HMRC National Statistics 2022-23):**
+- 4,205 companies funded, £1,957M raised
+- Individual claimants: mid-20,000s to low-30,000s
+- Average per claimant: ~£60K–£80K
+- No clean direct vs fund split published
+
+**ASA/EIS Two-Year Structure (RW Blears, June 2025; HMRC HS341 2025):**
+- EIS relief attaches to share issuance date, not ASA signing date
+- HMRC's 6-month longstop applies to advance assurance applications only
+- At EIS1 review, extended longstop not automatically disqualifying — focus is on nature of instrument
+- ASA must: prohibit repayment, prohibit variation/assignment/cancellation, carry no interest, contain a longstop date
+- Two-year structure (Instant Investment + ASA) is consistent with EIS practice
+
+**Loss Relief Figures (RSM UK, SeedLegals, WealthClub — all 2025-26):**
+- SEIS additional rate: 27.5p per pound maximum effective loss ✅ Confirmed
+- EIS additional rate: ~38.5p per pound maximum effective loss ✅ Confirmed
+- 22p figure: WRONG — deleted
+
+**EIS Return Data — Corrected sourcing (Perplexity R2, April 2026):**
+- NESTA/BBAA 2009 ("Siding with the Angels", Wiltbank): mean multiple ~2-2.5x, highly skewed outcomes, 9% of exits produced 80% of positive cash flows ✅ Confirmed
+- The 3.8x figure is Unlock's model output from applying the 4/3/2/1 distribution to NESTA's findings — ⚠️ NOT a direct NESTA quotation
+- Approved description: "Unlock's 4/3/2/1 portfolio model, calibrated to distributional findings in the NESTA/BBAA 2009 study, implies a 3.8x illustrative gross base case"
+- Prohibited: "NESTA confirms 3.8x average EIS return" — factually inaccurate
+
+**EIS Fund Fee Data — Confirmed components (Perplexity R2, April 2026):**
+- Initial charges: 0-5% of subscription (investor-facing)
+- Annual management fee: 1-2% p.a. for 4-5 years
+- Performance fee: 20-25% over hurdle (commonly 110-120% of subscription)
+- Total economic drag: "often in the low-teens percent" — ⚠️ internal estimate, not externally sourced number
+- Sources: EISA fee transparency, GrowthInvest, Wealth Club (Guinness EIS, Startup Funding Club KIDs)
+
+**Exit Narrative (confirmed):**
+- PitchBook acquired by Morningstar 2016 for $225M total valuation
+- Founded 2007, nine years to exit
+- Now: 3,000+ employees, 100,000+ professional clients, independent Morningstar subsidiary
+- Morningstar rationale: combining public and private market data for multi-asset intelligence
+
+**EIS Fund Fee Structure (EISA/GrowthInvest Fee Transparency Table, December 2025):**
+- Initial investor fee: 0-5% of subscription (many funds 1.5-3%)
+- Annual management charge: 0-2% p.a. (typically 1-2% for 4-5 year term)
+- Performance fee: typically 20% above hurdle (100-120% of initial capital)
+- Total fee at subscription: some funds deduct 5-10% before investment (evidenced in transparency table)
+- Total 5-year cost: No single industry-wide figure published. EISA/GrowthInvest provide a calculator. Directionally in "low-teens" for many mainstream funds including direct and indirect charges.
+- Source: EISA/GrowthInvest EIS Fund Fee Transparency initiative, table dated 8 December 2025
+
+**ContentCal/Adobe (December 2021):**
+- Acquisition confirmed ✅
+- Deal value: undisclosed
+- 7.8x investor multiple: ❌ No publicly verifiable source — remove from all investor-facing documents
+
+### Still Needed (Research Prompts)
+
+🔍 **Perplexity:** "Current UK EIS fund total charges 2025 2026 — initial charge, annual management fee, performance fee. What is the typical total cost over a 5-year hold? Sources: EIS Association, fund manager documentation, comparison platforms."
+
+🔍 **Perplexity:** "UK EIS-backed company exit data — what returns have direct EIS investors achieved compared to EIS fund investors? Source: British Business Bank, NESTA, EIS Association published research."
+
+🔍 **Perplexity:** "UK AI/fintech seed round terms 2024 2025 — typical pre-money valuation, anti-dilution provisions, pro-rata rights at early-stage rounds. What is standard vs investor-friendly?"
+
+🔍 **ChatGPT stress-test:** "The following is our founding round investment case for Unlock: [paste Section 2 + Section 5 founding round beliefs]. What are the three strongest objections a critical investor analyst would raise? How would you respond to each?"
+
+---
+
+## Section 16 — Open Items and Sign-Off Checklist
+
+### Open Items
+
+| Item | Owner | Priority | Blocker |
+|---|---|---|---|
+| G2 fee drag data — current EIS fund fees | Perplexity research | 🟠 Medium | None — run research prompt |
+| G1 evidence — UK EIS-backed AI/tech exits | Perplexity research | 🟠 Medium | None — run research prompt |
+| Founding round comparables — UK AI/fintech seed terms | Perplexity research | 🟠 Medium | None — run research prompt |
+| Social proof — which investors can be named | Tom King | 🟠 Medium | Investor permission required |
+| Recession framing — use it or hold | Tom King decision | 🟠 Medium | Strategic call |
+| ASA instrument — confirm HMRC structural requirements met | Unlock legal | 🟡 High | Unlock legal review |
+| January 2027 document — legal sign-off required | Unlock legal | 🔴 Critical | Legal must confirm ASA two-year structure before deployment |
+| Belief state tracking — build per-lead belief model in tool | Development | 🔴 Critical | Tool tracks persona/stage only — belief gating not yet built |
+| F0 gate before Pack 1 — block Pack 1 send until F0 established | Development | 🔴 Critical | AI thesis doc missing; Pack 1 sent without F0 = unconvincing valuation |
+| Qualification hard gate — block doc send without Q1-Q3 complete | Development | 🟡 High | Currently bypassed in all live calls |
+| Tony Vine-Lott — confirm naming permission | Tom King | 🔴 Critical | This is the strongest social proof asset. Needed before investor outreach resumes. |
+| Other founding investors — confirm naming permission and usage evidence | Tom King | 🔴 Critical | 5 investors using tools is a strong claim — needs documentation |
+| Investor Data Charter — define data ownership, usage, consent, security | Tom King + legal | 🔴 Critical | Asset registry framing demands this. Without it, the data flywheel claim is a liability. Cannot use "data flywheel" in investor communications until this exists. |
+| Three proof points — written up in master document | Tom King | ✅ Done | See Section 1 — proof points written from Tom's answers. Require naming permission before attaching investor names. |
+| Platform description update — "asset registry with tools" framing | Tom King | 🟡 High | Replace DD platform description throughout with the evolved asset registry story. |
+| White-glove onboarding — define what this actually means | Tom King | 🟡 High | Referenced in Sections 1 and 4 as a key founding round term. Must be defined before Pack 1 distribution. |
+| VCT rate — resolved | ✅ Done | Tool was correct at 20%. Rate changed from 30% to 20% on April 6, 2026. Master document updated throughout. |
+| Content Bank 700 line 1680 — fix 22p figure | Development | 🔴 Critical | Replace "approximately 22p in the pound" with "approximately 27.5p in the pound". Single text fix, no blockers. |
+| Add founding investor min/max to compliance_constants.json | Development | 🟡 High | Add founding_investor_minimum: £40,000 and founding_investor_maximum: £500,000. |
+| Add 22p prohibition to QC engine | Development | 🟡 High | QC checks for loss relief as percentage but does not explicitly flag 22p as prohibited. Add explicit check. |
+| Add per-pound pence constants to tool | Development | 🟡 High | Add eis_loss_relief_per_pound: ~38.5p and seis_loss_relief_per_pound: ~27.5p and seis_loss_relief_prohibited: 22p |
+| Update 065 master context — add belief IDs | Development | 🟡 High | No canonical belief statements (U1-U4, G1-G3, P1-P3, L1-L3, F0-F3) in 065. Add from Section 5 of this document. |
+| Update 065 master context — January 2027 framing | Development | 🟡 High | 065 has April 6 references and no January 2027 head-start language. Update with approved replacement language from Section 4. |
+| Update 065 master context — ASA qualifier | Development | 🟡 High | Add "Subject to individual tax advice" qualifier for ASA/Instant Investment references. |
+| Update gap analysis engine — content pillar detection | Development | 🟡 High | Tool gap analysis does not detect the master document's priority gaps (January 2027 explainer, AI Investment Thesis, cold versions). Update to surface these. |
+| Review sweep — inv_opp_feb26, duncan_briefing, gap_d53fa534 | Development | 🟡 High | 3 CURRENT documents in REQUIRES_REVIEW need QC re-run or manual review. |
+| Add platform pricing prohibition constant | Development | 🟠 Medium | £99/£249 not in investor-facing docs — add as explicit prohibition constant in compliance_constants.json. |
+| Cash position framing — add to investor materials | Tom King | 🟡 High | Tom covers operational costs until go-to-market. The £1.2M founding round is pure launch runway, not operational survival. This is a positive signal — add the framing: "Founder-funded through to launch. The founding round is deployment capital, not bridge financing." |
+| Team section — full biographies needed | Tom King | 🟡 High | Full team now documented: Tom King (CEO), Werner Snyman (tech/product), William Corke (revenue ops), Tony Vine-Lott (strategic advisor/founding investor). Full biographies for each needed before Pack 1 distribution. |
+
+### Sign-Off Checklist (Before V2.0 / Content Generation Begins)
+
+- `[ ]` Tom King review and approval of full master document
+- `[x]` Loss relief cascade confirmed — run in tool (22p → 27.5p/38.5p)
+- `[x]` Post-April 6 cascade confirmed — run in tool (deadline framing replaced with two-year opportunity language)
+- `[ ]` G2 fee drag research completed
+- `[ ]` Social proof — at least one verified entry
+- `[ ]` ASA instrument reviewed by Unlock legal
+- `[ ]` January 2027 — explicit legal sign-off before any deployment (currently BLOCKED)
+- `[ ]` Belief state model built in tool (per-lead belief tracking — critical architectural gap)
+- `[ ]` F0 gate: AI thesis must be sent before Pack 1 can be sent
+- `[ ]` Qualification hard gate: system blocks document send without Q1-Q3 logged
+- `[ ]` Three research prompts answered (fee drag, EIS exits, founding round comparables)
+- `[ ]` Duplicate Section 16b/16d merged into single canonical playbook section
+- `[ ]` Molecule store populated with 10 seed molecules
+- `[x]` VCT rate resolved — 20% from April 6, 2026 (reduced from 30%). Tool was correct.
+- `[ ]` Tony Vine-Lott naming permission confirmed in writing
+- `[ ]` Other founding investors — naming permission and usage evidence documented
+- `[x]` Both cascades confirmed and run in tool
+- `[ ]` AI Investment Thesis and Cold Advice Gap documents generated and added to registry
+- `[ ]` Decumulation Planner product definition documented (prevent vaporware objection)
+
+---
+
+## Section 16b — Build Items From BDF Spec Review (TO BUILD)
+
+*Identified April 2026 from review of Cloudworkz Branded Document
+Formatter (BDF) spec and Unlock Content Intelligence Platform spec.
+These items strengthen the tool's content generation architecture
+to match the governing principle: AI = selector and assembler,
+not creator.*
+
+---
+
+### Build Item 1 — Molecule Store Population
+
+**What:** Populate the tool's molecule store with the first set of
+APPROVED molecules derived from the approved language in Section 4
+of this master document.
+
+**Why:** Section 4 contains approved phrases as prose guidance.
+Claude is instructed to use them — but is not structurally prevented
+from paraphrasing. A formal molecule store with verbatim injection
+makes compliance architectural, not instructional. The QC engine
+already checks for approved language — connecting it to molecules
+makes that check traceable and auditable.
+
+**The first ten APPROVED molecules to seed:**
+
+| ID | Category | Approved Text |
+|---|---|---|
+| mol_advice_gap | advice_gap_framing | "Most IFAs cannot practically advise on individual EIS companies. Suitability obligations, network compliance policies, and regulatory friction mean the advice effectively stops at the fund level." |
+| mol_eis_loss_relief | eis_loss_relief | "For an additional rate taxpayer, the maximum effective exposure on a total failure — after income tax relief and loss relief — is approximately 38.5p per pound. Subject to individual tax circumstances." |
+| mol_seis_loss_relief | seis_loss_relief | "For an additional rate taxpayer, the maximum effective exposure on a total failure — after income tax relief and loss relief — is approximately 27.5p per pound. Subject to individual tax circumstances." |
+| mol_january_2027 | january_2027_opportunity | "Both the 2025/26 and 2026/27 tax years are open simultaneously right now. An Instant Investment made today can be carried back to reduce your January 2027 Self Assessment bill — a bill you haven't yet paid and have nine months to address. Subject to individual tax advice." |
+| mol_asa_structure | asa_qualifier | "Subject to individual tax advice. The ASA must meet HMRC's structural requirements: no repayment rights, no interest, not evergreen, with a longstop date." |
+| mol_bpr_cap | bpr_cap | "Business Property Relief will be capped at £2,500,000 per individual, subject to final enactment." |
+| mol_pension_iht | pension_iht_change | "Pensions will be brought into scope for inheritance tax from April 2027, subject to final legislation." |
+| mol_decumulation_status | decumulation_planner_status | "Specification complete. Prototype build commencing." |
+| mol_structural_independence | structural_independence | "Unlock earns from investors, not from products. This structural independence means Unlock can provide genuinely neutral sequencing and portfolio advice that conflicted platforms cannot." |
+| mol_capital_at_risk | capital_at_risk | "Capital is at risk. The value of investments can fall as well as rise and investors may not get back the full amount invested." |
+
+**Molecule lifecycle:** DRAFT → APPROVED → SUPERSEDED. Only APPROVED
+molecules may be injected into generated content. Molecules cannot
+be deleted — only superseded.
+
+**QC check:** For each compliance-sensitive claim area, the QC engine
+must verify the approved molecule text is present verbatim. A document
+cannot be promoted to CURRENT if any compliance-sensitive claim area
+uses paraphrased language instead of the approved molecule.
+
+**Prohibited molecules — explicit:**
+- Any sentence stating SEIS effective loss is "22p per pound" —
+  this figure is wrong and must be flagged as a QC failure
+- Any sentence stating VCT income tax relief is still 30% — rate reduced to 20% on April 6, 2026. Do not use 30% after this date.
+- Any sentence stating "IFAs are prohibited from advising on EIS" —
+  overstated; use mol_advice_gap instead
+
+**Status:** TO BUILD — molecule store schema exists in tool.
+Seed data needs populating with the ten molecules above.
+
+---
+
+### Build Item 2 — Change Taxonomy for Feature Update Cascade
+
+**What:** Add a change_class field to every feature update submission.
+The propagation engine uses the change class to determine the
+appropriate action per dependency — not a blanket cascade.
+
+**Why:** Currently the feature update cascade treats all changes the
+same way. A typo correction and a regulatory figure change both
+trigger the same response. The change taxonomy means the urgency
+and required action differ based on what actually changed — which
+is both more accurate and less operationally disruptive.
+
+**The five change classes:**
+
+| Class | Definition | Example |
+|---|---|---|
+| cosmetic | No meaning change — typo, punctuation, spacing, formatting | Fix "it's" → "its" in a document |
+| editorial | Meaning preserved, wording improved | Clearer phrasing of the advice gap explanation |
+| semantic | Meaning materially changes — claim narrowed, caveat added | "cannot advise" → "practically cannot advise" |
+| regulatory | Compliance basis changes — tax rate, law change, key value | 22p → 27.5p SEIS loss relief figure |
+| structural | Composition logic changes — section added, sequence reordered | Adding F0 belief before founding round section |
+
+**Propagation actions by change class and dependency type:**
+
+| Change Class | Hard Dependency | Soft Dependency | Reference |
+|---|---|---|---|
+| cosmetic | auto_update | log only | log only |
+| editorial | review_required | log only | log only |
+| semantic | review_required | review_recommended | log only |
+| regulatory | approval_required | review_required | log only |
+| structural | review_required | log only | log only |
+
+**Immediate application:**
+
+The two cascades ready to run now should be classified:
+- Loss relief figure correction (22p → 27.5p): **regulatory** →
+  approval_required on all hard dependents
+- April 6 → January 2027 framing: **semantic** → review_required
+  on all hard dependents
+
+**UX change:** When Tom submits a feature update, the UI must ask
+him to select the change class before submission. The change class
+is stored on the change event and drives the propagation action.
+It is declared by the author — not inferred by the system.
+
+**Status:** TO BUILD — feature update endpoint exists. change_class
+field and propagation rules table need adding.
+
+---
+
+### Build Item 3 — Expression Variants for Key Facts
+
+**What:** Add expression variants to the key facts that need
+different approved wordings for different audiences and stages.
+
+**Why:** The same underlying fact requires different approved
+expressions depending on who is reading and when. Currently the
+tool uses one approved phrase for each fact regardless of context.
+Expression variants formalise what should be said to each cluster
+at each stage — and prevent the wrong expression landing on the
+wrong audience.
+
+**Priority facts needing expression variants:**
+
+**Fact: January 2027 tax opportunity**
+
+| Variant ID | Audience | Stage | Approved Text |
+|---|---|---|---|
+| jan27_cold | All — cold, no EIS context | Outreach | "Your January 2027 Self Assessment bill is due in nine months. An investment now gives you a head start on a bill you haven't yet paid." |
+| jan27_preserver | Tax Optimiser / Preserver | Called, Demo Booked | "Both the 2025/26 and 2026/27 tax years are open simultaneously. An Instant Investment reduces your January 2027 bill. An ASA accesses the 2026/27 allowance. Subject to individual tax advice." |
+| jan27_legacy | IHT Warrior / Legacy Builder | Called, Demo Booked | "Two positions, two years, two BPR clocks starting simultaneously. Subject to individual tax advice and EIS qualifying conditions." |
+
+**Fact: EIS risk framing**
+
+| Variant ID | Audience | Stage | Approved Text |
+|---|---|---|---|
+| risk_cold | All — cold, no EIS context | Outreach, Called | "The government subsidises the downside. For an additional rate taxpayer, the maximum effective loss on a failed EIS company is approximately 38.5p per pound — not the gross investment. Subject to individual tax circumstances." |
+| risk_preserver | Tax Optimiser / Preserver | Called, Demo Booked | "You were assessing risk against the wrong number. After income tax relief and loss relief, your maximum effective exposure is approximately 38.5p per pound. HMRC covers the rest. Subject to individual tax circumstances." |
+| risk_growth | Growth Builder | Called | "The downside is managed. The upside is uncapped. For an additional rate taxpayer, maximum effective loss is approximately 38.5p per pound after all reliefs. Subject to individual tax circumstances." |
+
+**Fact: Advice gap**
+
+| Variant ID | Audience | Stage | Approved Text |
+|---|---|---|---|
+| advice_cold | All — cold prospect | Outreach | "There is a structural gap in regulated advice. IFAs can advise on EIS funds and VCTs. Individual EIS company shares sit outside what most adviser networks practically allow." |
+| advice_warm | Warm prospect — post-profile | Called, Demo Booked | "Your IFA probably handles ISAs, pensions, and fund-based EIS well. Direct EIS company shares sit outside what most adviser networks allow them to recommend. That is the gap Unlock fills." |
+
+**Selection logic:** The recommendation engine selects the
+expression variant matching the lead's detected cluster and
+pipeline stage. If no variant matches, the base molecule text
+is the fallback — never free-form generation.
+
+**Status:** TO BUILD — requires expression variant schema to be
+added to the molecule store and variant selection logic added
+to the generation pipeline.
+
+---
+
+### Build Item 4 — Call Transcript Compliance Findings
+
+*From live call transcript review, April 2026 — see Section 16d.*
+
+**What:** The following errors were identified in live Aircall
+call recordings and must be corrected in all call-facing content
+and agent guidance:
+
+**Error 1 — Wrong SEIS loss relief figure in live calls**
+Multiple calls quoted 22p, 25p, or "25 to 30%" as the SEIS
+effective risk per pound. The correct figure is **27.5p per pound**
+for an additional rate taxpayer.
+
+Fix: Update cold call script, agent quick reference (530), and
+all documents containing loss relief per-pound figures.
+
+**Error 2 — "100% of income tax back" framing**
+One call stated "you can claim back 100% of your income tax every
+year" — this is only true in a specific worked example where the
+investment equals double the tax bill. As a general statement it
+is misleading.
+
+Fix: Replace with example-specific language: "In this example,
+investing £60,000 in SEIS returns £30,000 immediately — effectively
+covering a £30,000 income tax bill."
+
+**Error 3 — 7.8x average return figure used without source**
+One call stated EIS delivers "7.8 times your money back on average
+— fully researched, documented, publicly available information."
+No source was cited. This figure must either be attributed to a
+specific published source or removed from call scripts.
+
+Fix: Remove 7.8x as an average return figure. Replace with the after-tax framing:
+- "Our portfolio model suggests a base case of 3.8x gross — but on the money you actually put at risk, after income tax relief, that's 5.4x. And because all gains are CGT-free, the taxable equivalent would need to be 4.7x gross to match it."
+- Replace with the three confirmed exit comparables (PitchBook $225M, Bureau van Dijk €3bn, Refinitiv $27bn) as evidence for the exit category. Do not use ContentCal — 7.8x multiple unverifiable.
+See Section 4 for full approved language.
+
+**Error 4 — No qualification gate before document send**
+Documents and demos were offered before confirming income tax rate,
+available capital, or primary motivation. The qualification gate
+(Q1-Q3) must run before any document is sent or demo booked.
+
+Fix: Add to playbook (Section 16b) as mandatory pre-send step.
+
+**Status:** Errors 1 and 4 are immediate — fix before next call
+session. Errors 2 and 3 require script updates and research.
+
+---
+
+## Section 16c — Conversation Playbook (TO BUILD)
+
+### What This Is
+
+A structured but flexible conversation framework for use across
+all investor touchpoints — cold call, follow-up, compliance call,
+demo, and post-demo. Not a script. A set of questions the agent
+genuinely wants answers to, in a sequence that feels natural to
+the investor.
+
+The playbook can run across one call or multiple calls depending
+on how the conversation flows. The sequence is fixed; the pace
+is set by the investor.
+
+---
+
+### The Four Question Types Required
+
+**1. Qualifying Questions**
+Establish fit. Binary routing — does this person qualify or not.
+Must feel like natural conversation, not interrogation.
+Frame as: "Just so I send you the right thing..."
+
+Key qualifiers:
+- Pays higher or additional rate income tax
+- Can deploy £40,000+ in the next 12 months
+- Makes own investment decisions (or adviser who will engage)
+
+---
+
+**2. Profiling Questions**
+Build the picture. No right or wrong answer — every answer routes
+the conversation. These determine which cluster the investor
+belongs to and which SPIN sequences are relevant.
+
+Areas to profile:
+- Current investment activity and asset types
+- Whether they work with an IFA/accountant and how
+- EIS/SEIS familiarity and prior experience
+- Broad financial priorities (growing / protecting / passing on)
+- Estate size signals (without asking directly)
+- Pension situation and awareness of April 2027 change
+- Tax position and annual liability
+
+---
+
+**3. Hot Button Questions**
+Find the real reason. Not the financial goal — the life goal that
+requires the financial goal.
+
+Hot buttons for Unlock investors:
+- Family security: "I want to know my kids and grandkids are
+  taken care of whatever happens"
+- Freedom: "I want to retire when I want, not when I can afford to"
+- Legacy: "I've built something — I want to pass it on, not hand
+  half of it to HMRC"
+- Relief: "I want to stop losing money to tax every year and
+  feeling like I can't do anything about it"
+- Significance: "I want to back things that matter, not just
+  park money in funds"
+
+The hot button question must be oblique — asking about life, not
+money. It surfaces the real motivation in the investor's own words.
+Once found, every subsequent question, document, and follow-up
+is anchored to their specific hot button — not to EIS mechanics.
+
+---
+
+**4. SPIN Questions**
+Surface and develop the problem. Situation → Problem →
+Implication → Need-Payoff.
+
+Six SPIN sequences — one per core problem Unlock solves.
+Deploy based on what profiling reveals. Never run all six.
+
+The six problems:
+1. The advice gap — no structured support for direct EIS decisions
+2. Portfolio correlation risk — hidden concentration not yet modelled
+3. The January 2027 tax bill — a liability they can address now
+4. The broken estate plan — April 2027 pension IHT change
+5. The fee drag — EIS funds taking 8-14% that compounds against returns
+6. The infrastructure gap — direct EIS without tools is unmanageable
+
+Key Need-Payoff question (works across all problems):
+"If instead of paying £20,000 of income tax each year, you turned
+that into £100,000 tax free — how would that change the way you
+look at tax? What impact would that have on your [hot button]?"
+
+The £20K→£100K example should be personalised to the hot button
+already identified. Not "your goals" — "your retirement" or
+"what you leave your kids" or "your daughter's wedding."
+
+---
+
+### Structure of the Full Playbook
+
+The playbook is a single flowing sequence with natural break points.
+The agent goes as far as the conversation allows.
+
+**Break Point 1** — after qualifying questions
+→ Confirm fit. If no: exit gracefully. If yes: continue.
+→ Natural pause: "Let me send you something to look at."
+
+**Break Point 2** — after profiling questions
+→ Persona and cluster identified. Hot button detected.
+→ Natural pause: "Based on what you've told me, I know exactly
+  what to show you. Let me send you [specific document]."
+
+**Break Point 3** — after SPIN sequences
+→ Problem and implication developed. Need-Payoff delivered.
+→ Natural pause: "It sounds like this is worth a proper
+  conversation. Can we book 30 minutes?"
+
+**Break Point 4** — post-demo
+→ Objection handling. What's in the way.
+→ Natural close or next step confirmed.
+
+---
+
+### Design Principles
+
+- Questions should sound like things Tom would actually say
+- Every question should feel easy and low-stakes to answer
+- The investor should feel understood, not assessed
+- No question should feel like it has a right or wrong answer
+- The hot button is never asked for directly — it surfaces through
+  adjacent questions about life, not money
+- Risk disposition is never asked before loss relief mechanics
+  are explained — this is non-negotiable
+
+---
+
+### The Combined Methodology
+
+Three frameworks combined into one conversation architecture.
+Not used separately — layered in sequence.
+
+**Layer 1 — Tactical Empathy (Chris Voss)**
+Opens the conversation and builds trust before anything else.
+Used throughout — not just at the start.
+
+Key techniques:
+- **Mirroring:** Repeat the last 2-3 words with an upward inflection. Invites the investor to continue without asking a direct question.
+- **Labelling:** "It sounds like..." / "It seems like..." — name what you're picking up. Never "I feel like you're..." Always "It sounds like..."
+- **Calibrated questions:** Always "How" or "What" — never "Can you" or "Will you." Calibrated questions are open, can't be answered yes or no, and make the investor feel in control.
+- **No-oriented questions:** Frame questions so the investor can say no and still move forward. "Would it be a problem if I sent you something to look at?" is easier to say yes to than "Can I send you something?" The no feels safe — and safe is where sophisticated investors make decisions.
+- **Silence:** Ask and stop talking. Let the investor fill the space. Talking through the pause is the most common mistake.
+
+**Layer 2 — SPIN Selling**
+Uncovers the problem and develops its implications before offering any solution. The investor sells themselves.
+
+- **Situation:** Understand where they are now. Facts, context, current setup. Keep brief.
+- **Problem:** Surface the dissatisfaction or gap. Not "do you have a problem" — "how do you currently handle X?"
+- **Implication:** Develop the consequences of the problem. This creates urgency from within — not manufactured. "What happens to your January bill if you don't do anything before you file?"
+- **Need-Payoff:** Help the investor articulate the value of the solution in their own words. "What would it mean for you if you could reduce that bill without touching your pension?"
+
+**Layer 3 — Straight Line System (Belfort)**
+Controls momentum once trust and need are established.
+
+- **The Three Certainties:** Before any close, the investor must believe in three things: (1) EIS/the product itself, (2) Unlock as the right platform, (3) Tom as the right person to trust. Pitching before all three are established wastes the pitch.
+- **Future pacing:** "Imagine it's January 2027 and your bill has already been reduced by the EIS relief — that's what we're building toward today."
+- **Looping:** When an objection surfaces, don't argue — acknowledge, reconnect to something they've already agreed with, then address.
+
+**The sequence for a full Unlock conversation:**
+
+Empathy (Voss) → Situation (SPIN) → Problem (SPIN) → Implication (SPIN) → Certainty check → Pitch → Need-Payoff (SPIN) → Close (Straight Line)
+
+---
+
+### Reference Structure — From UKV Playbook
+
+The UKV whisky sales playbook (Retirement Planner persona) demonstrates the correct structural format. Adapt — do not copy.
+
+**The matrix format:**
+
+| Trigger | Challenge/Goal | Probing Question | Value Proposition |
+|---|---|---|---|
+| Macro or personal event | What the investor is trying to solve | The question that surfaces it | What Unlock provides |
+
+**Compelling triggers — macro events:**
+- New tax year just opened — two years of EIS limits simultaneously available
+- April 2027 pension IHT — estate plans broken overnight
+- Market uncertainty — demand for portfolio stress-testing increases
+- Budget changes — tax rates shifting, urgency on existing plans
+
+**Compelling triggers — personal events:**
+- Just sold a property — capital to deploy, CGT exposure
+- Approaching retirement — January 2027 bill on the way
+- Received an inheritance — IHT now personal and immediate
+- Equity event — shares vested or business sale proceeds
+
+**Power stats — Unlock equivalents:**
+- Advice gap: ~22M UK adults with unmet investment advice needs (FCA Financial Lives 2024)
+- EIS market: £1,957M invested in 2022-23 across 4,205 companies (HMRC)
+- Loss relief: HMRC covers up to 72.5% of SEIS downside for additional rate taxpayers
+- Exit: PitchBook sold to Morningstar for $225M in 2016 — the data intelligence category exit precedent
+
+**Pipeline progress — stage-specific questions:**
+
+| Stage | Opening Question | Transition | Close |
+|---|---|---|---|
+| Outreach | Surface the advice gap | Permission to send | "Is there any reason I shouldn't send this across?" |
+| Called | Surface the primary concern | Confirm the need | "It sounds like this is worth 30 minutes — when works?" |
+| Demo Booked | What they want from the demo | Set agenda | — |
+| Demo Complete | Surface remaining concerns | Confirm next step | "What would need to be true for this to make sense?" |
+| Decision | What's in the way | Address it | Voss close — see below |
+
+**The Voss close — moving to the next stage:**
+
+> "It sounds like this could make a real difference for you, [name]. What I'd normally do at this point is send across the information that I think is most relevant to your situation — just so you can have a look before we speak again. Is there any reason why I should hold back on sending that across, or is there anything you'd want me to cover first?"
+
+This is a no-oriented question. The investor can say "no, send it" — which moves them forward. Or they surface a real objection — which is information you need anyway.
+
+**Objection handling format:**
+
+| Objection | Clarifying Question | Value Statement |
+|---|---|---|
+| What they said | Voss-style question to understand the real concern | The answer, anchored to their hot button |
+
+---
+
+### Aircall AI Assist — Topic Structure
+
+10 topics (4 fields each: Topic Name / Conversation Insight Format / Agent Script / AI Prompt):
+
+1. Opening hook — permission + warm connection
+2. EIS familiarity check — establish baseline before educating
+3. Situation questions — current investment setup
+4. Hot button detection — life goals, not financial goals
+5. Qualification gate — income tax rate, capital, decision autonomy
+6. Problem development — SPIN problem + implication questions
+7. Risk mechanics explanation — U4 before any risk question
+8. Persona routing — growing / protecting / passing on
+9. Need-payoff — the £20K → £100K question personalised to hot button
+10. Next step close — Voss no-oriented transition question
+
+**Live insight cards:**
+
+Objection cards (trigger during call):
+- "I'll speak to my accountant first" — keywords: accountant, advisor, IFA
+- "EIS is too risky" — keywords: risky, lose money, too much risk
+- "I missed the April deadline" — keywords: missed, too late, April
+- "I'm not familiar with EIS" — keywords: never heard, don't know EIS
+
+Positive signal cards:
+- Interest signal — keywords: that's interesting, makes sense, tell me more
+- Hot button match — keywords: pension, kids, retirement, grandchildren, wedding
+
+**Scorecard — 4 sections:**
+
+| Section | Weight | Key Checks |
+|---|---|---|
+| Opening & Empathy | 25% | Warm connection? EIS familiarity checked? |
+| Qualification | 35% | Income tax rate confirmed? Capital confirmed? Decision autonomy? |
+| Belief Establishment | 25% | Risk mechanics explained before risk question asked? |
+| Next Step | 15% | Clear next action? Document send or demo booked? |
+
+Target score: 3.5+. Risk mechanics not explained before risk question asked = automatic flag regardless of overall score.
+
+---
+
+### Status
+
+**TO BUILD** — question text not yet written.
+
+The full playbook — with natural language question versions,
+branch logic based on answers, SPIN sequences per problem,
+and Aircall AI topic configuration — is a separate deliverable
+to be written once the master document is signed off.
+
+The playbook will be built into the Unlock document tool as
+a call guidance feature and configured in Aircall AI Assist
+as a 10-topic playbook with live insight cards and scorecard.
+
+**Reference sources for the build:**
+- SPIN Selling (Rackham)
+- Straight Line System (Belfort)
+- Never Split the Difference (Voss)
+- UKV International Sales Playbook (Retirement Planner persona)
+- Aircall AI Assist Pro Setup document
+
+---
+
+## Section 18 — LLM Review Briefs
+
+This section contains tailored briefs for each AI system reviewing
+this document. Each brief has a specific focus area that plays to
+that system's strengths — plus an open invitation for any other
+feedback the system considers important.
+
+**How to use these briefs:**
+Copy the master document in full, then paste the relevant brief
+below it. Each system should review the complete document before
+responding. Paste responses back into the master document under
+Section 19 (Review Findings).
+
+---
+
+### Brief for Perplexity
+
+**Your role:** Factual researcher and source verifier.
+
+**Primary task — answer these specific research questions with
+sources:**
+
+1. **G2 — EIS fund fee drag:** What are the typical total charges
+on UK EIS funds in 2025-26? Include initial charge, annual
+management fee, and performance fee. What is the total percentage
+cost over a 5-year hold at typical fee levels? Sources: EIS
+Association, fund manager documentation, or comparison platforms
+such as Wealth Club or Growth Invest.
+
+2. **G1 — Direct EIS vs fund returns:** What does published research
+show about returns from direct EIS investments compared to EIS
+funds? Source: British Business Bank, NESTA, EIS Association, or
+academic research. If no direct comparison exists, what does the
+data show about EIS portfolio returns generally?
+
+3. **The EIS return figure:** The 7.8x figure used in earlier call scripts has no published source. The correct sourced figure is 3.8x gross (NESTA/BBAA 2009, ERC/UKBAA 2015). This is now corrected in the master document.
+Is there a published source for an average EIS return figure of
+3.8x (NESTA/BBAA 2009, ERC/UKBAA 2015)? If yes, provide the source, date, methodology, and any
+caveats. If no, confirm it is not attributable to a specific
+published source.
+
+4. **Founding round comparables:** What are typical pre-money
+valuations, anti-dilution provisions, and pro-rata rights for
+UK AI/fintech seed rounds in 2024-25? What would be considered
+investor-friendly vs standard? Sources: Beauhurst, Seedlegals
+State of UK Startups report, or similar.
+
+5. **EIS fundraising in recessions:** What happened to EIS
+fundraising volumes in 2008-2012 and 2020-21? Did volumes
+increase, decrease, or hold? Source: HMRC EIS National Statistics
+or EIS Association annual reports.
+
+**Secondary task — open feedback:**
+Having read the full master document, please also flag:
+- Any other factual claims that appear unattributed or
+  unverifiable
+- Any figures that have changed since the dates cited
+- Any regulatory references that may be out of date
+- Anything else you consider important to flag
+
+---
+
+### Brief for ChatGPT
+
+**Your role:** Architecture and logic stress-tester.
+
+**Primary task — stress-test the following:**
+
+1. **Tool vs strategy alignment:** The master document describes
+both a belief-based investor campaign strategy (Sections 2-10)
+and an AI-powered document recommendation tool (Section 13).
+Do these two systems fit together correctly? Does the tool as
+described actually execute the strategy as defined? Where are
+the gaps between what the strategy requires and what the tool
+currently does?
+
+2. **The molecule store concept (Section 16b):** The document
+proposes populating a formal molecule store with approved phrases
+that are injected verbatim into generated content. Is this the
+right architecture for the compliance requirements described?
+What are the failure modes? What happens when a molecule needs
+updating — does the propagation model handle this correctly?
+
+3. **The change taxonomy (Section 16b):** Five change classes are
+defined (cosmetic, editorial, semantic, regulatory, structural)
+with different propagation actions. Is this taxonomy correctly
+applied to the two cascades described? Are there edge cases the
+taxonomy doesn't handle?
+
+4. **The belief system and the recommendation engine:** The belief
+system (Section 5) defines 17 beliefs across four groups. The
+recommendation engine (Section 13) routes documents by persona
+and pipeline stage. These are not the same thing — a document can
+be right for a persona and stage but wrong for a belief state.
+Is there a structural gap here? How should the tool bridge the
+belief system and the document routing logic?
+
+5. **The conversation playbook (Section 16d):** Six SPIN sequences
+are proposed — one per core problem. The hot button is found before
+SPIN begins. Evaluate whether this sequence is psychologically
+sound for sophisticated HNW investors. What would a senior
+sales trainer say about this architecture?
+
+**Secondary task — open feedback:**
+Having read the full master document, please also provide:
+- Any logical contradictions you identify between sections
+- Any assumptions that are load-bearing but not explicitly stated
+- Any part of the strategy or tool architecture that you consider
+  the weakest link
+- Anything else you consider worth raising
+
+---
+
+### Brief for Grok
+
+**Your role:** Sophisticated investor stress-tester.
+
+**Read this document as a self-certified sophisticated investor
+who has just been sent Pack 1 (the Founding Investor Brief) and
+is now conducting due diligence on whether to participate in the
+Unlock founding round.**
+
+**Primary task — answer these questions as that investor:**
+
+1. **The investment case:** Having read the founding round beliefs
+(F0-F3) and the exit narrative (Section 2.7), is the investment
+case convincing? What is the strongest version of the bull case?
+What is the strongest version of the bear case? What would you
+need to see to be genuinely excited?
+
+2. **The AI thesis:** Section 2.3 positions structural independence
+as the moat. As a sophisticated investor who has seen many AI
+pitches, is this framing distinctive or generic? What would make
+it more compelling? What comparables would you want to see beyond
+PitchBook?
+
+3. **The founding round terms:** Anti-dilution to Series A,
+pro-rata rights, £6.5M pre-money. Without knowing the comparable
+market data (which Section 9 flags as still needed), do these
+terms feel appropriate for a pre-revenue AI platform at this
+stage? What terms would you push back on?
+
+4. **The January 2027 two-year window:** Section 2.5 describes
+the Instant Investment + ASA structure. As a financially
+sophisticated investor, does this framing feel genuinely useful
+or like manufactured urgency? What questions would you ask your
+accountant before acting on it?
+
+5. **Social proof gap:** Section 8 flags that the founding cohort
+narrative is not yet populated. How much does this matter for
+your decision? What would you need to know about who else is in?
+
+**Secondary task — open feedback:**
+Having read the full document, please also provide:
+- What you found most and least convincing
+- What you would add, remove, or change if you were advising
+  the Unlock team
+- What questions the document raises but does not answer
+- Anything else you consider worth raising
+
+---
+
+### Brief for Gemini
+
+**Your role:** Completeness reviewer and internal consistency checker.
+
+**Primary task — systematic review for:**
+
+1. **Contradictions:** Read the full master document and identify
+any place where one section contradicts another. Include:
+- Figures that differ between sections
+- Approved language in one section that conflicts with
+  prohibited language in another
+- Strategy guidance that conflicts with tool behaviour
+- Anything described as resolved in one section that appears
+  unresolved in another
+
+2. **Incomplete items presented as complete:** The document has
+an explicit open items list (Section 9) and sign-off checklist
+(Section 10). But there may be items that appear complete in
+the document but are not actually resolved. Flag any item that:
+- Is stated definitively but relies on a source not yet confirmed
+- Requires an external action (legal, counsel, investor permission)
+  that has not yet been confirmed
+- Is marked as CLEAN or APPROVED in the tool but has unresolved
+  compliance questions in the strategy
+
+3. **Sign-off checklist gaps:** Review the sign-off checklist
+in Section 10. Is it complete? Are there items that should be
+on it that are not? Are there items that are listed as complete
+but have dependencies that are not yet resolved?
+
+4. **Section coverage:** Is there anything significant in the
+strategy or tool that is not documented anywhere in the master
+document? What is missing that would need to be added before
+this document could genuinely serve as the single source of truth?
+
+5. **The build queue:** Sections 16b, 16c, and 16d describe items
+to be built. Are these build items correctly specified — do they
+have enough detail to be actioned, or are there gaps that would
+block a developer or agent from executing them?
+
+**Secondary task — open feedback:**
+Having read the full document, please also provide:
+- Your overall assessment of document quality and completeness
+- What you consider the three most important things to fix
+  before sign-off
+- What this document does well that should be preserved
+- Anything else you consider worth raising
+
+---
+
+## Section 19 — Review Findings
+
+*This section is populated as LLM reviews are completed.
+Paste each system's response under its heading.*
+
+### Perplexity — Research Findings
+`[ ]` — Pending
+
+### ChatGPT — Architecture and Logic Review
+✅ Complete — April 2026
+
+**Three critical fixes that remove most structural risk:**
+1. Build belief-state tracking into the tool
+2. Block Pack 1 until F0 is established
+3. Lock January 2027 behind legal sign-off
+
+**Key findings:**
+
+**Belief state tracking missing** — Tool tracks persona and pipeline stage only. No per-lead belief model exists. The recommendation engine sends persona-correct but belief-wrong documents, violating the U4-before-risk sequencing rule. Fix: build belief_state per lead (established/partial/absent per belief ID) and gate document recommendations on belief prerequisites.
+
+**January 2027 is BLOCKED not ready** — Labelled "no blockers" but requires "Subject to EIS tax counsel confirmation." These are unresolved legal dependencies, not disclaimers. Status = BLOCKED until legal sign-off.
+
+**Pack 1 sent without F0** — AI Investment Thesis (primary F0 vehicle) is missing. Pack 1 without F0 = arbitrary valuation, financial engineering framing. Fix: block Pack 1 until AI thesis sent and F0 confirmed established.
+
+**Qualification gate is a behaviour problem** — Aircall Topic 5 does not fix agent behaviour. Fix behaviour first (training, QA scoring), then add hard system rule blocking document send without Q1-Q3 logged.
+
+**Archetype/cluster conflict** — Both systems drive the same decisions without hierarchy. Fix: Cluster = primary strategic driver, Archetype = secondary behavioural lens.
+
+**Additional:** Section 16d duplicated — remove. Pillar 6 should split into 6A (F0 infrastructure) and 6B (F1-F3 investment). G3 has no pillar. mol_january_2027 oversimplified — needs base + extended molecule. Exit narrative needs 3-5 comparables beyond PitchBook.
+
+### Grok — Investor Stress-Test
+✅ Complete — April 2026
+
+**Revised investor verdict:** "Credible enough for serious diligence, but not yet a clear yes at £6.5M pre without harder evidence."
+
+**The critical finding:** The document undersells its strongest asset. The 5 founding investors already using the tools — including Tony Vine-Lott (former DG of TISA, founder of Barclays Stockbrokers) — were not in the document when reviewed. When added, the verdict shifted from "interesting but not investable" to "credible with serious early validation." Social proof gap is a presentation weakness, not a commercial weakness.
+
+**Recommended framing:** "Five founding investors are already using the tools, including senior figures from Barclays Stockbroking and TISA. This is not pre-idea validation. The question is whether that early signal scales."
+
+**Diligence questions Grok would ask:**
+- Are the 5 investors actually invested or verbally committed?
+- How much committed? What is the current total raised?
+- Are they using the tools seriously or just trialling?
+- What specifically did they find valuable?
+- Did they invest for product, tax wrapper, relationship, or terms?
+- What measurable behaviour changed after using the tool?
+
+**On the structural moat:** It is a feature not a moat. A funded competitor can adopt a subscription model and neutral positioning — no technical or regulatory barrier prevents it. The real moat is data flywheel and trust, neither of which is established yet. Acknowledge this.
+
+**On January 2027:** Feels like genuine value but "Subject to EIS tax counsel confirmation" creates doubt at the moment it is needed least. Do not use until legal sign-off is complete.
+
+**On terms:** Anti-dilution to Series A is investor-friendly. £6.5M pre-money is defensible with early traction. Missing: any usage metrics, MRR, or product evidence. Valuation without usage data is a narrative valuation.
+
+**What would make Grok say yes:** Named investors with amounts committed. Product usage evidence. One concrete proof point from Tony Vine-Lott or equivalent. Legal sign-off on January 2027. 2-3 more exit comparables beyond PitchBook.
+
+### Gemini — Round 2 Review (V2.4 consistency check)
+✅ Complete — April 2026
+
+**Gemini's verdict: "Unstable convergence." Logic is sound. Execution artifacts are still dirty.**
+**Status: DRAFT — NOT READY FOR SIGN-OFF. Materially closer than last review.**
+
+**What Gemini confirmed as resolved:**
+- VCT rate ✅ January 2027 tagging ✅ Playbook duplication ✅ 5-6x framing ✅ Team additions ✅ Founder-funded burn ✅
+
+**What remained unresolved going into V2.5 (all fixed in V2.5):**
+1. Tony Vine-Lott named definitively in team while PENDING in Section 16 → Fixed: conditional
+2. Registry CLEAN_PENDING → Fixed: REQUIRES_REVIEW
+3. Tool belief detection documented as active when planned only → Fixed: clarified
+4. Exit comparables in Section 2 only, not in F3 or objections → Fixed: added to both
+5. VCT checklist item inconsistent → Fixed: qualified with cascade caveat
+6. White-glove onboarding undefined → Added to open items
+
+**Blocking sign-off (external — cannot be fixed in document):**
+1. Legal validation of ASA/January 2027 structure
+2. Naming permissions — Tony Vine-Lott and four other founding investors
+3. Investor Data Charter — must exist before "asset registry" claim used in investor communications
+4. Tool cascades — 22p and April 6 language not yet removed from actual documents
+
+**Gemini's overall read:** "Once the tool cleans the documents and Tom cleans the naming permissions, this document will be ready."
+
+**Resolved since last Gemini review:** VCT rate ✅ Playbook duplication ✅ January 2027 tagging ✅ 5-6x framing ✅ Team additions ✅ Founder-funded burn ✅
+
+**Still unresolved (fixed in V2.5):**
+1. Tony Vine-Lott named in team section while PENDING in Section 16 → Fixed: now conditional
+2. Registry CLEAN_PENDING → Fixed: renamed REQUIRES_REVIEW
+3. Tool belief detection still described as active in Section 13 → Fixed: clarified as planned only
+4. Exit comparables only in Section 2, not in F3 or objection handling → Fixed: added to both
+5. Sign-off checklist VCT item inconsistent → Fixed: qualified with cascade caveat
+
+**What is still blocking sign-off (external):**
+1. Legal validation of ASA/January 2027 two-year structure
+2. Naming permissions for Tony Vine-Lott and other four founding investors
+3. Investor Data Charter — must exist before "asset registry" claim is used in investor communications
+4. Tool cascades — 22p and April 6 language not yet removed from actual documents
+
+### Gemini — Completeness Review
+✅ Complete — April 2026
+
+**Overall assessment: NOT READY for sign-off.**
+
+The document contains conflicting statements about the same facts across sections. It presents items as clean, confirmed, or ready that are demonstrably not. Until the contradictions below are resolved, this cannot function as a single source of truth.
+
+**Seven contradictions identified:**
+
+1. **Tony Vine-Lott naming** — Section 1 says "confirmed." Section 16 lists it as a CRITICAL open item. One is wrong.
+2. **EIS Advance Assurance** — Section 1 claims "Confirmed." Section 16 lists ASA instrument as requiring legal review. If the instrument is unresolved, the advance assurance claim for the two-year structure cannot be presented as confirmed.
+3. **Document registry CLEAN status** — Five documents (100, 110, 150, 160, 190) are marked CLEAN but their Notes column says they need April 6 language removed and loss relief figures updated. A document requiring content correction is not CLEAN.
+| 4. **VCT relief rate** | ✅ RESOLVED — now correctly 20% from April 6, 2026 (was incorrectly stated as 30% in earlier versions). Tool was right. |
+5. **Tool belief detection** — Section 13 describes the analyze endpoint as detecting "belief gaps." Section 16 says belief state tracking is a CRITICAL architectural gap not yet built. These cannot both be true.
+6. **Playbook duplication** — Sections 16b and 16d are both titled "Conversation Playbook" with overlapping but slightly different content. Two conflicting versions of agent guidance in one document.
+7. **January 2027** — Presented as core strategy and "practical reality" in Sections 4, 5, 9, and 12. Simultaneously marked BLOCKED in Sections 10 and 14. A BLOCKED item cannot be a core campaign pillar.
+
+**Three most important fixes before sign-off:**
+1. Legal validation — confirm or excise January 2027/ASA structure
+2. Figure synchronisation — run both cascades (27.5p loss relief, April 6 removal)
+3. Belief state tracking — build into tool before strategy is executable
+
+**Missing from sign-off checklist:**
+- Remove duplicate Section 16b/16d (merge into one)
+- Populate molecule store with 10 seed molecules
+- ✅ VCT rate resolved — 20% from April 6, 2026.
+- Generate the three "ready to generate" documents from Section 14
+- White-glove onboarding — define what this actually means
+
+**Not documented anywhere:**
+- Product roadmap for Decumulation Planner and Portfolio Stress-testing
+- Data security and data residency policy for HNW portfolio data
+- Revenue model definition (£99/£249 tiers referenced but never defined)
+
+### Tool Alignment Audit — 4 April 2026
+✅ Complete
+
+**Architecture sound. Two critical content fixes required.**
+
+Working: Recommendation engine ✅ Matrix pre-filter ✅ Context flags ✅ QC engine (19 checks) ✅ Pipeline management ✅ Both cascade dry runs passed ✅
+
+Critical fixes needed:
+1. Document 700 line 1680: "22p" → "27.5p" (single text fix, no blockers)
+2. April 6 language: Cascade 1 ready, awaiting confirmation
+
+Tool-specific gaps (see open items): VCT rate conflict, missing compliance constants, 065 belief IDs, gap analysis engine, 3 REQUIRES_REVIEW documents.
+
+Missing features (future build): Belief state tracking, cluster routing, social proof, exit narrative.
+
+### Synthesis and V1.3 Changes
+`[ ]` — To be written after all four reviews are received
+
+---
+
+## Section 20 — Change Log
+
+| Version | Date | Key Changes |
+|---|---|---|
+| Master V1.9 | April 2026 | Perplexity R2 incorporated: 3.8x relabelled as Unlock model output (not NESTA headline figure — NESTA shows ~2-2.5x mean); 8-14% fee drag relabelled as internal estimate (directionally correct but not externally sourced); EIS fund fee components documented (initial 0-5%, AMC 1-2%, performance 20-25%); approved call language for 3.8x added. |
+| Master V2.0 | April 2026 | Perplexity R2 incorporated: Bureau van Dijk (€3B→Moody's 2017) and Refinitiv ($27B→LSEG 2021) added as exit comparables; ContentCal 7.8x multiple removed (no public source — Adobe acquisition confirmed but multiple unverifiable); EIS fund fee claim updated from "8-14%" to properly sourced directional language using EISA/GrowthInvest December 2025 data. |
+| Master V2.9 | April 2026 | VCT rate corrected to 20% (from April 6, 2026 — tool was right). April 6 reframed as rule change date not deadline. Both cascades confirmed. Approved two-year opportunity language locked in. |
+| Master V2.8 | April 2026 | Tool alignment audit incorporated: VCT rate conflict flagged, both cascade dry runs confirmed ready, Content Bank 22p fix documented, tool-specific open items added, 065 update requirements documented, both loss relief formats (per-pound and percentage) now canonical, founding investor min/max added to compliance constants section. |
+| Master V2.7 | April 2026 | Werner Snyman full biography added from source document. All ContentCal references removed. |
+| Master V2.6 | April 2026 | Six immediate fixes: ContentCal 7.8x removed, docs 160/190 reclassified REQUIRES_REVIEW, April 6 language replaced with two-year framing, white-glove onboarding defined, three proof points written up, 8-14% fee figure removed. |
+| Master V2.5 | April 2026 | Gemini R2 incorporated: all contradictions fixed (Tony Vine-Lott conditional, REQUIRES_REVIEW registry, tool belief detection clarified, comparables in F3 and objections, VCT checklist qualified, white-glove onboarding added to open items). Gemini verdict: "unstable convergence" — logic sound, execution artifacts still dirty. 4 external blockers remain. (Tony Vine-Lott conditional, registry REQUIRES_REVIEW, tool belief detection clarified, exit comparables added to F3 and objections, VCT checklist qualified). Status: NOT READY FOR SIGN-OFF — 4 external blockers remain. |
+| Master V2.4 | April 2026 | Full team documented: William Corke (Revenue Operations) and Tony Vine-Lott (Strategic Advisor and founding investor) added. Approved team framing written. |
+| Master V2.3 | April 2026 | Founding team documented (Tom + Werner), burn/cash framing added ("founder-funded to launch, founding round is deployment capital"), both Grok gaps resolved. |
+| Master V2.2 | April 2026 | Grok R4 incorporated: three exit comparables confirmed (PitchBook $225M, Bureau van Dijk €3bn, Refinitiv $27bn), 5-6x framing validated, two new gaps added (cash position/burn and team/CTO), valuation challenge noted. |
+| Master V2.1 | April 2026 | ChatGPT R3 complete — no new high-value findings. Document holding up under architecture stress-test. Positive convergence signal. |
+| Master V2.0 | April 2026 | Canonical return figure locked in: 5-6x on effective cost. Logic chain documented and approved in Section 3 and Section 4. Framing is honest, evidenced, and defensible — based on 3.8x gross model output on 70p effective cost after 30% income tax relief, all CGT-free. |
+| Master V1.9 | April 2026 | After-tax return framing added: 3.8x gross = 5.4x on effective cost = 4.7x taxable equivalent (all arithmetic, fully defensible). ContentCal/Adobe 7.8x named exit added as fund-returner illustration. NESTA 2.2x mean and SFC Capital distribution model added as supporting evidence. 7.8x as market average remains prohibited. |
+| Master V1.8 | April 2026 | ChatGPT R2 incorporated: data governance gap added as CRITICAL open item (Investor Data Charter required before data flywheel claim), three proof points framework added, January 2027 approved language tagged DO NOT DEPLOY, asset registry pivot documented in Section 1, co-creation evidence requirements defined. |
+| Master V1.7 | April 2026 | Full fix pass: (1) Sections 16b/16d merged — duplicate removed, single canonical playbook section; (2) Pillar 6 split into 6A (F0 infrastructure) and 6B (F1-F3 investment); (3) Cluster/archetype hierarchy explicitly defined; (4) Moat honest assessment added to Section 2; (5) Exit comparables gap noted; (6) VCT rate resolved to 30%; (7) All Gemini contradictions addressed. Three external blockers remain: legal sign-off (January 2027), naming permissions (founding investors), tool cascades (run in Replit). |
+| Master V1.6 | April 2026 | Gemini completeness review incorporated: seven contradictions fixed, document registry statuses corrected to CLEAN_PENDING, tool capability claims qualified, January 2027 track flagged as blocked in campaign architecture, Tony Vine-Lott status corrected, EIS advance assurance claim qualified. Status changed to NOT READY FOR SIGN-OFF pending legal validation and cascade execution. |
+| Master V1.5 | April 2026 | Co-creation framing added: founding investor active development participation documented in Section 1, F0 belief, Section 4 approved language, and Section 12 objection handling. This is the strongest asset in the investment case and was previously absent from all investor-facing content. |
+| Master V1.4 | April 2026 | Grok investor stress-test incorporated: social proof section added to Section 1, founding investor traction documented, Tony Vine-Lott reclassified as critical asset, structural moat limitations noted, January 2027 legal dependency reinforced. |
+| Master V1.3 | April 2026 | ChatGPT architecture review incorporated: belief state tracking added to critical build items, January 2027 reclassified as BLOCKED, Pack 1 F0 gate added, qualification hard gate added, Section 19 ChatGPT findings recorded. |
+| Master V1.2 | April 2026 | Added Sections 18 (LLM review briefs for Perplexity, ChatGPT, Grok, Gemini) and 19 (review findings placeholder). |
+| Master V1.2 | April 2026 | Perplexity research pass incorporated: 7.8x removed, 3.8x (NESTA/ERC) confirmed, VCT rate flagged as unconfirmed blocker, G2 corrected to structural argument only, EIS crisis data confirmed with exact figures, regulatory basis for advice gap updated to Article 53 RAO + COBS 4/9/10/10A + network policies, 2023-24 provisional figures confirmed (£1,575M / 3,780 companies). |
+| Master V1.1 | April 2026 | Added Sections 16c and 16d — molecule store population, change taxonomy, expression variants, call transcript compliance findings, conversation playbook requirement. |
+| Master V1.0 | April 2026 | First complete master document — consolidates all strategy, compliance, tool architecture, and research findings |
+| Strategy V1.2 | April 2026 | Four archetype clusters, exit narrative, ASA confirmed, loss relief resolved |
+| Strategy V1.1 | April 2026 | Advice gap corrected, AI thesis reframed, correlation qualified, F0 added, core narrative spine |
+| Strategy V1.0 | April 2026 | Initial strategy document — belief system, 19 personas, campaign architecture |
+| Tool build 093 | April 2026 | Matrix context flags (eis_familiar, iht_confirmed, adviser_mentioned) integrated |
+| Tool build 091 | April 2026 | Document usage matrix integrated as pre-filter in rank endpoint |
+| Tool build 089-090 | April 2026 | QC sweep — all 17 core documents CLEAN, check 19 (investment minimums) added |
+| Tool build 092 | April 2026 | Four whitepapers generated (320, 330, 340, 350) — 0 content gaps |
+| Tool build 087-088 | April 2026 | QC engine calibration — 19 checks, false positive auto-resolution |
+| Tool build 075-078 | April 2026 | Lead auto-creation, persona analytics, batch depth parity, gap linkage |
+| Tool build 055-059 | April 2026 | Batch upload, call framework, gap persistence |
+
+---
+
+*Unlock Services Limited — Confidential. Internal strategic use only.*
+*Master Document V2.9 | April 2026 | Status: DRAFT — NOT READY FOR SIGN-OFF — see Section 16 for blockers*

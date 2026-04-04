@@ -1111,12 +1111,11 @@ cost --- permanently. This is a one-time benefit, never offered after Q1
 
 **IFA Advice Gap Note**
 
-IFAs cannot advise on individual EIS company investments --- only EIS
-funds and VCTs. This is a structural feature of UK financial regulation,
-not a limitation of Unlock. It means sophisticated investors evaluating
-direct EIS opportunities have no regulated adviser to turn to. Unlock
-fills exactly this gap with intelligence tools and due diligence
-support.
+Most IFAs cannot practically advise on individual EIS company
+investments. Suitability obligations, network compliance policies, and
+regulatory friction mean the advice effectively stops at the fund level.
+This is a practical barrier --- not a legal prohibition. Unlock fills
+exactly this gap with intelligence tools and due diligence support.
 
 **13. Financial Summary**
 
@@ -1186,10 +1185,11 @@ and IHT exemption after 2 years.
 
 **Can my IFA advise me on this?**
 
-IFAs are not permitted to advise on individual EIS company investments
---- only on EIS funds and VCTs. This is a structural feature of UK
-regulation. Unlock provides the intelligence tools and due diligence
-support that fill this gap.
+Most IFAs cannot practically advise on individual EIS company
+investments --- suitability obligations and network compliance policies
+mean the advice effectively stops at the fund level. This is a
+practical barrier, not a legal prohibition. Unlock provides the
+intelligence tools and due diligence support that fill this gap.
 
 **What is the April 2026 IHT change?**
 
@@ -1542,12 +1542,13 @@ of Unlock's current position.
                          and Unlock Access are directly positioned to
                          help investors navigate this deadline.
 
-  **IFA advice gap**     IFAs cannot advise on individual EIS company
-                         investments --- only EIS funds and VCTs. This is
-                         regulatory, structural, and permanent. Unlock
-                         fills exactly this gap. IFAs are potential
-                         distribution partners (referring clients who
-                         need tools they can't provide), not competitors.
+  **IFA advice gap**     Most IFAs cannot practically advise on
+                         individual EIS company investments. Suitability
+                         obligations and network compliance policies mean
+                         the advice stops at fund level. This is a
+                         practical barrier, not a legal prohibition.
+                         Unlock fills this gap. IFAs are potential
+                         distribution partners, not competitors.
 
   **AI cost curve**      AI now enables institutional-grade portfolio
                          analysis at consumer cost. What used to require
@@ -1677,8 +1678,8 @@ communications. Grouped by category.
                      additional-rate taxpayer investing £50K under SEIS:
                      effective net loss is approximately £11.25K after
                      all reliefs. Correctly stated as "risking
-                     approximately 22p in the pound" (not 20p, which
-                     applies only under specific conditions).
+                     approximately 27.5p in the pound" (not 20p or 22p,
+                     which were incorrect figures).
 
   **FCA**            Financial Conduct Authority. UK financial services
                      regulator. Unlock operates within FCA-aligned

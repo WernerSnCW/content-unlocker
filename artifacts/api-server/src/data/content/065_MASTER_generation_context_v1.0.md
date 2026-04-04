@@ -89,6 +89,28 @@ all investor-facing documents.
   onboarding, priority syndicate allocation, pro-rata rights, quarterly
   reporting and direct founder access
 
+### January 2027 framing (replaces all April 6 deadline language)
+The April 6 deadline has passed. All investor-facing documents must use
+the January 2027 head-start framing instead:
+
+Approved replacement language:
+"Both the 2025/26 and 2026/27 tax years are open simultaneously. An
+investment now can offset your January 2027 Self Assessment bill through
+carry-back, and your January 2028 bill through the current year. Two
+years of relief. Two BPR clocks starting. Subject to individual tax
+advice."
+
+Do NOT use: "before April 6", "April 6 deadline", "tax year end",
+"before the deadline" or any language implying an April 6 investment
+urgency that has now passed.
+
+### ASA / Instant Investment qualifier
+Any reference to the ASA or Instant Investment two-year structure must
+include: "Subject to individual tax advice."
+The ASA must meet HMRC structural requirements: no repayment rights, no
+interest, not evergreen, with a longstop date. This qualifier must
+appear wherever the two-year carry-back structure is described.
+
 ### Tone rules
 DO: State genuine urgency. Describe IFAs as structural partners.
     State risks honestly. Frame projections as "management estimates".
@@ -97,6 +119,96 @@ DO NOT: Manufacture urgency with countdown clocks. Call IFAs a
     limitation. Bury or minimise risks. Use "game-changing",
     "revolutionary", "disruptive", or unsubstantiated superlatives.
     Use exclamation marks in investor documents.
+
+---
+
+## SECTION 1B — CANONICAL BELIEF SYSTEM
+
+Every investor-facing document maps to one or more beliefs. Content
+generation must reference the relevant belief IDs. The recommendation
+engine routes content based on which beliefs are established vs missing.
+
+### Universal Beliefs (every investor needs these)
+
+U1 — The Practical Advice Gap (correctable)
+"Most IFAs practically cannot advise on individual EIS companies. I am
+making these decisions without structured professional support."
+
+U2 — Hidden Correlation Risk (developmental)
+"My portfolio has hidden correlation risk I have not stress-tested."
+
+U3 — Structural Independence as the Moat (developmental)
+"The platforms that win in AI wealth management will have the cleanest
+data and the least conflicted incentives — not the best products."
+
+U4 — EIS Risk Is Manageable If Structured Correctly (correctable)
+"My maximum effective loss, after all reliefs, is approximately 38.5p
+per pound (EIS) or 27.5p per pound (SEIS). I was assessing risk against
+the wrong number."
+NON-NEGOTIABLE: U4 must be established before any risk-appetite question.
+
+### Growth Seeker Beliefs
+
+G1 — Asymmetric Upside in Early-Stage AI and Tech (developmental)
+"Early-stage UK tech and AI businesses are where asymmetric upside lives."
+
+G2 — Direct EIS vs Fund Fee Drag (correctable)
+"Direct EIS removes the fund fee layer. The structural fee argument is
+valid; the investor keeps the difference."
+
+G3 — Infrastructure Required for Direct EIS (developmental)
+"I need institutional-grade deal flow and portfolio tools to make direct
+EIS work at scale."
+
+### Preserver Beliefs
+
+P1 — The January 2027 Head Start (correctable)
+"I have a January 2027 Self Assessment bill I haven't yet paid. An
+investment now gives me a head start on that bill."
+
+P2 — Reassessing Risk Against the Right Number (correctable)
+"The effective downside on a failed EIS company, after all reliefs, is
+approximately 38.5p per pound — not the gross investment."
+
+P3 — Unlock Is More Valuable in a Correction (developmental)
+"In a period of market uncertainty, demand for intelligent portfolio
+stress-testing and sequencing advice goes up."
+
+### Legacy Builder Beliefs
+
+L1 — April 2027 Broke the Estate Plan (correctable)
+"April 2027 will bring undrawn pensions into the taxable estate. My
+estate plan, as structured today, is broken."
+
+L2 — Rolling EIS as the BPR Replacement (developmental)
+"A rolling EIS programme, sustained over 5-10 years, can move £2M+
+outside my estate entirely through BPR."
+
+L3 — The Two-Year Window (correctable)
+"Two positions, two years, two BPR clocks. Subject to individual tax
+advice."
+
+### Founding Round Beliefs
+
+F0 — Unlock Will Become Structurally Essential (developmental, prerequisite)
+"Unlock is building the operating system for private investing without
+regulated advice. As the advice gap widens, this becomes essential
+infrastructure."
+F0 MUST be established before F1-F3. Without F0, the founding round ask
+is financial engineering.
+
+F1 — Founding Round Terms Are Genuinely Attractive (developmental)
+"Anti-dilution to Series A, pro-rata rights, £6.5M pre-money, lifetime
+premium access."
+
+F2 — HMRC Co-Invests via EIS (correctable)
+"Investing in Unlock via EIS means HMRC co-invests alongside me. My
+effective entry cost is 70p in the pound."
+
+F3 — The Growth Capital Round and Exit Path (developmental)
+"The natural acquirers — PitchBook→Morningstar $225M, Bureau van
+Dijk→Moody's €3bn, Refinitiv→LSEG $27bn — confirm the category exit
+pattern."
 
 ---
 
@@ -328,20 +440,27 @@ and Decision stages.
 
 ## SECTION 4 — THE IFA ADVICE GAP
 
-IFAs are not permitted to advise on individual EIS company investments
-under FCA regulations. They can only advise on EIS funds managed by
-authorised discretionary managers, and on VCTs. Direct EIS investment
-sits outside the scope of regulated advice entirely.
+Most IFAs cannot practically advise on individual EIS company
+investments. Suitability obligations, network compliance policies, and
+regulatory friction mean the advice effectively stops at the fund level.
+This is a practical barrier — not a legal prohibition. IFAs can and do
+advise on EIS funds managed by authorised discretionary managers, and on
+VCTs. But direct EIS company shares sit outside what most adviser
+networks practically allow.
 
 This is a structural feature of UK financial regulation — not a
 limitation of Unlock or of the investor's IFA. It means sophisticated
-investors evaluating direct EIS opportunities have no regulated adviser
-to turn to. Unlock fills exactly this gap with intelligence tools, due
-diligence support, and portfolio-level modelling.
+investors evaluating direct EIS opportunities have no structured
+professional support. Unlock fills exactly this gap with intelligence
+tools, due diligence support, and portfolio-level modelling.
 
 IFAs are therefore potential distribution partners — not competitors.
 KYS (Know Your Situation) packs formatted for adviser meetings make
 Unlock a complement to professional advice.
+
+Prohibited language: "IFAs are not permitted to advise on EIS" —
+overstated. Use: "Most IFAs cannot practically advise on individual
+EIS companies."
 
 ---
 

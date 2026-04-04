@@ -110,6 +110,48 @@
       "value": "£200,000",
       "note": "Increased from £100,000 from April 2023.",
       "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "founding_investor_minimum",
+      "label": "Founding investor minimum investment",
+      "value": "£40,000",
+      "note": "Hard minimum. No exceptions.",
+      "applies_to": ["120", "130", "all investor docs"]
+    },
+    {
+      "key": "founding_investor_maximum",
+      "label": "Founding investor maximum investment",
+      "value": "£500,000",
+      "note": "Hard maximum per founding investor.",
+      "applies_to": ["120", "130", "all investor docs"]
+    },
+    {
+      "key": "platform_pricing_prohibition",
+      "label": "Platform pricing — NEVER publish",
+      "value": "£99/£249 subscription tiers",
+      "note": "Platform pricing must NEVER appear in any investor-facing document. Founding investors receive lifetime premium access at no cost — this CAN be stated.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "eis_loss_relief_per_pound",
+      "label": "EIS maximum effective loss per pound (additional rate)",
+      "value": "~38.5p",
+      "note": "30% income tax relief upfront, then 45% loss relief on remaining 70p. Always include: subject to individual tax circumstances.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "seis_loss_relief_per_pound",
+      "label": "SEIS maximum effective loss per pound (additional rate)",
+      "value": "~27.5p",
+      "note": "50% income tax relief upfront, then 45% loss relief on remaining 50p. Always include: subject to individual tax circumstances.",
+      "applies_to": ["all investor docs"]
+    },
+    {
+      "key": "seis_loss_relief_prohibited",
+      "label": "PROHIBITED — wrong SEIS loss relief figure",
+      "value": "22p",
+      "note": "22p per pound is WRONG. The correct figure is 27.5p per pound for additional rate taxpayers. Any reference to 22p must be flagged as a compliance failure.",
+      "applies_to": ["all investor docs", "call scripts", "agent tools"]
     }
   ]
 }

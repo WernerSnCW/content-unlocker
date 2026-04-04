@@ -409,10 +409,14 @@ Do not add checks that are not on this list.
     with "subject to final enactment" qualifier
 5.  COMPLIANCE_FIGURES — Pension IHT change stated as April 2027
     with "subject to final legislation" qualifier
-6.  COMPLIANCE_FIGURES — EIS loss relief stated as percentage
-    framing (38.5% effective reduction) not per-pound arithmetic
-7.  COMPLIANCE_FIGURES — SEIS loss relief stated as percentage
-    framing (up to 72% effective relief) not per-pound arithmetic
+6.  COMPLIANCE_FIGURES — EIS loss relief: if per-pound figure is
+    used, it must be ~38.5p (additional rate). If percentage framing
+    is used, 38.5% effective reduction is acceptable. Never 20p.
+7.  COMPLIANCE_FIGURES — SEIS loss relief: if per-pound figure is
+    used, it must be ~27.5p (additional rate). If percentage framing
+    is used, up to 72% effective relief is acceptable. Never 22p.
+    The figure 22p per pound is PROHIBITED — it is factually wrong.
+    Any reference to "22p" as SEIS loss relief is an automatic fail.
 8.  TERMINOLOGY — "Instant Investment" used (not ASA/SAFE)
 9.  TERMINOLOGY — No prohibited phrases: "game-changing",
     "revolutionary", "disruptive", "guaranteed"
