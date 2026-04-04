@@ -1,0 +1,234 @@
+# UNLOCK TOOL — Current Status and Master Document Alignment Check
+
+## Instructions
+
+You have been given the Unlock Master Reference Document (V1.0, April 2026). This is the single source of truth for everything Unlock — strategy, compliance, beliefs, personas, document registry, tool architecture, and content generation queue.
+
+Run a full current status check of the tool, using the master document as the ground truth. For every area, report:
+
+**(a) Current state** — what the tool actually has right now
+**(b) Master document says** — what should exist according to the bible
+**(c) Divergence** — where current state does not match the master document
+**(d) Priority** — 🔴 Critical / 🟡 High / 🟠 Medium / 🟢 Lower
+
+Do not skip any area. If something in the master document is not reflected in the tool at all, flag it explicitly. If something in the tool exists but is not in the master document, flag that too — it may need to be added to the bible or removed from the tool.
+
+At the end, produce a prioritised action plan: what to fix, in what order, and what can be done immediately vs what needs external input.
+
+---
+
+## Area 1 — Compliance Constants
+
+Check the tool's compliance constants against Section 3 of the master document.
+
+Verify:
+- EIS income tax relief: 30%
+- SEIS income tax relief: 50%
+- VCT income tax relief: 20% (reduced April 2026 — was 30%)
+- EIS maximum annual investment: £1,000,000 (£2M for KICs)
+- SEIS maximum annual investment: £200,000
+- EIS loss relief (additional rate taxpayer): ~38.5p per pound maximum effective loss
+- SEIS loss relief (additional rate taxpayer): 27.5p per pound maximum effective loss
+- **Critical:** The 22p figure for SEIS is WRONG and must be deleted from all documents
+- BPR cap: £2,500,000 — "Subject to final enactment"
+- Pension IHT: April 2027 — "Subject to final legislation"
+- Founding investor minimum: £40,000
+- Founding investor maximum: £500,000
+- Platform pricing (£99/£249): NEVER in investor-facing documents
+- Decumulation Planner status phrase: "Specification complete. Prototype build commencing." — ONLY this phrase
+
+Report: which figures are correct in the tool's compliance constants, which are wrong or missing, and which documents contain the wrong 22p figure and need updating.
+
+---
+
+## Area 2 — Document Registry
+
+Check the tool's document registry against Section 8 of the master document.
+
+For each document in the registry, verify:
+- **Title** matches
+- **review_state** is CLEAN (or flag if REQUIRES_REVIEW)
+- **lifecycle_status** is CURRENT
+- **persona_relevance** tags match the master document
+- **stage_relevance** tags match the master document
+- **Content** contains correct compliance figures (especially loss relief per-pound amounts)
+- **April 6 deadline language** — flag any document containing "April 6" as an investment deadline (this has passed and must be removed)
+
+Also check:
+- Are all 30 CURRENT documents present?
+- Are the four whitepapers (320, 330, 340, 350) CLEAN and correctly tagged?
+- Are there any stale DRAFT or unexpected documents in the registry?
+
+Report: full registry status table showing review_state, lifecycle_status, and any divergences from the master document.
+
+---
+
+## Area 3 — Belief System and Master Context
+
+Check the tool's master generation context (065) against Section 5 of the master document.
+
+Verify:
+- Does the master context include the canonical belief statements (U1-U4, G1-G3, P1-P3, L1-L3, F0-F3)?
+- Does it include the approved and prohibited language from Section 4?
+- Does it include the correct loss relief figures (38.5p EIS, 27.5p SEIS)?
+- Does it include the January 2027 framing (not April 6)?
+- Does it include the ASA/two-year structure with the required qualifier ("Subject to individual tax advice")?
+- Does it include the correct Decumulation Planner status phrase?
+- Does it include the compliance constants from Section 3?
+
+Report: what is in the master context, what is missing, and what contains outdated information.
+
+---
+
+## Area 4 — Recommendation Engine
+
+Check the recommendation engine against Sections 11 and 13 of the master document.
+
+Verify:
+
+**Matrix pre-filter (shouldExclude):**
+- Is the document usage matrix file present and correctly integrated?
+- Are the never-send-simultaneously rules working? (Pack 1 and Pack 2 never together; One-Pager and Three-Pager never together)
+- Are the prerequisite-sent rules working? (Pack 2 requires Pack 1 sent first)
+- Are the persona-never-first rules working? (doc 150 never first to Preserver; doc 170 only to Legacy Builder with IHT confirmed)
+- Are the stage-gating rules working? (Pack 1 not before Demo Complete; Pack 2 only at Decision)
+
+**Context flags:**
+- Is `eis_familiar` being correctly derived from transcript analysis?
+- Is `iht_confirmed` being correctly derived (with negation handling)?
+- Is `adviser_mentioned` being correctly derived (with negation handling)?
+- Are these flags being auto-passed from analyze to rank without manual input?
+- Is the Context Signals panel showing in the UI with manual override?
+
+**Worth-it weighting:**
+- Is the worth_it rating from the matrix being passed to Claude's ranking prompt?
+- Is the excluded_documents array being returned in rank responses?
+
+Run a test rank call for each of the three archetype/stage combinations and report results:
+
+Test 1 — Preserver × Demo Booked (iht_confirmed: false, eis_familiar: false, adviser_mentioned: false):
+Expected: Pack 1, Preserver one-pager, FAQ should surface. Doc 170 should be excluded (IHT not confirmed).
+
+Test 2 — Growth Seeker × Called (eis_familiar: false):
+Expected: One-Pager or Three-Pager, Secret Weapon (150) should surface. Doc 170 should be excluded.
+
+Test 3 — Legacy Builder × Demo Complete (iht_confirmed: true):
+Expected: Pack 1, IHT planning doc (170), case studies. Pack 2 should be excluded (wrong stage).
+
+Report: pass/fail for each test with the actual documents returned.
+
+---
+
+## Area 5 — QC Engine
+
+Check the QC engine against the tool architecture in Section 13.
+
+Verify:
+- Is the QC engine running 19 checks (not 8 or fewer)?
+- Is check 19 (INVESTMENT_MINIMUMS — minimum £40,000) active?
+- Is chunking applied for documents >15,000 characters?
+- Is false positive auto-resolution working (auto_resolved_count tracked)?
+- Is the correct SEIS loss relief figure (27.5p) in the QC compliance reference?
+- Is the correct EIS loss relief figure (~38.5p) in the QC compliance reference?
+- Is the 22p figure explicitly flagged as prohibited in the QC checks?
+
+Report: QC check count, any missing checks, any compliance reference figures that need updating.
+
+---
+
+## Area 6 — Content Gaps
+
+Check the current gap analysis against Section 10 of the master document.
+
+Verify:
+- Is the content gap analysis returning the correct gaps?
+- Are these gaps present and flagged as missing:
+  - January 2027 Opportunity Explainer (Pillar 3 — CRITICAL)
+  - AI Investment Thesis (Pillar 6 — CRITICAL)
+  - Cold Advice Gap version (Pillar 1 — HIGH)
+  - EIS Risk Plain English cold version (Pillar 2 — HIGH)
+- Are the four whitepapers (320, 330, 340, 350) correctly mapped to their content pillars?
+- Are the documents referenced in the matrix but not yet generated flagged? (241, 242, 243, 510b, 230b, 515)
+
+Run GET /api/content/gaps and report the full gap list.
+
+---
+
+## Area 7 — Feature Update Cascade Readiness
+
+Two cascades are ready to run immediately per Section 14 of the master document.
+
+**Cascade 1 — Post-April 6 Deadline Language:**
+Run as dry_run first to confirm which documents are affected, then report back before running live.
+- Affects: 100, 110, 150, 160, 190 (at minimum)
+- Change: remove "April 6" investment deadline language, replace with January 2027 head-start framing
+
+**Cascade 2 — Loss Relief Figure Correction:**
+Run as dry_run first to confirm which documents are affected.
+- Affects: all documents containing "22p" SEIS loss relief figure
+- Change: replace 22p with 27.5p (SEIS), add ~38.5p (EIS) where missing
+
+Report: which documents the dry_run detects as affected for each cascade. Do NOT run live until confirmed.
+
+---
+
+## Area 8 — Pipeline and Lead Management
+
+Verify:
+- Pipeline stages in the system match canonical: `Outreach → Called → Demo Booked → Demo Complete → Decision`
+- Archetype labels match canonical: `Growth Seeker | Preserver | Legacy Builder`
+- Lead records have correct persona_relevance and stage fields
+- Send history is being tracked correctly (alreadySentIds used in rank calls)
+
+---
+
+## Area 9 — Missing Tool Features (from Master Document)
+
+The master document references capabilities that may not yet be built. Check for each:
+
+- **Belief state tracking per lead** — does the tool track which beliefs have been established for each lead, or only pipeline stage and persona? If not, flag as a future build item.
+- **Cluster routing** — do the four archetype clusters (IHT Warriors, Tax Optimisers, Growth Builders, Needs Education First) exist as a routing concept in the tool, or only the three archetypes? If not, flag.
+- **Social proof framework** — is there a mechanism to store and display founding cohort narrative? If not, flag.
+- **Exit narrative content** — is the PitchBook exit comparable included in Pack 1 or Pack 2? If not, flag for content update.
+
+---
+
+## Final Output Format
+
+Produce the following:
+
+### Summary Table
+
+| Area | Status | Critical Issues | Action Required |
+|---|---|---|---|
+| Compliance Constants | 🟢/🟡/🔴 | [list] | [action] |
+| Document Registry | 🟢/🟡/🔴 | [list] | [action] |
+| Belief System / Master Context | 🟢/🟡/🔴 | [list] | [action] |
+| Recommendation Engine | 🟢/🟡/🔴 | [list] | [action] |
+| QC Engine | 🟢/🟡/🔴 | [list] | [action] |
+| Content Gaps | 🟢/🟡/🔴 | [list] | [action] |
+| Feature Update Cascade Readiness | 🟢/🟡/🔴 | [list] | [action] |
+| Pipeline / Lead Management | 🟢/🟡/🔴 | [list] | [action] |
+| Missing Tool Features | 🟢/🟡/🔴 | [list] | [action] |
+
+### Prioritised Action Plan
+
+**Immediate (no blockers, run now):**
+1. [action]
+2. [action]
+
+**Short term (minor fixes or research needed):**
+1. [action]
+2. [action]
+
+**Requires external input:**
+1. [action — what input is needed from whom]
+
+**Future build items (not blocking sign-off):**
+1. [item]
+
+### Recommendation
+
+PROCEED TO SIGN-OFF AND CONTENT GENERATION / FIX BEFORE PROCEEDING / NEEDS SENIOR REVIEW
+
+State clearly: is the tool ready to be the execution engine for the V1.0 master document, or does it need updates first?

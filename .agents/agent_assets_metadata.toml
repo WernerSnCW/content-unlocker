@@ -24,3 +24,9 @@ id = "Ro1n0e0CMJq28nq5Ok01c"
 uri = "file://HEALTH_CHECK_OUTPUT.md"
 type = "text"
 title = "Health Check Report — Post Matrix Integration"
+
+[[outputs]]
+id = "zhcZU46SaLuUxCet-YviQ"
+uri = "file://MASTER_ALIGNMENT_AUDIT.md"
+type = "text"
+title = "Unlock Tool — Master Document Alignment Audit"
