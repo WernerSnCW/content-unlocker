@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, leadsTable, documentsTable, changelogTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, videosTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -717,11 +717,13 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       already_sent_count: sentDocIds.length,
     };
 
+    const recommendedVideos = await getRecommendedVideos(resolvedArchetype, pipeline_stage);
     res.json({
       ranked_documents: [],
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
       recommendation_gap,
+      recommended_videos: recommendedVideos,
       all_sent_message:
         "All appropriate documents for this stage and persona have already been sent to this investor. Consider advancing to the next pipeline stage.",
     });
@@ -819,10 +821,12 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
     const scoredResults = rankedWithDetails.filter((r: any) => r.relevance_score !== null && r.relevance_score !== undefined);
     const allLowRelevance = scoredResults.length > 0 && scoredResults.every((r: any) => r.relevance_score < LOW_RELEVANCE_THRESHOLD);
 
+    const recommendedVideos2 = await getRecommendedVideos(resolvedArchetype, pipeline_stage);
     const response: any = {
       ranked_documents: rankedWithDetails,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      recommended_videos: recommendedVideos2,
       all_sent_message: null,
     };
 
@@ -860,14 +864,51 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       rationale: d.description,
     }));
 
+    const recommendedVideosFallback = await getRecommendedVideos(resolvedArchetype, pipeline_stage);
     res.json({
       ranked_documents: fallbackRanked,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      recommended_videos: recommendedVideosFallback,
       all_sent_message: null,
     });
   }
 });
+
+async function getRecommendedVideos(archetype: string | null, stage: string) {
+  try {
+    const allVideos = await db.select().from(videosTable);
+    const currentVideos = allVideos.filter(v => v.lifecycle_status === "CURRENT");
+    if (currentVideos.length === 0) return [];
+
+    return currentVideos
+      .filter(v => {
+        const personaMatch = archetype ? (v.persona_relevance as string[])?.includes(archetype) : false;
+        const stageMatch = (v.stage_relevance as string[])?.includes(stage);
+        return personaMatch || stageMatch;
+      })
+      .map(v => {
+        const personaMatch = !archetype ? false : (v.persona_relevance as string[])?.includes(archetype);
+        const stageMatch = (v.stage_relevance as string[])?.includes(stage);
+        let reason = "";
+        if (personaMatch && stageMatch) reason = `Matches ${archetype} archetype and ${stage} stage`;
+        else if (personaMatch) reason = `Matches ${archetype} archetype`;
+        else if (stageMatch) reason = `Relevant at ${stage} stage`;
+        return {
+          video_id: v.id,
+          title: v.title,
+          description: v.description,
+          duration_seconds: v.duration_seconds,
+          send_method: v.send_method,
+          relevance_reason: reason,
+          persona_match: personaMatch,
+          stage_match: stageMatch,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
 
 router.post("/recommendation/confirm-send", async (req, res): Promise<void> => {
   const parsed = ConfirmSendBody.safeParse(req.body);

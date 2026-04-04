@@ -772,6 +772,29 @@ export default function Recommend() {
                   </div>
                 ) : null}
 
+                {rankData.recommended_videos && rankData.recommended_videos.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Recommended Videos</h3>
+                    {rankData.recommended_videos.map((video: any) => (
+                      <Card key={video.video_id} className="bg-card border-violet-200/50">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-medium text-sm">{video.title}</div>
+                            <Badge variant="secondary" className="text-xs shrink-0 bg-violet-100 text-violet-800">
+                              {video.send_method === "whatsapp" ? "Send via WhatsApp" : video.send_method}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">{video.description}</p>
+                          {video.duration_seconds && (
+                            <span className="text-xs text-muted-foreground">{Math.floor(video.duration_seconds / 60)}:{String(video.duration_seconds % 60).padStart(2, "0")}</span>
+                          )}
+                          <p className="text-xs text-violet-600 mt-1">{video.relevance_reason}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
                 {emailMutation.data && (
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Draft Email</h3>

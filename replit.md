@@ -75,7 +75,8 @@ artifacts-monorepo/
 ## Database Schema
 
 - **leads**: id, name, company, pipeline_stage, first_contact, last_contact, detected_persona, confirmed_persona, confirmed_archetype, persona_confidence, stage_confidence, source, transcript_filename, archived, send_log (JSONB), stage_history (JSONB), notes (JSONB)
-- **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, last_reviewed, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, generation_brief_id, generation_attempt, qc_report_id, source_trace (JSONB), content, qc_history (JSONB), gdoc_id, gdoc_url
+- **documents**: id, file_code, type, name, filename, tier (1-3), category, lifecycle_status, review_state, version, last_reviewed, description, pipeline_stage_relevance (JSONB), persona_relevance (JSONB), upstream_dependencies (JSONB), downstream_dependents (JSONB), is_generated, generation_brief_id, generation_attempt, qc_report_id, source_trace (JSONB), content, qc_history (JSONB), gdoc_id, gdoc_url, source_pdf_path, source_pdf_filename, source_pdf_imported_at
+- **videos**: id (text PK), title, description, duration_seconds, send_method, thumbnail_url, video_url, persona_relevance (JSONB), stage_relevance (JSONB), lifecycle_status (DRAFT/CURRENT/ARCHIVED), notes, created_at, updated_at
 - **changelog**: id, timestamp, action, document_id, lead_id, details, triggered_by
 - **gap_snapshots**: id (text PK with random suffix), total_gaps, matrix_gaps, type_gaps, rec_failures, snapshot_data (JSONB), file_path, notes, created_at
 
@@ -100,6 +101,17 @@ artifacts-monorepo/
 - Confirm-send now persists persona_confidence and stage_confidence to leads table
 - `POST /api/recommendation/gap-brief` — inline brief generation from recommendation gap context (archetype, stage, persona, transcript_summary); calls shared `generateBriefFromGap()` logic internally
 - Rank prompt now explicitly requests `relevance_score` (0.0-1.0) per document for reliable low-relevance gap detection
+
+## Additional API Routes (Brand Templates, PDF Import/Export, Video Catalogue)
+
+- `POST /api/documents/:id/export-pdf` — returns branded HTML for browser print-to-PDF (uses brand constants: Inter font, #00C853 green, #1A1A2E black). Templates: investor_pack, technical_spec, compliance, general, email.
+- `POST /api/documents/import-pdf` — multipart upload; extracts text via pdfjs-dist (legacy build), stores PDF to `documents/pdfs/`, creates document record with CURRENT status + REQUIRES_REVIEW state. Filenames sanitized, paths validated.
+- `GET /api/documents/:id/source-pdf` — download original imported PDF (path-traversal protected)
+- `GET /api/videos` — list all videos (query: ?status=CURRENT|DRAFT|ARCHIVED)
+- `POST /api/videos` — create video catalogue entry (DRAFT by default)
+- `PATCH /api/videos/:id` — update video metadata
+- `POST /api/videos/:id/promote` — set lifecycle_status to CURRENT
+- Rank endpoint includes `recommended_videos` array (matched by archetype + stage against CURRENT videos)
 
 ## Key Libraries
 
@@ -144,7 +156,7 @@ React + Vite frontend. Uses generated React Query hooks from `@workspace/api-cli
 
 ### `lib/db` (`@workspace/db`)
 
-Drizzle ORM with PostgreSQL. Four tables: leads, documents, changelog, gap_snapshots.
+Drizzle ORM with PostgreSQL. Five tables: leads, documents, videos, changelog, gap_snapshots.
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 

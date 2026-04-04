@@ -1,0 +1,518 @@
+# SESSION — Brand Templates, PDF Export, PDF Import, Video Catalogue
+Version: 1.0
+
+Four builds in one session. Complete in order.
+Each build has a verification step before proceeding.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical document tiers
+Tier 1 (foundational) | Tier 2 (supporting) | Tier 3 (tactical)
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+Use detectPropagationTargets() or propagateFromDocument().
+Do not reimplement propagation logic.
+
+---
+
+## PREREQUISITE — Read the brand guidelines file
+
+Before writing any template code, read the brand guidelines file:
+/Unlock_Brandboard_2025.pdf
+
+Extract and record the following before starting Build A:
+
+1. Primary font name and weights used
+2. Secondary/body font name and weights
+3. Primary green hex value (the green used in headings and accents)
+4. Black hex value
+5. White/background hex value
+6. Any additional accent colours
+7. Heading size hierarchy (H1, H2, H3 relative sizes)
+8. Body text size and line height
+9. Margin/padding conventions
+10. Logo usage rules (position, clear space)
+
+Report all extracted values before proceeding to Build A.
+If any value cannot be extracted from the PDF, note it as
+"NOT FOUND — defaulting to [value]" and use a reasonable default.
+
+---
+
+# BUILD A — Brand Template Engine + PDF Export
+
+## Overview
+
+Generated documents currently exist as plain text in the database.
+This build adds a brand layer — HTML/CSS templates per document
+type — and a PDF export that applies Unlock's brand to any
+promoted document. The output is send-ready: agent downloads the
+PDF and attaches to email or sends directly.
+
+---
+
+## Step 1 — Create the brand constants file
+
+Create a new file: api-server/src/lib/brand.ts
+
+Populate it with the values extracted from the brand guidelines:
+
+```typescript
+export const BRAND = {
+  fonts: {
+    heading: '[font name from guidelines]',
+    body: '[font name from guidelines]',
+    headingWeights: { light: 300, regular: 400, medium: 500, bold: 700 },
+    bodyWeights: { regular: 400, medium: 500 }
+  },
+  colours: {
+    green: '[hex from guidelines]',
+    black: '[hex from guidelines]',
+    white: '#FFFFFF',
+    lightGrey: '#F5F5F5',
+    midGrey: '#E0E0E0'
+  },
+  spacing: {
+    pagePaddingMm: 20,
+    sectionGapMm: 12,
+    lineHeight: 1.5
+  },
+  logo: {
+    position: 'top-right',
+    clearSpaceMm: 10
+  }
+}
+```
+
+Replace placeholder values with the actual extracted values.
+Export BRAND as the single source of truth for all templates.
+
+---
+
+## Step 2 — Create the template engine
+
+Create a new file: api-server/src/lib/templates/index.ts
+
+The template engine takes a document record and returns styled
+HTML ready for PDF conversion.
+
+```typescript
+export type DocumentTemplate =
+  'one-pager'      |   // 100-series — single A4 page
+  'three-pager'    |   // 110-series — three A4 pages
+  'pack'           |   // 120/130-series — multi-page pack
+  'briefing'       |   // bespoke briefing (e.g. Duncan Stewart)
+  'explainer'      |   // standalone explainer document
+  'default'            // fallback for any unrecognised type
+
+export function getTemplate(
+  document: DocumentRecord,
+  template?: DocumentTemplate
+): string
+```
+
+Template selection logic:
+- If template is explicitly passed: use it
+- If file_code starts with '10': use 'one-pager'
+- If file_code starts with '11': use 'three-pager'
+- If file_code starts with '12' or '13': use 'pack'
+- If file_code starts with '18': use 'briefing'
+- Otherwise: use 'default'
+
+Each template returns a complete HTML string with:
+- Embedded CSS using BRAND constants
+- Unlock logo in the correct position (use text "UNLOCK" in
+  the brand font as a placeholder if no logo file is available)
+- Document title and metadata header
+- Styled body content (convert markdown-style content to HTML)
+- Page footer with document reference and date
+- Print-ready CSS (@page rules, page-break handling)
+
+The 'one-pager' template must fit on a single A4 page.
+All other templates handle multiple pages automatically.
+
+---
+
+## Step 3 — Create PDF export endpoint
+
+Create a new endpoint: POST /api/documents/:id/export-pdf
+
+This endpoint generates a branded PDF from a document record.
+
+Implementation:
+- Call getTemplate() with the document record
+- Use puppeteer or a similar headless browser library to
+  convert the HTML to PDF
+- If puppeteer is not available in the Replit environment,
+  use an alternative: html-pdf-node, @sparticuz/chromium,
+  or wkhtmltopdf if installed
+- Return the PDF as a downloadable response:
+  Content-Type: application/pdf
+  Content-Disposition: attachment; filename="{document_title}_{date}.pdf"
+
+If PDF generation fails, return 500 with a clear error message.
+Do not return a partial PDF — fail cleanly.
+
+Request body (optional):
+```typescript
+{
+  template?: DocumentTemplate   // override auto-selected template
+}
+```
+
+---
+
+## Step 4 — Add export button to document registry frontend
+
+On the document detail page or document list, add an
+"Export PDF" button for documents with lifecycle_status: CURRENT
+and review_state: CLEAN.
+
+On click:
+- POST /api/documents/:id/export-pdf
+- Show loading state: "Generating branded PDF..."
+- On success: trigger browser download of the PDF
+- On failure: show error message with reason
+
+Documents that are DRAFT or REQUIRES_REVIEW should not have
+the Export PDF button — only CURRENT + CLEAN documents are
+send-ready.
+
+---
+
+## Build A Verification
+
+Test 1 — Brand constants loaded:
+- Confirm api-server/src/lib/brand.ts exists with real values
+  (not placeholders) extracted from the brand guidelines
+- Report the primary green hex value and heading font name
+
+Test 2 — Template engine:
+- Call getTemplate() with a document record from each file_code
+  series (10x, 11x, 12x/13x, 18x)
+- Confirm each returns valid HTML with the correct template layout
+- Confirm BRAND constants are applied (correct colours and font
+  names in the CSS)
+
+Test 3 — PDF export endpoint:
+- POST /api/documents/gap_d53fa534/export-pdf
+  (the FAQ document — CURRENT and CLEAN)
+- Confirm a PDF is returned with correct Content-Disposition header
+- Confirm the PDF is non-zero size
+- Confirm the PDF contains the document title and Unlock branding
+
+Test 4 — Export button:
+- Open a CURRENT/CLEAN document in the document registry
+- Confirm "Export PDF" button is visible
+- Click it and confirm a PDF downloads
+- Open a DRAFT document — confirm Export PDF is not shown
+
+Report: BUILD A VERIFICATION — PASS / FAIL
+
+---
+
+# BUILD B — Finished PDF Import into Registry
+
+## Overview
+
+Existing designed PDFs (produced outside the tool) can be
+imported directly into the document registry. The PDF text is
+extracted for recommendation matching. The original file is
+stored and available for download alongside the generated
+branded version.
+
+---
+
+## Step 1 — File storage for documents
+
+Add a file storage layer to the documents table:
+
+Add columns to the documents schema:
+```typescript
+{
+  source_pdf_path: string | null    // path to the stored original PDF
+  source_pdf_filename: string | null // original filename
+  source_pdf_imported_at: timestamp | null
+}
+```
+
+Create a directory in the project for stored PDFs:
+artifacts/api-server/documents/pdfs/
+
+---
+
+## Step 2 — PDF import endpoint
+
+Create a new endpoint: POST /api/documents/import-pdf
+
+Accepts multipart/form-data with:
+- file: the PDF file (required)
+- name: document display name (required)
+- file_code: document code (optional — auto-assign if not provided)
+- tier: 1, 2, or 3 (required)
+- persona_relevance: array of archetypes (optional)
+- stage_relevance: array of pipeline stages (optional)
+- notes: any notes about the source document (optional)
+
+Processing:
+1. Extract text from the PDF using pdfjs-dist or pdf-parse
+2. Save the PDF file to artifacts/api-server/documents/pdfs/
+3. Create a document record with:
+   - content: extracted text
+   - source_pdf_path: the saved file path
+   - source_pdf_filename: original filename
+   - lifecycle_status: CURRENT
+   - review_state: REQUIRES_REVIEW
+     (imported PDFs need QC review before being treated as CLEAN)
+   - A DOCUMENT_IMPORTED changelog entry
+
+Response:
+```typescript
+{
+  document_id: string
+  name: string
+  content_length: number    // characters extracted
+  source_pdf_path: string
+  review_state: "REQUIRES_REVIEW"
+  message: "PDF imported. Run QC before using in recommendations."
+}
+```
+
+---
+
+## Step 3 — Download original PDF endpoint
+
+Create a new endpoint: GET /api/documents/:id/source-pdf
+
+Returns the original imported PDF as a download.
+If no source PDF exists for this document, return 404.
+
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="{source_pdf_filename}"
+
+---
+
+## Step 4 — Import UI in document registry
+
+Add an "Import PDF" button to the document registry page.
+
+On click: open a modal with:
+- File upload (PDF only, max 10MB)
+- Document name field
+- Tier selector (1 / 2 / 3)
+- Persona relevance (multi-select: Growth Seeker, Preserver,
+  Legacy Builder)
+- Stage relevance (multi-select: all 5 canonical stages)
+- Notes field (optional)
+
+On submit: POST /api/documents/import-pdf
+On success: show the new document in the registry with a
+REQUIRES_REVIEW badge and a "Run QC" button
+
+---
+
+## Step 5 — Import the three existing PDFs
+
+Using the new import endpoint, import the three PDFs that were
+uploaded to the Replit environment:
+
+1. Unlock_Decumulation_.pdf
+   - Name: Decumulation Planner — Investor Explainer
+   - Tier: 3
+   - Persona relevance: Preserver, Legacy Builder
+   - Stage relevance: Demo Complete, Decision
+
+2. EIS__IHT__and_Estate_Planning_-_For_Duncan_Stewart.pdf
+   - Name: EIS, IHT and Estate Planning — Duncan Stewart
+   - Tier: 3
+   - Persona relevance: Legacy Builder
+   - Stage relevance: Demo Complete, Decision
+
+3. UNLOCK_Complete_Guide_V8.pdf
+   - Name: Unlock Access — Complete Investor Guide V8
+   - Tier: 2
+   - Persona relevance: Growth Seeker, Preserver, Legacy Builder
+   - Stage relevance: Demo Complete, Decision
+
+Confirm each import returns a document ID and content length.
+
+---
+
+## Build B Verification
+
+Test 1 — Import endpoint:
+- POST /api/documents/import-pdf with a small test PDF
+- Confirm document created with extracted text content
+- Confirm source_pdf_path is set
+- Confirm review_state: REQUIRES_REVIEW
+- Confirm DOCUMENT_IMPORTED changelog entry
+
+Test 2 — Three existing PDFs imported:
+- Confirm all three documents appear in GET /api/documents
+- Confirm content_length > 0 for each (text was extracted)
+- Confirm persona_relevance and stage_relevance set correctly
+
+Test 3 — Download original:
+- GET /api/documents/{id}/source-pdf for one of the imports
+- Confirm PDF download with correct Content-Disposition header
+
+Test 4 — UI:
+- Open document registry
+- Confirm "Import PDF" button is visible
+- Click it and confirm modal opens with all fields
+
+Report: BUILD B VERIFICATION — PASS / FAIL
+
+---
+
+# BUILD C — Video Catalogue Stub
+
+## Overview
+
+Creates the video record type in the registry with the correct
+schema. No video content yet — records will be added when
+scripts are ready. The recommendation engine is made aware of
+the video type so it can surface videos alongside documents
+when records exist.
+
+---
+
+## Step 1 — Video record schema
+
+Add a new table: videos
+
+```typescript
+videos {
+  id:                string     // e.g. "vid_001"
+  title:             string
+  description:       string
+  script_content:    string | null   // transcript/script text
+  duration_seconds:  integer | null
+  format:            string     // e.g. "portrait_mp4", "landscape_mp4"
+  send_method:       string     // e.g. "whatsapp", "email_link"
+  persona_relevance: jsonb      // array of archetypes
+  stage_relevance:   jsonb      // array of pipeline stages
+  objections_addressed: jsonb   // array of objection names
+  lifecycle_status:  string     // DRAFT | CURRENT | ARCHIVED
+  review_state:      string     // CLEAN | REQUIRES_REVIEW | BLOCKED
+  created_at:        timestamp
+  updated_at:        timestamp
+}
+```
+
+---
+
+## Step 2 — Video CRUD endpoints
+
+Create basic endpoints:
+
+GET /api/videos — list all CURRENT videos
+POST /api/videos — create a new video record
+GET /api/videos/:id — get single video with full script
+PATCH /api/videos/:id — update video metadata or script
+POST /api/videos/:id/promote — set lifecycle_status: CURRENT
+
+---
+
+## Step 3 — Include videos in rank endpoint
+
+Update POST /api/recommendation/rank to include videos in its
+results when CURRENT videos exist that match the persona and stage.
+
+Add to the rank response:
+```typescript
+{
+  ranked_documents: [...],    // existing
+  recommended_videos: Array<{
+    video_id: string
+    title: string
+    description: string
+    duration_seconds: number | null
+    send_method: string
+    relevance_reason: string
+    persona_match: boolean
+    stage_match: boolean
+  }>
+}
+```
+
+If no CURRENT videos exist or none match the persona/stage,
+return recommended_videos: [] — do not error.
+
+---
+
+## Step 4 — Show videos in recommend flow frontend
+
+Update the rank results step in the recommend flow to show
+recommended videos in a separate section below ranked documents.
+
+Each video card shows:
+- Title and description
+- Duration (if set)
+- Send method badge: "📱 Send via WhatsApp"
+- Relevance reason
+- "View Script" button (expandable — shows script_content)
+
+If recommended_videos is empty, do not show the section.
+
+---
+
+## Build C Verification
+
+Test 1 — Table created:
+- Confirm videos table exists in the database schema
+- Confirm all columns are present
+
+Test 2 — CRUD endpoints:
+- POST /api/videos with a test record
+- Confirm 201 response with video ID
+- GET /api/videos — confirm test record appears
+- PATCH /api/videos/:id — confirm update works
+
+Test 3 — Rank endpoint includes videos:
+- POST /api/recommendation/rank
+- Confirm recommended_videos field is present in response
+  (empty array is fine — no videos exist yet)
+- Confirm no crash when recommended_videos is empty
+
+Test 4 — Frontend:
+- Run a recommend flow to the rank step
+- Confirm no crash when recommended_videos is empty
+- Confirm section does not appear when list is empty
+
+Report: BUILD C VERIFICATION — PASS / FAIL
+
+---
+
+## Final session report
+
+BUILD A — Brand template engine + PDF export: PASS / FAIL
+BUILD B — Finished PDF import: PASS / FAIL
+BUILD C — Video catalogue stub: PASS / FAIL
+
+Brand values extracted:
+- Primary font: [name]
+- Primary green: [hex]
+- Black: [hex]
+
+Three PDFs imported:
+- Decumulation Planner Explainer: [document ID]
+- Duncan Stewart Briefing: [document ID]
+- Complete Investor Guide V8: [document ID]
+
+For any failure: which test failed and why.

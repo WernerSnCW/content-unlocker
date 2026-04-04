@@ -92,6 +92,7 @@ export default function DocumentDetail() {
   const [tier1Unlocked, setTier1Unlocked] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<"edit" | "import" | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     if (document) {
@@ -171,6 +172,30 @@ export default function DocumentDetail() {
     a.download = `${document.file_code}_${document.name.replace(/\s+/g, "_")}_v${document.version}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportPdf = async () => {
+    if (!document) return;
+    setExportingPdf(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.origin}/api`;
+      const resp = await fetch(`${baseUrl}/documents/${document.id}/export-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!resp.ok) throw new Error("Export failed");
+      const html = await resp.text();
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        setTimeout(() => printWindow.print(), 500);
+      }
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const [gdocLink, setGdocLink] = useState<string | null>(null);
@@ -279,6 +304,18 @@ export default function DocumentDetail() {
             <Download className="w-4 h-4 mr-1.5" />
             Download
           </Button>
+          {document.lifecycle_status === "CURRENT" && document.review_state === "CLEAN" && document.content && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileText className="w-4 h-4 mr-1.5" />
+              {exportingPdf ? "Generating..." : "Export PDF"}
+            </Button>
+          )}
           {isLinkedToGdocs ? (
             <>
               <a

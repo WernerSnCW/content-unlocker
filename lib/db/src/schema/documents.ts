@@ -28,6 +28,9 @@ export const documentsTable = pgTable("documents", {
   qc_history: jsonb("qc_history").notNull().default([]),
   gdoc_id: text("gdoc_id"),
   gdoc_url: text("gdoc_url"),
+  source_pdf_path: text("source_pdf_path"),
+  source_pdf_filename: text("source_pdf_filename"),
+  source_pdf_imported_at: text("source_pdf_imported_at"),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable);
