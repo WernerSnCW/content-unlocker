@@ -18,3 +18,9 @@ id = "UAGF8eeMXVGHnOR6srxS1"
 uri = "file://STRATEGIC_ASSESSMENT_060.md"
 type = "text"
 title = "Strategic Assessment 060 — Unlock Document Intelligence Tool"
+
+[[outputs]]
+id = "Ro1n0e0CMJq28nq5Ok01c"
+uri = "file://HEALTH_CHECK_OUTPUT.md"
+type = "text"
+title = "Health Check Report — Post Matrix Integration"

@@ -1,0 +1,145 @@
+# HEALTH CHECK — Post Matrix Integration + Whitepaper Generation
+Version: 1.2
+
+Assess the functional health of this project following:
+- Four whitepaper generations (320, 330, 340, 350)
+- Document Usage Matrix integration with pre-filter rules
+- Matrix context flags (eis_familiar, iht_confirmed, adviser_mentioned)
+- Auto-derivation of context flags from analyze response
+- Context signals panel with manual override
+
+Complete the template below exactly. Replace every placeholder.
+Do not add prose before or after it.
+
+Assess every tool, feature, or user-facing workflow in the project.
+Do not skip anything because it seems minor.
+
+---
+
+## HEALTH CHECK OUTPUT
+
+### 1. Tools and features assessed
+
+For each significant tool, feature, or workflow:
+
+#### `[Tool or feature name]`
+**Intended purpose:** [what it is supposed to do]
+**Current status:** [WORKING / PARTIAL / BROKEN / UNKNOWN]
+**Evidence:** [what confirms this. For integration features
+connecting to external services, a live end-to-end test is
+required. If a live end-to-end test cannot be performed,
+status must be UNKNOWN.]
+**Gaps:** [what it fails to do, or "None identified"]
+
+Pay particular attention to the recently built features:
+
+**Document Usage Matrix integration:**
+- shouldExclude() pre-filter in rank endpoint
+- never_send_simultaneously enforcement
+- prerequisite_sent enforcement
+- persona_never_first enforcement
+- worth_it weighting in Claude prompt
+- excluded_documents in rank response
+
+**Context flag derivation:**
+- matrix_context in analyze response
+- eis_familiar derivation (with negation handling)
+- iht_confirmed derivation (with negation handling)
+- adviser_mentioned derivation (with negation handling)
+- Flags auto-passed from analyze to rank in frontend
+- Context signals panel with manual override + re-rank
+- excluded_documents panel in recommendations view
+
+**Whitepaper documents (new):**
+- 320 — IHT-Proof Estate
+- 330 — Advice Gap: EIS
+- 340 — Pension Problem: April 2027
+- 350 — Iran Effect: Portfolio Concentration
+
+**Also confirm these existing features were not broken:**
+- Single transcript analyze (all 19 QC checks intact)
+- Batch upload and analyze-batch
+- Lead management and persona confirmation
+- Document registry and QC engine
+- Content gap analysis and persistence
+- Feature update cascade
+- Google Docs integration (live end-to-end required)
+- Dashboard and changelog
+
+[repeat for every significant tool or feature]
+
+---
+
+### 2. Silent failures
+
+Things that run without errors but produce wrong results:
+
+- **[Function or feature]:** [what it does vs what it should do]
+
+If none: "None identified."
+
+---
+
+### 3. Unreachable or unwired code
+
+Code that exists but is not connected to anything:
+
+- **[File or function]:** [why it is unreachable]
+
+If none: "None identified."
+
+---
+
+### 4. Fragile areas
+
+Code that works now but is likely to break:
+
+- **[File or function]:**
+  - **Issue:** [the specific fragility]
+  - **Likelihood:** [LOW / MEDIUM / HIGH]
+
+If none: "None identified."
+
+---
+
+### 5. Overall verdict
+
+| Area | Status | Notes |
+|---|---|---|
+| Document Usage Matrix — shouldExclude pre-filter | 🟢 / 🟡 / 🔴 | |
+| Document Usage Matrix — never-simultaneously | 🟢 / 🟡 / 🔴 | |
+| Document Usage Matrix — prerequisite-sent | 🟢 / 🟡 / 🔴 | |
+| Document Usage Matrix — persona-never-first | 🟢 / 🟡 / 🔴 | |
+| Document Usage Matrix — worth-it weighting | 🟢 / 🟡 / 🔴 | |
+| Context Flags — eis_familiar derivation | 🟢 / 🟡 / 🔴 | |
+| Context Flags — iht_confirmed derivation | 🟢 / 🟡 / 🔴 | |
+| Context Flags — adviser_mentioned derivation | 🟢 / 🟡 / 🔴 | |
+| Context Flags — auto-passed to rank | 🟢 / 🟡 / 🔴 | |
+| Context Flags — manual override + re-rank | 🟢 / 🟡 / 🔴 | |
+| Excluded Documents — in rank response | 🟢 / 🟡 / 🔴 | |
+| Excluded Documents — visible in UI | 🟢 / 🟡 / 🔴 | |
+| Whitepapers (320, 330, 340, 350) — in registry | 🟢 / 🟡 / 🔴 | |
+| Whitepapers — surfacing in correct recommendations | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Single Analyze | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Rank (matrix-filtered) | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Email Draft | 🟢 / 🟡 / 🔴 | |
+| Recommendation Engine — Confirm Send | 🟢 / 🟡 / 🔴 | |
+| Batch Upload — Parse + Analyze + Auto-match | 🟢 / 🟡 / 🔴 | |
+| Batch Upload — Lead creation from transcript | 🟢 / 🟡 / 🔴 | |
+| Persona Analytics — Accuracy endpoint | 🟢 / 🟡 / 🔴 | |
+| Persona Analytics — Confirmation workflow | 🟢 / 🟡 / 🔴 | |
+| Lead Management — CRUD | 🟢 / 🟡 / 🔴 | |
+| Document Registry — 30 docs, all CLEAN | 🟢 / 🟡 / 🔴 | |
+| Content Generation + QC (19 checks) | 🟢 / 🟡 / 🔴 | |
+| Content Gap Analysis + Persistence | 🟢 / 🟡 / 🔴 | |
+| Feature Update Cascade | 🟢 / 🟡 / 🔴 | |
+| Brand Template + PDF Export | 🟢 / 🟡 / 🔴 | |
+| PDF Import | 🟢 / 🟡 / 🔴 | |
+| Video Catalogue | 🟢 / 🟡 / 🔴 | |
+| Google Docs Integration | 🟢 / 🟡 / 🔴 | |
+| Dashboard | 🟢 / 🟡 / 🔴 | |
+| Changelog | 🟢 / 🟡 / 🔴 | |
+| Compliance Constants | 🟢 / 🟡 / 🔴 | |
+
+**Recommendation:** [PROCEED TO BUILD / FIX BEFORE BUILDING /
+NEEDS SENIOR REVIEW]
