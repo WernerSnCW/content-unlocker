@@ -1,0 +1,245 @@
+# FIX — Document Recommendation Metadata Tags
+Version: 1.0
+Priority: HIGH — recommendation engine returning only 1 result
+for a fully-populated registry
+
+The QC sweep confirmed all documents have content and are CLEAN.
+However, the recommendation engine returned only 1 document
+(relevance_score 0.62) for a Preserver × Demo Booked query.
+Pack 1, Duncan Stewart briefing, and Decumulation explainer
+should all surface for this combination.
+
+The issue is persona_relevance and stage_relevance tags on
+documents — the metadata isn't routing documents to the right
+recommendations even though the content is correct.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+---
+
+## Step 1 — Audit current metadata tags
+
+Call GET /api/documents for all CURRENT documents.
+
+For each document, report:
+- Document ID and title
+- Current persona_relevance array
+- Current stage_relevance array
+
+Identify documents where these arrays are empty or missing —
+these documents will never appear in recommendations regardless
+of content relevance.
+
+---
+
+## Step 2 — Apply correct metadata tags
+
+Update persona_relevance and stage_relevance for each document
+using the canonical values below.
+
+PATCH /api/documents/:id for each document that needs updating.
+
+### Investor-facing document tags
+
+**100 — One_Page**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Outreach", "Called"]
+
+**110 — Founding_Investor_Three_Page**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Outreach", "Called", "Demo Booked"]
+
+**120 — Pack1_Founding_Investor**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Demo Booked", "Demo Complete"]
+
+**130 — Pack2_Information_Memorandum**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Demo Complete", "Decision"]
+
+**140 — Access_Service**
+persona_relevance: ["Growth Seeker", "Legacy Builder"]
+stage_relevance: ["Demo Booked", "Demo Complete", "Decision"]
+
+**150 — EIS_Investors_Secret_Weapon**
+persona_relevance: ["Growth Seeker", "Legacy Builder"]
+stage_relevance: ["Called", "Demo Booked", "Demo Complete"]
+
+**160 — EIS_2026_Five_Case_Studies**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Demo Booked", "Demo Complete", "Decision"]
+
+**170 — IHT_EIS_5M_Estate**
+persona_relevance: ["Legacy Builder", "Preserver"]
+stage_relevance: ["Demo Booked", "Demo Complete", "Decision"]
+
+**180 — Duncan_Stewart_Bespoke**
+persona_relevance: ["Legacy Builder"]
+stage_relevance: ["Demo Complete", "Decision"]
+
+**190 — UK_Investment_2026**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Called", "Demo Booked"]
+
+### Generated document tags
+
+**gap_d53fa534 — FAQ / Objection Handler**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Called", "Demo Booked", "Demo Complete"]
+
+**gap_32e28167 — Preserver One-Pager (Gap 1)**
+persona_relevance: ["Preserver"]
+stage_relevance: ["Demo Booked"]
+
+**gap_b5faed9e — Preserver Recommendation Doc (Gap 5)**
+persona_relevance: ["Preserver"]
+stage_relevance: ["Demo Booked"]
+
+### Imported PDF tags
+
+**decum_explainer — Decumulation Planner Explainer**
+persona_relevance: ["Preserver", "Legacy Builder"]
+stage_relevance: ["Demo Complete", "Decision"]
+
+**duncan_briefing — EIS, IHT and Estate Planning**
+persona_relevance: ["Legacy Builder"]
+stage_relevance: ["Demo Complete", "Decision"]
+
+**inv_opp_feb26 — Investment Opportunity Deck**
+persona_relevance: ["Growth Seeker", "Preserver", "Legacy Builder"]
+stage_relevance: ["Demo Complete", "Decision"]
+Note: This document is REQUIRES_REVIEW — tags should still be
+set correctly so it appears in the queue with the right context,
+even though it won't surface in recommendations until CLEAN.
+
+### Tier 1 document tags (foundational — not in recommendations)
+Documents 400, 520, 700 should have empty or null relevance
+arrays — these are source documents, not recommendation targets.
+
+### Tier 2 operational document tags (internal — not in recommendations)
+Documents 200, 210, 220, 230 should have empty or null relevance
+arrays — these are operational documents.
+
+### Agent document tags (internal — not in recommendations)
+Documents 500, 510, 530 should have empty or null relevance
+arrays — these are agent tools.
+
+---
+
+## Step 3 — Re-run the recommendation engine test
+
+After all metadata tags are updated, run the same test as the
+post-sweep session:
+
+POST /api/recommendation/rank with:
+```json
+{
+  "detected_persona": "Preserver",
+  "pipeline_stage": "Demo Booked",
+  "archetype": "Preserver",
+  "confidence": 0.85,
+  "transcript_summary": "Investor is approaching retirement, concerned about portfolio protection and income sustainability. Has not done EIS before. Main question was about how the platform handles pension drawdown sequencing."
+}
+```
+
+Expected results after metadata fix:
+- At least 4 documents returned (FAQ, Preserver one-pager, Pack 1,
+  UK Investment 2026 at minimum)
+- Top-ranked document should be the Preserver-specific one-pager
+  or Pack 1 — not just the FAQ
+- relevance_score on top result should be ≥ 0.7
+- No recommendation_gap detected
+
+Also run a Growth Seeker × Called test:
+```json
+{
+  "detected_persona": "Growth Seeker",
+  "pipeline_stage": "Called",
+  "archetype": "Growth Seeker",
+  "confidence": 0.8,
+  "transcript_summary": "Early call. Investor interested in high-growth opportunities. Has some EIS experience. Asked about deal flow and how Unlock selects companies."
+}
+```
+
+Expected: One_Page, Three_Page, EIS Secret Weapon, UK Investment
+should all surface.
+
+And a Legacy Builder × Decision test:
+```json
+{
+  "detected_persona": "Legacy Builder",
+  "pipeline_stage": "Decision",
+  "archetype": "Legacy Builder",
+  "confidence": 0.9,
+  "transcript_summary": "Ready to proceed. Has reviewed Pack 2. Main concern is IHT optimisation and ensuring EIS portfolio qualifies for BPR. Wants to understand sequencing before committing."
+}
+```
+
+Expected: Pack 2, Duncan Stewart briefing, IHT/£5M estate doc
+should all surface with high relevance.
+
+---
+
+## Step 4 — Update master context (065)
+
+Update the master generation context file to add minimum
+investment to the compliance constants section.
+
+In 065_MASTER_generation_context_v1.0.md (in the Replit project
+directory), find the compliance figures table in Section 1 and
+add:
+
+```
+| Minimum founding investor ticket | £40,000 | No |
+| Maximum founding investor ticket | £500,000 | No |
+```
+
+These figures must appear correctly in any generated document
+that references investment amounts.
+
+---
+
+## Final report
+
+METADATA AUDIT:
+- Documents with empty persona_relevance: [n before fix]
+- Documents with empty stage_relevance: [n before fix]
+- Documents updated: [n]
+
+RECOMMENDATION TESTS:
+
+Preserver × Demo Booked:
+- Documents returned: [n]
+- Top-ranked: [title] — relevance_score: [score]
+- Recommendation gap: YES / NO
+
+Growth Seeker × Called:
+- Documents returned: [n]
+- Top-ranked: [title] — relevance_score: [score]
+- Recommendation gap: YES / NO
+
+Legacy Builder × Decision:
+- Documents returned: [n]
+- Top-ranked: [title] — relevance_score: [score]
+- Recommendation gap: YES / NO
+
+MASTER CONTEXT:
+- Minimum investment figure added: YES / NO
+
+OVERALL:
+- Recommendation engine producing meaningful results: YES / NO
+- Ready for whitepaper generation: YES / NO

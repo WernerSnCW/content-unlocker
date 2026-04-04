@@ -1288,6 +1288,14 @@ components:
           type: string
         version:
           type: integer
+        persona_relevance:
+          type: array
+          items:
+            type: string
+        stage_relevance:
+          type: array
+          items:
+            type: string
         edit_override:
           type: boolean
           description: Set to true to confirm editing a Tier 1 foundational document

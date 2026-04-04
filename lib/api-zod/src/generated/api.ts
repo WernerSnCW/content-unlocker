@@ -388,6 +388,8 @@ export const UpdateDocumentBody = zod.object({
   lifecycle_status: zod.string().optional(),
   review_state: zod.string().optional(),
   version: zod.number().optional(),
+  persona_relevance: zod.array(zod.string()).optional(),
+  stage_relevance: zod.array(zod.string()).optional(),
   edit_override: zod
     .boolean()
     .optional()

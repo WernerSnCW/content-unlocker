@@ -252,6 +252,8 @@ export interface UpdateDocumentBody {
   lifecycle_status?: string;
   review_state?: string;
   version?: number;
+  persona_relevance?: string[];
+  stage_relevance?: string[];
   /** Set to true to confirm editing a Tier 1 foundational document */
   edit_override?: boolean;
 }

@@ -313,6 +313,13 @@ router.patch("/documents/:id", async (req, res): Promise<void> => {
   if (parsed.data.name) updates.name = parsed.data.name;
   if (parsed.data.description !== undefined) updates.description = parsed.data.description;
   if (parsed.data.content !== undefined) updates.content = parsed.data.content;
+  if (parsed.data.persona_relevance !== undefined) updates.persona_relevance = parsed.data.persona_relevance;
+  if (parsed.data.stage_relevance !== undefined) updates.pipeline_stage_relevance = parsed.data.stage_relevance;
+
+  if (Object.keys(updates).length === 0) {
+    res.json(formatDoc(existing));
+    return;
+  }
 
   const [doc] = await db
     .update(documentsTable)

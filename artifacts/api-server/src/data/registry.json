@@ -33,7 +33,7 @@
       "version": 1,
       "last_reviewed": "2026-03-14",
       "description": "Three-page founding investor promo — cold outreach, forwardable",
-      "pipeline_stage_relevance": ["Outreach", "Called"],
+      "pipeline_stage_relevance": ["Outreach", "Called", "Demo Booked"],
       "persona_relevance": ["Growth Seeker", "Preserver", "Legacy Builder"],
       "upstream_dependencies": ["700", "520"],
       "downstream_dependents": []
@@ -51,7 +51,7 @@
       "version": 1,
       "last_reviewed": "2026-03-14",
       "description": "Pack 1 — founding investor brief, sent post-demo",
-      "pipeline_stage_relevance": ["Demo Complete", "Decision"],
+      "pipeline_stage_relevance": ["Demo Booked", "Demo Complete"],
       "persona_relevance": ["Growth Seeker", "Preserver", "Legacy Builder"],
       "upstream_dependencies": ["700", "520", "400"],
       "downstream_dependents": []
@@ -69,7 +69,7 @@
       "version": 1,
       "last_reviewed": "2026-03-14",
       "description": "Pack 2 / IIM — full investor information memorandum for qualified prospects",
-      "pipeline_stage_relevance": ["Decision"],
+      "pipeline_stage_relevance": ["Demo Complete", "Decision"],
       "persona_relevance": ["Growth Seeker", "Preserver", "Legacy Builder"],
       "upstream_dependencies": ["700", "520", "400"],
       "downstream_dependents": []
@@ -87,7 +87,7 @@
       "version": 2,
       "last_reviewed": "2026-03-14",
       "description": "Unlock Access service explainer — supplementary, EIS deal-flow service",
-      "pipeline_stage_relevance": ["Demo Complete", "Decision"],
+      "pipeline_stage_relevance": ["Demo Booked", "Demo Complete", "Decision"],
       "persona_relevance": ["Growth Seeker", "Legacy Builder"],
       "upstream_dependencies": ["700"],
       "downstream_dependents": []
@@ -105,7 +105,7 @@
       "version": 1,
       "last_reviewed": "2026-03-14",
       "description": "EIS educational piece — cold HNW prospects, investor secret weapon framing",
-      "pipeline_stage_relevance": ["Called", "Demo Booked"],
+      "pipeline_stage_relevance": ["Called", "Demo Booked", "Demo Complete"],
       "persona_relevance": ["Growth Seeker", "Legacy Builder"],
       "upstream_dependencies": ["700"],
       "downstream_dependents": []
@@ -123,8 +123,8 @@
       "version": 2,
       "last_reviewed": "2026-03-14",
       "description": "Five EIS case studies 2026 — worked examples for EIS education",
-      "pipeline_stage_relevance": ["Called", "Demo Booked", "Demo Complete"],
-      "persona_relevance": ["Growth Seeker", "Legacy Builder"],
+      "pipeline_stage_relevance": ["Demo Booked", "Demo Complete", "Decision"],
+      "persona_relevance": ["Growth Seeker", "Preserver", "Legacy Builder"],
       "upstream_dependencies": ["700"],
       "downstream_dependents": []
     },
@@ -141,8 +141,8 @@
       "version": 4,
       "last_reviewed": "2026-03-14",
       "description": "IHT/EIS planning document for £5M estate — Legacy Builder persona primary",
-      "pipeline_stage_relevance": ["Demo Complete", "Decision"],
-      "persona_relevance": ["Legacy Builder"],
+      "pipeline_stage_relevance": ["Demo Booked", "Demo Complete", "Decision"],
+      "persona_relevance": ["Legacy Builder", "Preserver"],
       "upstream_dependencies": ["700", "520"],
       "downstream_dependents": []
     },
@@ -177,7 +177,7 @@
       "version": 1,
       "last_reviewed": "2026-03-14",
       "description": "UK investment landscape report 2026 — long-form lead magnet",
-      "pipeline_stage_relevance": ["Outreach", "Called"],
+      "pipeline_stage_relevance": ["Called", "Demo Booked"],
       "persona_relevance": ["Growth Seeker", "Preserver", "Legacy Builder"],
       "upstream_dependencies": ["700"],
       "downstream_dependents": []
