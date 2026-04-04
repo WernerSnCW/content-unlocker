@@ -30,7 +30,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 3. **Content Management** (`/registry`, `/registry/:id`, `/content-bank`, `/changelog`): 17-document registry with tier-based dependency chains, compliance constants panel, propagation alerts (Tier 1 cascades 2 levels), audit changelog
 4. **Content Generation & QC** (`/generate`): Two separate Claude API calls — generator + evaluator with max 2 regeneration attempts, then MANUAL_REVIEW_REQUIRED. Documents always start as DRAFT.
 5. **Content Gap Analysis** (`/gaps`): Detects missing content via 3 signals — coverage matrix (archetype×stage), required doc types, recommendation engine failures. Generates AI briefs and feeds into generation pipeline.
-6. **Feature Update Cascade** (`/feature-updates`): Submit product changes → detect affected documents via 4 methods (Tier 1 propagation, semantic match, type match, compliance match) → flag REQUIRES_REVIEW → prioritised review queue.
+6. **Feature Update Cascade** (`/feature-updates`): Submit product changes → detect affected documents via 4 methods (Tier 1 propagation, semantic match, type match, compliance match) → flag REQUIRES_REVIEW → prioritised review queue. Supports `dry_run: true` (strict boolean) to preview affected documents without writing to DB.
 
 ### Key Business Rules
 

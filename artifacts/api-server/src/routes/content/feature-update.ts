@@ -34,7 +34,10 @@ router.post("/content/feature-update", async (req, res): Promise<void> => {
       change_type,
       affects_compliance,
       affects_tier1,
+      dry_run,
     } = req.body;
+
+    const isDryRun = dry_run === true;
 
     if (!title || !description) {
       res.status(400).json({ error: "title and description are required" });
@@ -231,28 +234,32 @@ Return ONLY the JSON. If no documents are affected, return {"matches": []}.`,
 
     const reviewQueue = affectedDocs.map((d) => d.document_id);
 
-    for (const ad of affectedDocs) {
-      await db
-        .update(documentsTable)
-        .set({ review_state: "REQUIRES_REVIEW" })
-        .where(eq(documentsTable.id, ad.document_id));
+    let parentChangelogId: string | null = null;
 
+    if (!isDryRun) {
+      for (const ad of affectedDocs) {
+        await db
+          .update(documentsTable)
+          .set({ review_state: "REQUIRES_REVIEW" })
+          .where(eq(documentsTable.id, ad.document_id));
+
+        await db.insert(changelogTable).values({
+          id: randomUUID(),
+          action: "FLAGGED_FOR_FEATURE_UPDATE",
+          document_id: ad.document_id,
+          details: `Feature update "${title}" (${updateId}): ${ad.relevance_reason}`,
+          triggered_by: "feature_update_engine",
+        });
+      }
+
+      parentChangelogId = randomUUID();
       await db.insert(changelogTable).values({
-        id: randomUUID(),
-        action: "FLAGGED_FOR_FEATURE_UPDATE",
-        document_id: ad.document_id,
-        details: `Feature update "${title}" (${updateId}): ${ad.relevance_reason}`,
+        id: parentChangelogId,
+        action: "FEATURE_UPDATE_SUBMITTED",
+        details: `Feature update: ${title}. ${description}. ${affectedDocs.length} documents affected.`,
         triggered_by: "feature_update_engine",
       });
     }
-
-    const parentChangelogId = randomUUID();
-    await db.insert(changelogTable).values({
-      id: parentChangelogId,
-      action: "FEATURE_UPDATE_SUBMITTED",
-      details: `Feature update: ${title}. ${description}. ${affectedDocs.length} documents affected.`,
-      triggered_by: "feature_update_engine",
-    });
 
     const criticalCount = affectedDocs.filter(
       (d) => d.review_priority === "CRITICAL"
@@ -263,6 +270,8 @@ Return ONLY the JSON. If no documents are affected, return {"matches": []}.`,
 
     res.json({
       update_id: updateId,
+      dry_run: isDryRun,
+      ...(isDryRun ? { message: "Dry run only — no documents were modified" } : {}),
       affected_documents: affectedDocs.map((d) => ({
         ...d,
         detection_methods: (d as any).detection_methods || [d.detection_method],

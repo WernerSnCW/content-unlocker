@@ -1,0 +1,238 @@
+# FIX SESSION — Whitepaper Cleanup + Dry Run + Full Text Persistence
+Version: 1.0
+
+Three fixes. Complete in order. Each is independent — if one
+fails, continue to the next and report.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### QC false positive handling
+Auto-resolved false positives (auto_resolved_count > 0, no
+genuine failures) → set CLEAN.
+
+---
+
+## Fix 1 — Whitepaper cleanup (quick)
+
+### The problem
+Whitepapers 320 (IHT-Proof Estate) and 330 (Advice Gap) are
+CURRENT but REQUIRES_REVIEW — they passed QC in the generation
+session but their review_state was reset. Two stale DRAFT
+duplicates of "IHT-Proof Estate" also exist (gap_f23b14e2,
+gap_bcca1a64) and should be archived.
+
+### Step 1a — Identify the correct document IDs
+
+Call GET /api/documents and identify:
+- gap_30ff09d6 — IHT-Proof Estate (CURRENT, REQUIRES_REVIEW)
+- gap_c094330b — Advice Gap (CURRENT, REQUIRES_REVIEW)
+- gap_f23b14e2 — IHT-Proof Estate duplicate (DRAFT)
+- gap_bcca1a64 — IHT-Proof Estate duplicate (DRAFT)
+
+Confirm all four exist before proceeding.
+
+### Step 1b — Archive the two stale duplicates
+
+PATCH /api/documents/gap_f23b14e2 with:
+{ "lifecycle_status": "ARCHIVED" }
+
+PATCH /api/documents/gap_bcca1a64 with:
+{ "lifecycle_status": "ARCHIVED" }
+
+Confirm both return lifecycle_status: ARCHIVED.
+
+### Step 1c — Re-run QC on 320 and 330
+
+Call POST /api/generation/gap_30ff09d6/qc-rerun
+Call POST /api/generation/gap_c094330b/qc-rerun
+
+For each:
+- If QC passes (or only false positives): set review_state CLEAN
+- If genuine failures: report them and fix before promoting
+- Maximum 2 QC attempts per document
+
+### Step 1d — Report
+
+Doc 320 (gap_30ff09d6):
+- QC result: PASS / FAIL / FALSE_POSITIVES_ONLY
+- review_state: CLEAN / REQUIRES_REVIEW
+- Surfaces in recommendations: YES / NO
+
+Doc 330 (gap_c094330b):
+- QC result: PASS / FAIL / FALSE_POSITIVES_ONLY
+- review_state: CLEAN / REQUIRES_REVIEW
+- Surfaces in recommendations: YES / NO
+
+Stale duplicates archived: YES / NO
+
+---
+
+## Fix 2 — Feature update dry_run implementation
+
+### The problem
+The feature update endpoint accepts a dry_run parameter but
+ignores it entirely. Every call writes changelog entries and
+flags documents as REQUIRES_REVIEW, even when the caller is
+just exploring what would be affected. This caused 6 core
+documents to be incorrectly flagged during the health check.
+
+### The fix
+
+In the POST /api/content/feature-update route handler:
+
+1. Read the dry_run boolean from the request body
+   (default false if not provided)
+
+2. If dry_run is true:
+   - Run all detection logic (tier propagation, semantic match,
+     keyword match, compliance match) exactly as normal
+   - Collect the list of affected documents and detection reasons
+   - DO NOT write any changelog entries
+   - DO NOT update any document review_state
+   - Return the same response shape as a real run, but add:
+     `"dry_run": true` to the response root
+     `"message": "Dry run only — no documents were modified"`
+
+3. If dry_run is false (or not provided):
+   - Existing behaviour unchanged — write changelog, flag docs
+
+The response shape must be identical whether dry_run is true
+or false, so callers can use the same parsing logic.
+
+### Update the OpenAPI spec
+
+Add dry_run to the FeatureUpdateBody schema:
+```yaml
+dry_run:
+  type: boolean
+  default: false
+  description: >
+    If true, run detection only — do not write any changelog
+    entries or modify document review states. Returns the same
+    response shape with dry_run: true in the response.
+```
+
+Add dry_run and message to the FeatureUpdateResponse schema.
+
+Regenerate API clients after spec update.
+
+### Confirm with live tests
+
+Test 1 — Dry run does not write:
+- Note the current count of REQUIRES_REVIEW documents
+- POST /api/content/feature-update with a real description
+  and dry_run: true
+- Confirm response includes dry_run: true and message
+- Confirm the same documents that would be affected are listed
+- Call GET /api/documents — confirm REQUIRES_REVIEW count is
+  unchanged
+- Call GET /api/changelog — confirm no new entries were created
+
+Test 2 — Real run still writes:
+- POST /api/content/feature-update with dry_run: false
+  (or without the parameter)
+- Confirm documents are flagged and changelog entries created
+- Confirm response does NOT include dry_run: true
+
+Test 3 — Default behaviour (no parameter):
+- POST /api/content/feature-update without dry_run parameter
+- Confirm it behaves as a real run (writes changelog, flags docs)
+
+Report:
+- dry_run: true does not write: YES / NO
+- dry_run: false writes correctly: YES / NO
+- Default (no parameter) writes correctly: YES / NO
+- OpenAPI spec updated: YES / NO
+
+---
+
+## Fix 3 — Full text persistence for generated documents
+
+### The problem
+All 4 generated whitepapers have full_text: 0 characters in
+the database. Content was generated and passed QC but is not
+persisted in the full_text column. This means PDF export and
+inline content viewing do not work for generated documents.
+
+### Step 3a — Investigate the schema and generation flow
+
+Check the documents table schema to confirm whether full_text
+is a separate column from content, or if they are the same
+field under different names.
+
+Check how the generate-from-brief endpoint saves the document:
+- Does it write to content only?
+- Does it write to full_text only?
+- Does it write to both?
+- Is full_text populated from content during a separate step?
+
+Report the current schema and the generation save logic before
+making any changes.
+
+### Step 3b — Fix the persistence gap
+
+If full_text and content are different columns and generate-
+from-brief only writes to one:
+- Update the generate-from-brief save operation to write
+  generated content to both columns
+
+If full_text is derived from content at read time:
+- Check why the derivation is returning 0 for generated docs
+  but non-zero for imported docs
+- Fix the derivation logic
+
+If full_text is populated by a separate step that was skipped:
+- Identify the step and add it to the generation pipeline
+
+### Step 3c — Backfill existing whitepapers
+
+After fixing the persistence gap, backfill the four existing
+whitepapers:
+
+For each of the four whitepapers (gap_30ff09d6, gap_c094330b,
+gap_29d3cea2, gap_a4c69129):
+- If content exists in the content column: copy it to full_text
+- Confirm full_text character count matches content length
+
+### Step 3d — Verify fix with PDF export
+
+After backfilling:
+- POST /api/documents/gap_29d3cea2/export-pdf
+- Confirm the response is non-empty HTML containing the
+  whitepaper content
+- Confirm the first 200 characters of the exported content
+  match the beginning of the document content
+
+### Report
+
+Schema finding: [full_text and content are the same / different columns]
+Root cause: [describe what was missing]
+Fix applied: [describe the change]
+Whitepapers backfilled: YES / NO
+PDF export works on whitepaper: YES / NO
+
+---
+
+## Final session report
+
+Fix 1 — Whitepaper cleanup:
+- Docs 320 and 330 set to CLEAN: YES / NO
+- Stale duplicates archived: YES / NO
+
+Fix 2 — Dry run:
+- Implemented and tested: YES / NO
+- No accidental writes on dry_run: true: CONFIRMED / BROKEN
+
+Fix 3 — Full text persistence:
+- Root cause identified: YES / NO
+- Fix applied: YES / NO
+- Existing whitepapers backfilled: YES / NO
+- PDF export verified: YES / NO
