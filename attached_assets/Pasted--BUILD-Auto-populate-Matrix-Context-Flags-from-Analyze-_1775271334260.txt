@@ -1,0 +1,310 @@
+# BUILD — Auto-populate Matrix Context Flags from Analyze Response
+Version: 1.0
+Priority: HIGH
+Area: Recommendation Engine — Analyze → Rank handoff
+Depends on: Document Usage Matrix integration must be complete
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Matrix context flags (added in matrix integration)
+eis_familiar: boolean     — skips EIS education doc (150)
+iht_confirmed: boolean    — gates IHT planning doc (170)
+adviser_mentioned: boolean — gates adviser briefing note (241)
+
+---
+
+## Overview
+
+The rank endpoint now accepts three optional context flags
+(eis_familiar, iht_confirmed, adviser_mentioned) that control
+which documents the matrix pre-filter allows through.
+
+Currently these flags must be set manually by the agent.
+The enhanced analyze endpoint already detects the signals
+needed to set them automatically — this build wires them
+together so the flags are derived from transcript analysis
+and passed through to rank without any manual input.
+
+---
+
+## Step 1 — Derive flags from analyze response
+
+The analyze endpoint returns:
+- information_gaps: Array<{ topic, description, suggested_document_type }>
+- blocking_objections: Array<{ name, evidence, severity }>
+- primary_issue: string
+- transcript_summary: string
+
+Define derivation logic for each flag:
+
+### eis_familiar
+Set to TRUE if the transcript analysis indicates the investor
+already knows EIS. Signals:
+- information_gaps does NOT contain any item with topic
+  matching: "EIS", "Enterprise Investment Scheme", "EIS mechanics",
+  "how EIS works", "EIS basics", "EIS relief"
+- AND the transcript_summary contains phrases indicating EIS
+  familiarity: "has done EIS before", "familiar with EIS",
+  "previous EIS investment", "knows EIS", "done this before"
+
+Set to FALSE (default) if:
+- information_gaps contains an EIS-related topic
+- OR no clear familiarity signal in the transcript
+
+### iht_confirmed
+Set to TRUE if the transcript analysis confirms an IHT concern
+and an estate likely above £2M. Signals:
+- transcript_summary mentions "IHT", "inheritance tax",
+  "estate planning", "passing on wealth", "estate"
+- AND the investor's profile (from persona detection) is
+  Legacy Builder OR the transcript references a large estate
+
+Set to FALSE (default) if:
+- No IHT mention in transcript_summary
+- OR investor is Growth Seeker with no IHT context
+
+### adviser_mentioned
+Set to TRUE if the transcript analysis indicates the investor
+has mentioned their accountant or IFA. Signals:
+- blocking_objections contains an item where name or evidence
+  mentions: "accountant", "IFA", "financial adviser",
+  "advisor", "speak to someone", "get advice"
+- OR transcript_summary contains: "accountant", "IFA",
+  "wants advice", "adviser"
+
+Set to FALSE (default) if no adviser reference detected.
+
+---
+
+## Step 2 — Create a flag derivation utility
+
+Create a new function in api-server/src/lib/recommendation-context.ts:
+
+```typescript
+import type { AnalyzeResponse } from '../types'
+
+export interface MatrixContextFlags {
+  eis_familiar: boolean
+  iht_confirmed: boolean
+  adviser_mentioned: boolean
+}
+
+export function deriveMatrixFlags(
+  analysis: AnalyzeResponse
+): MatrixContextFlags {
+  const summary = (analysis.transcript_summary ?? '').toLowerCase()
+  const gaps = analysis.information_gaps ?? []
+  const objections = analysis.blocking_objections ?? []
+
+  // EIS familiarity — absent if there's an EIS information gap
+  const hasEisGap = gaps.some(g =>
+    /eis|enterprise investment|how.*works|tax relief|seis/i.test(
+      g.topic + ' ' + g.description
+    )
+  )
+  const familiarySignals = [
+    'familiar with eis', 'done eis before', 'previous eis',
+    'knows eis', 'done this before', 'used eis', 'invested via eis'
+  ]
+  const hasFamiliaritySignal = familiarySignals.some(s =>
+    summary.includes(s)
+  )
+  const eis_familiar = !hasEisGap && hasFamiliaritySignal
+
+  // IHT confirmation — present if IHT mentioned and estate context
+  const ihtKeywords = [
+    'inheritance tax', 'iht', 'estate planning',
+    'passing on', 'pass on wealth', 'estate', 'heirs',
+    'beneficiaries', 'death duties'
+  ]
+  const iht_confirmed = ihtKeywords.some(k => summary.includes(k))
+
+  // Adviser mention — present in objections or summary
+  const adviserKeywords = [
+    'accountant', 'ifa', 'financial adviser', 'financial advisor',
+    'adviser', 'advisor', 'speak to someone', 'get advice',
+    'consult', 'my adviser', 'my advisor'
+  ]
+  const adviserInObjections = objections.some(o =>
+    adviserKeywords.some(k =>
+      (o.name + ' ' + o.evidence).toLowerCase().includes(k)
+    )
+  )
+  const adviserInSummary = adviserKeywords.some(k =>
+    summary.includes(k)
+  )
+  const adviser_mentioned = adviserInObjections || adviserInSummary
+
+  return { eis_familiar, iht_confirmed, adviser_mentioned }
+}
+```
+
+---
+
+## Step 3 — Apply flags in the frontend recommend flow
+
+The recommend flow has two paths where rank is called:
+1. Single transcript flow (analyze → rank → email draft)
+2. Batch flow (analyze-batch result → link to lead → rank)
+
+### Single transcript flow
+
+In the recommend page, after analyze returns and before rank
+is called, derive the flags and include them in the rank request.
+
+The frontend already has access to the full analyze response
+at the rank step. Add:
+
+```typescript
+import { deriveMatrixFlags } from '../lib/recommendation-context'
+
+// When building the rank request:
+const matrixFlags = deriveMatrixFlags(analysisResult)
+
+const rankRequest = {
+  detected_persona: analysisResult.persona,
+  pipeline_stage: analysisResult.stage,
+  archetype: resolveArchetype(analysisResult.persona),
+  confidence: analysisResult.persona_confidence,
+  transcript_summary: analysisResult.transcript_summary,
+  already_sent_doc_ids: lead.sentDocIds ?? [],
+  // Matrix context flags — auto-derived from analysis
+  eis_familiar: matrixFlags.eis_familiar,
+  iht_confirmed: matrixFlags.iht_confirmed,
+  adviser_mentioned: matrixFlags.adviser_mentioned,
+}
+```
+
+### Batch flow
+
+In the batch result cards, when an agent clicks "Link to Lead"
+and proceeds to the rank step, the flags should be derived
+from the batch analysis result for that transcript.
+
+Store the derived flags alongside the analysis result in the
+batch result state, so they are available when the agent
+proceeds to the recommend flow for the linked lead.
+
+---
+
+## Step 4 — Show derived flags in the recommend UI
+
+In the analysis results step of the recommend flow, add a
+small "Context signals" panel showing which flags were derived
+and why. This gives agents visibility and a way to override.
+
+Display as three toggle rows:
+
+```
+CONTEXT SIGNALS (auto-detected from transcript)
+
+[✓] Investor is EIS-familiar      — no EIS education gaps detected
+[ ] IHT concern confirmed          — no IHT references detected
+[✓] Adviser/accountant mentioned   — objection: "needs to speak to IFA"
+```
+
+Each toggle is editable — the agent can flip any flag manually
+if the auto-detection is wrong.
+
+When a flag is toggled manually, re-run the rank call with the
+updated flags and refresh the ranked documents.
+
+---
+
+## Step 5 — Pass flags through the backend analyze endpoint
+
+The analyze endpoint should also return the derived flags so
+the frontend doesn't have to run the derivation twice.
+
+Add to the analyze response:
+```typescript
+{
+  // ... all existing fields ...
+  matrix_context: {
+    eis_familiar: boolean
+    iht_confirmed: boolean
+    adviser_mentioned: boolean
+    derivation_notes: {
+      eis_familiar: string    // e.g. "EIS information gap detected"
+      iht_confirmed: string   // e.g. "IHT mentioned in transcript"
+      adviser_mentioned: string // e.g. "Objection: speak to accountant"
+    }
+  }
+}
+```
+
+This means the frontend simply reads `analysis.matrix_context`
+rather than running the derivation client-side.
+
+The analyze endpoint imports and calls deriveMatrixFlags()
+on the parsed Claude response before returning.
+
+---
+
+## Confirm with live tests
+
+Test 1 — EIS-naive investor:
+- Analyze a transcript where the investor asks basic EIS questions
+- Confirm matrix_context.eis_familiar: false
+- Confirm matrix_context.derivation_notes.eis_familiar mentions
+  the EIS gap
+- Rank the result and confirm doc 150 (Secret Weapon) is NOT
+  excluded
+
+Test 2 — EIS-familiar investor:
+- Analyze a transcript where the investor mentions prior EIS
+  investments
+- Confirm matrix_context.eis_familiar: true
+- Rank and confirm doc 150 is excluded with reason
+  "Investor already knows EIS — 150 would be condescending"
+
+Test 3 — IHT confirmed:
+- Analyze a transcript mentioning "inheritance tax" and "estate"
+- Confirm matrix_context.iht_confirmed: true
+- Rank with Legacy Builder archetype and confirm doc 170
+  surfaces in results
+
+Test 4 — Adviser mentioned:
+- Analyze a transcript with "I'll need to speak to my accountant"
+- Confirm matrix_context.adviser_mentioned: true
+- Confirm derivation_notes.adviser_mentioned references the
+  objection text
+
+Test 5 — Manual override:
+- Derive flags from a transcript where eis_familiar is false
+- In the UI, manually toggle eis_familiar to true
+- Confirm the rank result updates and doc 150 is now excluded
+- Confirm the manual override is reflected in the rank request
+
+Test 6 — Full flow:
+- Complete a single transcript recommend flow end to end
+- Confirm matrix_context flags appear in analyze response
+- Confirm flags are passed to rank without manual input
+- Confirm excluded_documents in rank response references
+  the correct flags as the exclusion reason
+
+---
+
+## Final report
+
+Flag derivation utility: WORKING / BROKEN
+Analyze endpoint returns matrix_context: YES / NO
+Flags auto-passed to rank in single flow: YES / NO
+Flags auto-passed to rank in batch flow: YES / NO
+Context signals panel in UI: WORKING / NOT IMPLEMENTED
+Manual override working: YES / NO
+
+Test results:
+- EIS-naive: 150 not excluded: YES / NO
+- EIS-familiar: 150 excluded: YES / NO
+- IHT confirmed: 170 surfaces: YES / NO
+- Adviser mentioned: detected in derivation_notes: YES / NO
+- Full flow end-to-end: YES / NO

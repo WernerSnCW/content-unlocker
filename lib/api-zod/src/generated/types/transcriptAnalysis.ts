@@ -5,6 +5,7 @@
  * Unlock Content Intelligence Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { MatrixContext } from "./matrixContext";
 import type { Objection } from "./objection";
 import type { TranscriptAnalysisDetectedPersona } from "./transcriptAnalysisDetectedPersona";
 import type { TranscriptAnalysisPipelineStage } from "./transcriptAnalysisPipelineStage";
@@ -16,4 +17,5 @@ export interface TranscriptAnalysis {
   transcript_summary: string;
   /** @nullable */
   pipeline_stage_suggestion?: string | null;
+  matrix_context?: MatrixContext;
 }

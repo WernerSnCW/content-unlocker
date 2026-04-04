@@ -14,6 +14,7 @@ import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt
 import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
 import { generateBriefFromGap } from "../content/gaps";
 import { shouldExclude, getWorthItWeight, getPersonaRoute, getStageRule, DOCUMENT_RULES } from "../../data/document-usage-matrix";
+import { deriveMatrixFlags } from "../../lib/recommendation-context";
 import multer from "multer";
 import mammoth from "mammoth";
 
@@ -323,6 +324,25 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
       if (questionsCovered <= 2) confidenceImpact = "Low coverage — analysis confidence may be reduced";
       else if (questionsCovered === 3) confidenceImpact = "Good coverage — one signal area missing";
 
+      const batchParsedObjections = (analysis.objections || []).map((o: any) => ({
+        objection: o.objection || o,
+        severity: o.severity || "minor",
+        suggested_response: o.suggested_response || "",
+      }));
+      const batchParsedGaps = (analysis.information_gaps || []).map((g: any) => ({
+        gap: g.gap || "",
+        impact: g.impact || "",
+        suggested_document_type: g.suggested_document_type || "",
+      }));
+      const batchSummary = analysis.transcript_summary || "";
+
+      const batchMatrixContext = deriveMatrixFlags({
+        transcript_summary: batchSummary,
+        information_gaps: batchParsedGaps,
+        blocking_objections: analysis.blocking_objections || [],
+        objections: batchParsedObjections,
+      });
+
       results.push({
         filename: item.filename,
         investor_name: investorName,
@@ -332,21 +352,13 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
           persona_confidence: persona.confidence_score,
           stage: stage.stage,
           stage_confidence: stage.confidence_score,
-          objections: (analysis.objections || []).map((o: any) => ({
-            objection: o.objection || o,
-            severity: o.severity || "minor",
-            suggested_response: o.suggested_response || "",
-          })),
+          objections: batchParsedObjections,
           blocking_objections: analysis.blocking_objections || [],
           evidence: persona.evidence || [],
           readiness_score: typeof analysis.readiness_score === "number" ? analysis.readiness_score : 0.5,
           primary_issue: primaryIssue,
           recommended_next_action: analysis.recommended_next_action || "Follow up with relevant materials.",
-          information_gaps: (analysis.information_gaps || []).map((g: any) => ({
-            gap: g.gap || "",
-            impact: g.impact || "",
-            suggested_document_type: g.suggested_document_type || "",
-          })),
+          information_gaps: batchParsedGaps,
           questions_answered: qa,
           call_completeness: {
             questions_covered: questionsCovered,
@@ -354,8 +366,9 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
             missing_signals: missingSignals,
             confidence_impact: confidenceImpact,
           },
-          transcript_summary: analysis.transcript_summary || "",
+          transcript_summary: batchSummary,
           pipeline_stage_suggestion: analysis.pipeline_stage_suggestion || null,
+          matrix_context: batchMatrixContext,
         },
       });
     } catch (err: any) {
@@ -566,21 +579,32 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
     if (questionsCovered <= 2) confidenceImpact = "Low coverage — analysis confidence may be reduced";
     else if (questionsCovered === 3) confidenceImpact = "Good coverage — one signal area missing";
 
+    const parsedObjections = (analysis.objections || []).map((o: any) => ({
+      objection: o.objection || "",
+      severity: o.severity || "minor",
+      suggested_response: o.suggested_response || "",
+    }));
+    const parsedGaps = (analysis.information_gaps || []).map((g: any) => ({
+      gap: g.gap || "",
+      impact: g.impact || "",
+      suggested_document_type: g.suggested_document_type || "",
+    }));
+    const transcriptSummary = analysis.transcript_summary || "";
+
+    const matrixContext = deriveMatrixFlags({
+      transcript_summary: transcriptSummary,
+      information_gaps: parsedGaps,
+      blocking_objections: analysis.blocking_objections || [],
+      objections: parsedObjections,
+    });
+
     res.json({
       detected_persona: analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] },
       pipeline_stage: stage,
       readiness_score: typeof analysis.readiness_score === "number" ? analysis.readiness_score : 0.5,
-      objections: (analysis.objections || []).map((o: any) => ({
-        objection: o.objection || "",
-        severity: o.severity || "minor",
-        suggested_response: o.suggested_response || "",
-      })),
+      objections: parsedObjections,
       blocking_objections: analysis.blocking_objections || [],
-      information_gaps: (analysis.information_gaps || []).map((g: any) => ({
-        gap: g.gap || "",
-        impact: g.impact || "",
-        suggested_document_type: g.suggested_document_type || "",
-      })),
+      information_gaps: parsedGaps,
       primary_issue: primaryIssue,
       recommended_next_action: analysis.recommended_next_action || "Follow up with relevant materials.",
       questions_answered: qa,
@@ -590,8 +614,9 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
         missing_signals: missingSignals,
         confidence_impact: confidenceImpact,
       },
-      transcript_summary: analysis.transcript_summary || "",
+      transcript_summary: transcriptSummary,
       pipeline_stage_suggestion: analysis.pipeline_stage_suggestion || null,
+      matrix_context: matrixContext,
     });
   } catch (err: any) {
     req.log.error({ err }, "Claude API call failed");
@@ -934,6 +959,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       ranked_documents: fallbackRanked,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
+      excluded_documents: excludedDocs,
       recommended_videos: recommendedVideosFallback,
       all_sent_message: null,
     });

@@ -40,6 +40,12 @@ type BatchAnalysis = {
   call_completeness?: { questions_covered: number; questions_total: number; missing_signals: string[]; confidence_impact: string };
   transcript_summary?: string;
   pipeline_stage_suggestion?: string | null;
+  matrix_context?: {
+    eis_familiar: boolean;
+    iht_confirmed: boolean;
+    adviser_mentioned: boolean;
+    derivation_notes?: { eis_familiar: string; iht_confirmed: string; adviser_mentioned: string };
+  };
 };
 
 type LeadMatch = {
@@ -98,6 +104,12 @@ export default function Recommend() {
   const [gapBriefError, setGapBriefError] = useState<string | null>(null);
   const [gapDocGenerating, setGapDocGenerating] = useState(false);
   const [gapDocResult, setGapDocResult] = useState<any>(null);
+  const [matrixFlags, setMatrixFlags] = useState<{
+    eis_familiar: boolean;
+    iht_confirmed: boolean;
+    adviser_mentioned: boolean;
+    derivation_notes?: { eis_familiar: string; iht_confirmed: string; adviser_mentioned: string };
+  } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -132,6 +144,15 @@ export default function Recommend() {
       } as any,
     });
 
+    const mc = (analysis as any).matrix_context;
+    const flags = mc ? {
+      eis_familiar: mc.eis_familiar ?? false,
+      iht_confirmed: mc.iht_confirmed ?? false,
+      adviser_mentioned: mc.adviser_mentioned ?? false,
+      derivation_notes: mc.derivation_notes,
+    } : { eis_familiar: false, iht_confirmed: false, adviser_mentioned: false };
+    setMatrixFlags(flags);
+
     const ranking = await rankMutation.mutateAsync({
       data: {
         lead_id: selectedLeadId,
@@ -139,6 +160,9 @@ export default function Recommend() {
         pipeline_stage: analysis.pipeline_stage.stage,
         transcript_summary: analysis.transcript_summary,
         objections: (analysis.objections || []).map((o: any) => o.objection),
+        eis_familiar: flags.eis_familiar,
+        iht_confirmed: flags.iht_confirmed,
+        adviser_mentioned: flags.adviser_mentioned,
       },
     });
 
@@ -154,6 +178,25 @@ export default function Recommend() {
         },
       });
     }
+  };
+
+  const handleFlagToggle = async (flag: "eis_familiar" | "iht_confirmed" | "adviser_mentioned") => {
+    if (!matrixFlags || !analyzeMutation.data) return;
+    const updated = { ...matrixFlags, [flag]: !matrixFlags[flag] };
+    setMatrixFlags(updated);
+    const analysis = analyzeMutation.data;
+    await rankMutation.mutateAsync({
+      data: {
+        lead_id: selectedLeadId,
+        detected_persona: analysis.detected_persona.name,
+        pipeline_stage: analysis.pipeline_stage.stage,
+        transcript_summary: analysis.transcript_summary,
+        objections: (analysis.objections || []).map((o: any) => o.objection),
+        eis_familiar: updated.eis_familiar,
+        iht_confirmed: updated.iht_confirmed,
+        adviser_mentioned: updated.adviser_mentioned,
+      },
+    });
   };
 
   const handleConfirm = () => {
@@ -553,6 +596,53 @@ export default function Recommend() {
                     )}
                   </div>
                 )}
+
+                {matrixFlags && (
+                  <div className="border rounded-md">
+                    <div className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b">
+                      Context Signals
+                    </div>
+                    <div className="px-4 py-3 space-y-2.5">
+                      {([
+                        { key: "eis_familiar" as const, label: "Investor is EIS-familiar", icon: matrixFlags.eis_familiar ? "on" : "off" },
+                        { key: "iht_confirmed" as const, label: "IHT concern confirmed", icon: matrixFlags.iht_confirmed ? "on" : "off" },
+                        { key: "adviser_mentioned" as const, label: "Adviser/accountant mentioned", icon: matrixFlags.adviser_mentioned ? "on" : "off" },
+                      ]).map(({ key, label, icon }) => (
+                        <div key={key} className="flex items-start gap-3">
+                          <button
+                            onClick={() => handleFlagToggle(key)}
+                            disabled={rankMutation.isPending}
+                            className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-xs transition-colors ${
+                              matrixFlags[key]
+                                ? "bg-primary border-primary text-primary-foreground"
+                                : "border-muted-foreground/40 hover:border-muted-foreground"
+                            }`}
+                          >
+                            {matrixFlags[key] && <CheckCircle className="w-3 h-3" />}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-sm ${matrixFlags[key] ? "font-medium" : "text-muted-foreground"}`}>
+                              {label}
+                            </div>
+                            {matrixFlags.derivation_notes?.[key] && (
+                              <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {matrixFlags.derivation_notes[key]}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {rankMutation.isPending && (
+                      <div className="px-4 pb-3">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Re-ranking documents...
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -771,6 +861,28 @@ export default function Recommend() {
                     {rankData.all_sent_message || "No suitable documents found."}
                   </div>
                 ) : null}
+
+                {rankData.excluded_documents?.length > 0 && (
+                  <div className="border rounded-md">
+                    <button className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50" onClick={() => togglePanel("excluded")}>
+                      <div className="flex items-center gap-2">
+                        <XCircle className="w-4 h-4 text-muted-foreground" />
+                        <span>Filtered by Matrix ({rankData.excluded_documents.length})</span>
+                      </div>
+                      {detailPanels.excluded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </button>
+                    {detailPanels.excluded && (
+                      <div className="px-4 pb-4 border-t pt-3 space-y-2">
+                        {rankData.excluded_documents.map((doc: any, i: number) => (
+                          <div key={i} className="text-xs flex items-start gap-2">
+                            <Badge variant="outline" className="shrink-0 text-xs mt-0.5">{doc.file_code || doc.document_id}</Badge>
+                            <span className="text-muted-foreground">{doc.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {rankData.recommended_videos && rankData.recommended_videos.length > 0 && (
                   <div className="space-y-3">

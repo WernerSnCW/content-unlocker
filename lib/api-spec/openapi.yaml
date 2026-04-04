@@ -970,11 +970,41 @@ components:
           type: string
         pipeline_stage_suggestion:
           type: ["string", "null"]
+        matrix_context:
+          $ref: "#/components/schemas/MatrixContext"
       required:
         - detected_persona
         - pipeline_stage
         - objections
         - transcript_summary
+
+    MatrixContext:
+      type: object
+      properties:
+        eis_familiar:
+          type: boolean
+        iht_confirmed:
+          type: boolean
+        adviser_mentioned:
+          type: boolean
+        derivation_notes:
+          type: object
+          properties:
+            eis_familiar:
+              type: string
+            iht_confirmed:
+              type: string
+            adviser_mentioned:
+              type: string
+          required:
+            - eis_familiar
+            - iht_confirmed
+            - adviser_mentioned
+      required:
+        - eis_familiar
+        - iht_confirmed
+        - adviser_mentioned
+        - derivation_notes
 
     Objection:
       type: object

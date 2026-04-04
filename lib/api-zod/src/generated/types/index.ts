@@ -61,6 +61,8 @@ export * from "./leadDetail";
 export * from "./listChangelogParams";
 export * from "./listDocumentsParams";
 export * from "./listLeadsParams";
+export * from "./matrixContext";
+export * from "./matrixContextDerivationNotes";
 export * from "./matrixGap";
 export * from "./matrixGapGapType";
 export * from "./nextAction";

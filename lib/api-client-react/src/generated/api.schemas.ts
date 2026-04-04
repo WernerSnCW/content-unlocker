@@ -119,6 +119,19 @@ export interface Objection {
   suggested_response: string;
 }
 
+export type MatrixContextDerivationNotes = {
+  eis_familiar: string;
+  iht_confirmed: string;
+  adviser_mentioned: string;
+};
+
+export interface MatrixContext {
+  eis_familiar: boolean;
+  iht_confirmed: boolean;
+  adviser_mentioned: boolean;
+  derivation_notes: MatrixContextDerivationNotes;
+}
+
 export interface TranscriptAnalysis {
   detected_persona: TranscriptAnalysisDetectedPersona;
   pipeline_stage: TranscriptAnalysisPipelineStage;
@@ -126,6 +139,7 @@ export interface TranscriptAnalysis {
   transcript_summary: string;
   /** @nullable */
   pipeline_stage_suggestion?: string | null;
+  matrix_context?: MatrixContext;
 }
 
 export interface RankDocumentsBody {

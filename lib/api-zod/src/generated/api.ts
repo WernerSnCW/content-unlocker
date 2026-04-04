@@ -189,6 +189,18 @@ export const AnalyzeTranscriptResponse = zod.object({
   ),
   transcript_summary: zod.string(),
   pipeline_stage_suggestion: zod.string().nullish(),
+  matrix_context: zod
+    .object({
+      eis_familiar: zod.boolean(),
+      iht_confirmed: zod.boolean(),
+      adviser_mentioned: zod.boolean(),
+      derivation_notes: zod.object({
+        eis_familiar: zod.string(),
+        iht_confirmed: zod.string(),
+        adviser_mentioned: zod.string(),
+      }),
+    })
+    .optional(),
 });
 
 /**
