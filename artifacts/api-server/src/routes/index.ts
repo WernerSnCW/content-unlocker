@@ -10,6 +10,7 @@ import gdocsRouter from "./gdocs";
 import callFrameworkRouter from "./call-framework";
 import analyticsRouter from "./analytics";
 import videosRouter from "./videos";
+import acuRouter from "./acu";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(gdocsRouter);
 router.use(callFrameworkRouter);
 router.use(analyticsRouter);
 router.use(videosRouter);
+router.use(acuRouter);
 
 export default router;

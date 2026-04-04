@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, documentsTable, changelogTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, documentsTable, changelogTable, acuTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
@@ -13,6 +13,33 @@ import { getComplianceConstants } from "../../lib/dataManager";
 const MAX_REGEN_ATTEMPTS = 2;
 
 const router: IRouter = Router();
+
+async function getLockedACUs() {
+  const rows = await db.select().from(acuTable).where(eq(acuTable.status, "LOCKED"));
+  const injectable = rows.filter(r => r.type !== "prohibited");
+  const prohibited = rows.filter(r => r.type === "prohibited");
+  return { injectable, prohibited };
+}
+
+function buildACUPromptSection(injectable: any[], prohibited: any[]): string {
+  let section = "";
+
+  if (injectable.length > 0) {
+    section += "\nLOCKED CONTENT — inject verbatim, do not paraphrase:\n";
+    for (const acu of injectable) {
+      section += `[${acu.id}] ${acu.content}\n`;
+    }
+  }
+
+  if (prohibited.length > 0) {
+    section += "\nPROHIBITED CONTENT — must not appear in any form:\n";
+    for (const acu of prohibited) {
+      section += `[${acu.id}] ${acu.content}${acu.notes ? ` — ${acu.notes}` : ""}\n`;
+    }
+  }
+
+  return section;
+}
 
 router.post("/generation/generate", async (req, res): Promise<void> => {
   const parsed = GenerateDocumentBody.safeParse(req.body);
@@ -27,6 +54,9 @@ router.post("/generation/generate", async (req, res): Promise<void> => {
   const complianceText = compliance.constants
     .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
     .join("\n");
+
+  const { injectable, prohibited } = await getLockedACUs();
+  const acuSection = buildACUPromptSection(injectable, prohibited);
 
   const briefId = `brief_${randomUUID().slice(0, 8)}`;
   const docId = `gen_${randomUUID().slice(0, 8)}`;
@@ -50,7 +80,7 @@ ${requirements}
 
 COMPLIANCE CONSTANTS (must be accurately reflected):
 ${complianceText}
-
+${acuSection}
 RULES:
 - Use Unlock terminology: "Founding investor" (not shareholder), "Instant Investment" (not ASA), "EIS/SEIS relief"
 - Product tagline: "Clarity, without complexity"
@@ -58,6 +88,8 @@ RULES:
 - Never mention specific commission or fee structures
 - All figures must match compliance constants exactly
 - Use British English spelling throughout
+- When using LOCKED CONTENT: inject the exact text verbatim. You may add connective tissue around it but must not alter the locked content itself.
+- PROHIBITED CONTENT must not appear in any form — not paraphrased, not approximated, not quoted.
 - Write for sophisticated investors — no marketing fluff
 
 Generate the document content. Return ONLY valid JSON:
@@ -398,6 +430,67 @@ router.post("/generation/:id/promote", async (req, res): Promise<void> => {
   });
 });
 
+async function runACUChecks(content: string): Promise<{ prohibited_checks: any[]; locked_checks: any[] }> {
+  const { injectable, prohibited } = await getLockedACUs();
+  const prohibited_checks: any[] = [];
+  const locked_checks: any[] = [];
+
+  const contentLower = content.toLowerCase();
+
+  for (const acu of prohibited) {
+    const patterns = acu.content.split(" / ").map((p: string) => p.trim().toLowerCase());
+    let found = false;
+    let matchedText = "";
+
+    for (const pattern of patterns) {
+      if (contentLower.includes(pattern)) {
+        found = true;
+        matchedText = pattern;
+        break;
+      }
+    }
+
+    if (acu.id === "acu_22p_prohibited") {
+      const regex22p = /\b22p\b/i;
+      if (regex22p.test(content)) {
+        found = true;
+        matchedText = "22p";
+      }
+    }
+
+    if (acu.id === "acu_78x_prohibited") {
+      const regex78x = /7\.8x/i;
+      if (regex78x.test(content)) {
+        found = true;
+        matchedText = "7.8x";
+      }
+    }
+
+    prohibited_checks.push({
+      check_id: `ACU_PROHIBITED_${acu.id}`,
+      acu_id: acu.id,
+      result: found ? "fail" : "pass",
+      offending_text: found ? matchedText : null,
+      note: found ? `Prohibited ACU content detected: ${acu.notes || acu.content}` : "Not found in document",
+    });
+  }
+
+  for (const acu of injectable) {
+    if (acu.type === "qualifier") {
+      const qualLower = acu.content.toLowerCase();
+      const present = contentLower.includes(qualLower);
+      locked_checks.push({
+        check_id: `ACU_LOCKED_${acu.id}`,
+        acu_id: acu.id,
+        result: present ? "pass" : "warning",
+        note: present ? "Qualifier present verbatim" : `Qualifier may be missing or paraphrased: "${acu.content}"`,
+      });
+    }
+  }
+
+  return { prohibited_checks, locked_checks };
+}
+
 const QC_CHECKLIST_PROMPT = `RUN EXACTLY THESE CHECKS IN THIS ORDER. Do not skip any check.
 Do not add checks that are not on this list.
 
@@ -585,6 +678,39 @@ function mergeChunkResults(chunkResults: any[], attempt: number) {
 
 async function runQC(content: string, complianceText: string, documentType: string, attempt: number) {
   try {
+    const acuResults = await runACUChecks(content);
+
+    const prohibitedFails = acuResults.prohibited_checks.filter(c => c.result === "fail");
+    if (prohibitedFails.length > 0) {
+      const allChecks = [
+        ...acuResults.prohibited_checks.map((c, i) => ({
+          check_number: 100 + i,
+          check_id: c.check_id,
+          label: `ACU Prohibited: ${c.acu_id}`,
+          result: c.result,
+          offending_text: c.offending_text,
+          correct_version: null,
+          note: c.note,
+          source: "ACU Framework",
+        })),
+      ];
+
+      return {
+        overall: "fail",
+        checks: allChecks,
+        fail_count: prohibitedFails.length,
+        auto_resolved_count: 0,
+        warnings: [`${prohibitedFails.length} prohibited ACU content detected — QC halted before standard checks`],
+        qc_attempt: attempt,
+        chunking_applied: false,
+        chunks_total: 0,
+        chunks_processed: 0,
+        total_checks: allChecks.length,
+        acu_prohibited_fails: prohibitedFails.length,
+        acu_locked_warnings: 0,
+      };
+    }
+
     const needsChunking = content.length > CHUNK_THRESHOLD;
     const chunks = needsChunking ? splitIntoChunks(content, CHUNK_THRESHOLD) : [content];
     let allChecks: any[];
@@ -636,17 +762,44 @@ async function runQC(content: string, complianceText: string, documentType: stri
       }
     }
 
-    const failCount = allChecks.filter((c: any) => c.result === "fail").length;
+    const acuProhibitedChecks = acuResults.prohibited_checks.map((c, i) => ({
+      check_number: 100 + i,
+      check_id: c.check_id,
+      label: `ACU Prohibited: ${c.acu_id}`,
+      result: c.result,
+      offending_text: c.offending_text,
+      correct_version: null,
+      note: c.note,
+      source: "ACU Framework",
+    }));
+
+    const acuLockedChecks = acuResults.locked_checks.map((c, i) => ({
+      check_number: 200 + i,
+      check_id: c.check_id,
+      label: `ACU Locked: ${c.acu_id}`,
+      result: c.result,
+      offending_text: null,
+      correct_version: null,
+      note: c.note,
+      source: "ACU Framework",
+    }));
+
+    const combinedChecks = [...allChecks, ...acuProhibitedChecks, ...acuLockedChecks];
+    const failCount = combinedChecks.filter((c: any) => c.result === "fail").length;
+    const warningCount = combinedChecks.filter((c: any) => c.result === "warning").length;
     const overall = failCount === 0 ? "pass" : "fail";
 
     const warnings: string[] = [];
     if (autoResolvedCount > 0) {
       warnings.push(`${autoResolvedCount} false positive(s) auto-resolved`);
     }
+    if (warningCount > 0) {
+      warnings.push(`${warningCount} ACU locked content warning(s) — qualifiers may be missing or paraphrased`);
+    }
 
     return {
       overall,
-      checks: allChecks,
+      checks: combinedChecks,
       fail_count: failCount,
       auto_resolved_count: autoResolvedCount,
       warnings,
@@ -654,7 +807,9 @@ async function runQC(content: string, complianceText: string, documentType: stri
       chunking_applied: needsChunking,
       chunks_total: chunks.length,
       chunks_processed: actualChunksProcessed,
-      total_checks: allChecks.length,
+      total_checks: combinedChecks.length,
+      acu_prohibited_fails: 0,
+      acu_locked_warnings: warningCount,
     };
   } catch (err: any) {
     try {

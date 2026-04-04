@@ -29,6 +29,8 @@ tags:
     description: Content generation & QC
   - name: dashboard
     description: Dashboard summaries
+  - name: acu
+    description: Approved Content Units
 
 paths:
   /healthz:
@@ -708,6 +710,248 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SeedValidation"
+
+  /acu:
+    get:
+      operationId: listACUs
+      tags: [acu]
+      summary: List all Approved Content Units
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, APPROVED, LOCKED, LEGAL_PENDING, NAMING_PENDING, SUPERSEDED]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [fact, framing, reference, explanation, qualifier, prohibited]
+      responses:
+        "200":
+          description: List of ACUs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ACU"
+    post:
+      operationId: createACU
+      tags: [acu]
+      summary: Create a new ACU
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateACUInput"
+      responses:
+        "201":
+          description: ACU created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACU"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ACU already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/prohibited:
+    get:
+      operationId: listProhibitedACUs
+      tags: [acu]
+      summary: List prohibited content units (LOCKED + prohibited type)
+      responses:
+        "200":
+          description: List of prohibited ACUs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ACU"
+
+  /acu/injectable:
+    get:
+      operationId: listInjectableACUs
+      tags: [acu]
+      summary: List injectable content units (LOCKED, non-prohibited)
+      responses:
+        "200":
+          description: List of injectable ACUs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ACU"
+
+  /acu/{id}:
+    get:
+      operationId: getACU
+      tags: [acu]
+      summary: Get a single ACU with version history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ACU with version history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACUDetail"
+        "404":
+          description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/{id}/approve:
+    patch:
+      operationId: approveACU
+      tags: [acu]
+      summary: Approve a DRAFT ACU
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approved_by:
+                  type: string
+      responses:
+        "200":
+          description: ACU approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACU"
+        "400":
+          description: Cannot approve
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/{id}/lock:
+    patch:
+      operationId: lockACU
+      tags: [acu]
+      summary: Lock an APPROVED ACU (makes content immutable)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ACU locked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACU"
+        "400":
+          description: Cannot lock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/{id}/version:
+    post:
+      operationId: versionACU
+      tags: [acu]
+      summary: Create a new version of an existing ACU
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                source:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: New version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACU"
+        "404":
+          description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/{id}/cascade:
+    patch:
+      operationId: cascadeACU
+      tags: [acu]
+      summary: Trigger cascade review for all documents referencing this ACU
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cascade result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ACUCascadeResult"
+        "404":
+          description: ACU not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -2006,3 +2250,104 @@ components:
           items:
             $ref: "#/components/schemas/FeatureUpdateQueueDoc"
       required: [update_id, total, pending, completed, pending_documents, completed_documents]
+
+    ACU:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [fact, framing, reference, explanation, qualifier, prohibited]
+        content:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, APPROVED, LOCKED, LEGAL_PENDING, NAMING_PENDING, SUPERSEDED]
+        source:
+          type: ["string", "null"]
+        approved_by:
+          type: ["string", "null"]
+        approved_date:
+          type: ["string", "null"]
+        version:
+          type: integer
+        expression_variants:
+          type: array
+          items:
+            type: object
+            properties:
+              audience:
+                type: string
+              stage:
+                type: string
+              text:
+                type: string
+            required: [audience, stage, text]
+        documents_referencing:
+          type: array
+          items:
+            type: string
+        cascade_on_change:
+          type: boolean
+        notes:
+          type: ["string", "null"]
+      required: [id, type, content, status, version, expression_variants, documents_referencing, cascade_on_change]
+
+    CreateACUInput:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [fact, framing, reference, explanation, qualifier, prohibited]
+        content:
+          type: string
+        source:
+          type: string
+        notes:
+          type: string
+        expression_variants:
+          type: array
+          items:
+            type: object
+            properties:
+              audience:
+                type: string
+              stage:
+                type: string
+              text:
+                type: string
+            required: [audience, stage, text]
+        documents_referencing:
+          type: array
+          items:
+            type: string
+        cascade_on_change:
+          type: boolean
+      required: [id, type, content]
+
+    ACUDetail:
+      type: object
+      properties:
+        unit:
+          $ref: "#/components/schemas/ACU"
+        version_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ACU"
+      required: [unit, version_history]
+
+    ACUCascadeResult:
+      type: object
+      properties:
+        message:
+          type: string
+        affected:
+          type: integer
+        document_ids:
+          type: array
+          items:
+            type: string
+      required: [message, affected]

@@ -17,11 +17,16 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  ACUCascadeResult,
+  ACUDetail,
+  Acu,
   AnalyzeTranscriptBody,
+  ApproveACUBody,
   ChangelogEntry,
   ComplianceConstants,
   ConfirmSendBody,
   ContentBank,
+  CreateACUInput,
   CreateLeadBody,
   DashboardSummary,
   Document,
@@ -46,6 +51,7 @@ import type {
   ImportFromGoogleDocsBody,
   Lead,
   LeadDetail,
+  ListACUsParams,
   ListChangelogParams,
   ListDocumentsParams,
   ListLeadsParams,
@@ -60,6 +66,7 @@ import type {
   TranscriptAnalysis,
   UpdateDocumentBody,
   UpdateLeadBody,
+  VersionACUBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -2959,3 +2966,750 @@ export function useGetSeedValidation<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List all Approved Content Units
+ */
+export const getListACUsUrl = (params?: ListACUsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/acu?${stringifiedParams}`
+    : `/api/acu`;
+};
+
+export const listACUs = async (
+  params?: ListACUsParams,
+  options?: RequestInit,
+): Promise<Acu[]> => {
+  return customFetch<Acu[]>(getListACUsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListACUsQueryKey = (params?: ListACUsParams) => {
+  return [`/api/acu`, ...(params ? [params] : [])] as const;
+};
+
+export const getListACUsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listACUs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListACUsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listACUs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListACUsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listACUs>>> = ({
+    signal,
+  }) => listACUs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listACUs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListACUsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listACUs>>
+>;
+export type ListACUsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all Approved Content Units
+ */
+
+export function useListACUs<
+  TData = Awaited<ReturnType<typeof listACUs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListACUsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listACUs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListACUsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new ACU
+ */
+export const getCreateACUUrl = () => {
+  return `/api/acu`;
+};
+
+export const createACU = async (
+  createACUInput: CreateACUInput,
+  options?: RequestInit,
+): Promise<Acu> => {
+  return customFetch<Acu>(getCreateACUUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createACUInput),
+  });
+};
+
+export const getCreateACUMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createACU>>,
+    TError,
+    { data: BodyType<CreateACUInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createACU>>,
+  TError,
+  { data: BodyType<CreateACUInput> },
+  TContext
+> => {
+  const mutationKey = ["createACU"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createACU>>,
+    { data: BodyType<CreateACUInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createACU(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateACUMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createACU>>
+>;
+export type CreateACUMutationBody = BodyType<CreateACUInput>;
+export type CreateACUMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new ACU
+ */
+export const useCreateACU = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createACU>>,
+    TError,
+    { data: BodyType<CreateACUInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createACU>>,
+  TError,
+  { data: BodyType<CreateACUInput> },
+  TContext
+> => {
+  return useMutation(getCreateACUMutationOptions(options));
+};
+
+/**
+ * @summary List prohibited content units (LOCKED + prohibited type)
+ */
+export const getListProhibitedACUsUrl = () => {
+  return `/api/acu/prohibited`;
+};
+
+export const listProhibitedACUs = async (
+  options?: RequestInit,
+): Promise<Acu[]> => {
+  return customFetch<Acu[]>(getListProhibitedACUsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListProhibitedACUsQueryKey = () => {
+  return [`/api/acu/prohibited`] as const;
+};
+
+export const getListProhibitedACUsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listProhibitedACUs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listProhibitedACUs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListProhibitedACUsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listProhibitedACUs>>
+  > = ({ signal }) => listProhibitedACUs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listProhibitedACUs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListProhibitedACUsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listProhibitedACUs>>
+>;
+export type ListProhibitedACUsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List prohibited content units (LOCKED + prohibited type)
+ */
+
+export function useListProhibitedACUs<
+  TData = Awaited<ReturnType<typeof listProhibitedACUs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listProhibitedACUs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListProhibitedACUsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List injectable content units (LOCKED, non-prohibited)
+ */
+export const getListInjectableACUsUrl = () => {
+  return `/api/acu/injectable`;
+};
+
+export const listInjectableACUs = async (
+  options?: RequestInit,
+): Promise<Acu[]> => {
+  return customFetch<Acu[]>(getListInjectableACUsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListInjectableACUsQueryKey = () => {
+  return [`/api/acu/injectable`] as const;
+};
+
+export const getListInjectableACUsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInjectableACUs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listInjectableACUs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListInjectableACUsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInjectableACUs>>
+  > = ({ signal }) => listInjectableACUs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInjectableACUs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInjectableACUsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInjectableACUs>>
+>;
+export type ListInjectableACUsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List injectable content units (LOCKED, non-prohibited)
+ */
+
+export function useListInjectableACUs<
+  TData = Awaited<ReturnType<typeof listInjectableACUs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listInjectableACUs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInjectableACUsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a single ACU with version history
+ */
+export const getGetACUUrl = (id: string) => {
+  return `/api/acu/${id}`;
+};
+
+export const getACU = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ACUDetail> => {
+  return customFetch<ACUDetail>(getGetACUUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetACUQueryKey = (id: string) => {
+  return [`/api/acu/${id}`] as const;
+};
+
+export const getGetACUQueryOptions = <
+  TData = Awaited<ReturnType<typeof getACU>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getACU>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetACUQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getACU>>> = ({
+    signal,
+  }) => getACU(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getACU>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetACUQueryResult = NonNullable<Awaited<ReturnType<typeof getACU>>>;
+export type GetACUQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a single ACU with version history
+ */
+
+export function useGetACU<
+  TData = Awaited<ReturnType<typeof getACU>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getACU>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetACUQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Approve a DRAFT ACU
+ */
+export const getApproveACUUrl = (id: string) => {
+  return `/api/acu/${id}/approve`;
+};
+
+export const approveACU = async (
+  id: string,
+  approveACUBody: ApproveACUBody,
+  options?: RequestInit,
+): Promise<Acu> => {
+  return customFetch<Acu>(getApproveACUUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(approveACUBody),
+  });
+};
+
+export const getApproveACUMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveACU>>,
+    TError,
+    { id: string; data: BodyType<ApproveACUBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveACU>>,
+  TError,
+  { id: string; data: BodyType<ApproveACUBody> },
+  TContext
+> => {
+  const mutationKey = ["approveACU"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveACU>>,
+    { id: string; data: BodyType<ApproveACUBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return approveACU(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveACUMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveACU>>
+>;
+export type ApproveACUMutationBody = BodyType<ApproveACUBody>;
+export type ApproveACUMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Approve a DRAFT ACU
+ */
+export const useApproveACU = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveACU>>,
+    TError,
+    { id: string; data: BodyType<ApproveACUBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveACU>>,
+  TError,
+  { id: string; data: BodyType<ApproveACUBody> },
+  TContext
+> => {
+  return useMutation(getApproveACUMutationOptions(options));
+};
+
+/**
+ * @summary Lock an APPROVED ACU (makes content immutable)
+ */
+export const getLockACUUrl = (id: string) => {
+  return `/api/acu/${id}/lock`;
+};
+
+export const lockACU = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Acu> => {
+  return customFetch<Acu>(getLockACUUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getLockACUMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof lockACU>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof lockACU>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["lockACU"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof lockACU>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return lockACU(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LockACUMutationResult = NonNullable<
+  Awaited<ReturnType<typeof lockACU>>
+>;
+
+export type LockACUMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Lock an APPROVED ACU (makes content immutable)
+ */
+export const useLockACU = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof lockACU>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof lockACU>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getLockACUMutationOptions(options));
+};
+
+/**
+ * @summary Create a new version of an existing ACU
+ */
+export const getVersionACUUrl = (id: string) => {
+  return `/api/acu/${id}/version`;
+};
+
+export const versionACU = async (
+  id: string,
+  versionACUBody: VersionACUBody,
+  options?: RequestInit,
+): Promise<Acu> => {
+  return customFetch<Acu>(getVersionACUUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(versionACUBody),
+  });
+};
+
+export const getVersionACUMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof versionACU>>,
+    TError,
+    { id: string; data: BodyType<VersionACUBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof versionACU>>,
+  TError,
+  { id: string; data: BodyType<VersionACUBody> },
+  TContext
+> => {
+  const mutationKey = ["versionACU"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof versionACU>>,
+    { id: string; data: BodyType<VersionACUBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return versionACU(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VersionACUMutationResult = NonNullable<
+  Awaited<ReturnType<typeof versionACU>>
+>;
+export type VersionACUMutationBody = BodyType<VersionACUBody>;
+export type VersionACUMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new version of an existing ACU
+ */
+export const useVersionACU = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof versionACU>>,
+    TError,
+    { id: string; data: BodyType<VersionACUBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof versionACU>>,
+  TError,
+  { id: string; data: BodyType<VersionACUBody> },
+  TContext
+> => {
+  return useMutation(getVersionACUMutationOptions(options));
+};
+
+/**
+ * @summary Trigger cascade review for all documents referencing this ACU
+ */
+export const getCascadeACUUrl = (id: string) => {
+  return `/api/acu/${id}/cascade`;
+};
+
+export const cascadeACU = async (
+  id: string,
+  options?: RequestInit,
+): Promise<ACUCascadeResult> => {
+  return customFetch<ACUCascadeResult>(getCascadeACUUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getCascadeACUMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cascadeACU>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cascadeACU>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["cascadeACU"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cascadeACU>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cascadeACU(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CascadeACUMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cascadeACU>>
+>;
+
+export type CascadeACUMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Trigger cascade review for all documents referencing this ACU
+ */
+export const useCascadeACU = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cascadeACU>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cascadeACU>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCascadeACUMutationOptions(options));
+};

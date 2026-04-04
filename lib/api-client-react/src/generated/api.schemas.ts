@@ -657,6 +657,93 @@ export interface FeatureUpdateQueue {
   completed_documents: FeatureUpdateQueueDoc[];
 }
 
+export type AcuType = (typeof AcuType)[keyof typeof AcuType];
+
+export const AcuType = {
+  fact: "fact",
+  framing: "framing",
+  reference: "reference",
+  explanation: "explanation",
+  qualifier: "qualifier",
+  prohibited: "prohibited",
+} as const;
+
+export type AcuStatus = (typeof AcuStatus)[keyof typeof AcuStatus];
+
+export const AcuStatus = {
+  DRAFT: "DRAFT",
+  APPROVED: "APPROVED",
+  LOCKED: "LOCKED",
+  LEGAL_PENDING: "LEGAL_PENDING",
+  NAMING_PENDING: "NAMING_PENDING",
+  SUPERSEDED: "SUPERSEDED",
+} as const;
+
+export type AcuExpressionVariantsItem = {
+  audience: string;
+  stage: string;
+  text: string;
+};
+
+export interface Acu {
+  id: string;
+  type: AcuType;
+  content: string;
+  status: AcuStatus;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  approved_by?: string | null;
+  /** @nullable */
+  approved_date?: string | null;
+  version: number;
+  expression_variants: AcuExpressionVariantsItem[];
+  documents_referencing: string[];
+  cascade_on_change: boolean;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type CreateACUInputType =
+  (typeof CreateACUInputType)[keyof typeof CreateACUInputType];
+
+export const CreateACUInputType = {
+  fact: "fact",
+  framing: "framing",
+  reference: "reference",
+  explanation: "explanation",
+  qualifier: "qualifier",
+  prohibited: "prohibited",
+} as const;
+
+export type CreateACUInputExpressionVariantsItem = {
+  audience: string;
+  stage: string;
+  text: string;
+};
+
+export interface CreateACUInput {
+  id: string;
+  type: CreateACUInputType;
+  content: string;
+  source?: string;
+  notes?: string;
+  expression_variants?: CreateACUInputExpressionVariantsItem[];
+  documents_referencing?: string[];
+  cascade_on_change?: boolean;
+}
+
+export interface ACUDetail {
+  unit: Acu;
+  version_history: Acu[];
+}
+
+export interface ACUCascadeResult {
+  message: string;
+  affected: number;
+  document_ids?: string[];
+}
+
 export type ListLeadsParams = {
   search?: string;
   stage?: string;
@@ -693,4 +780,42 @@ export type QcRerunDocument200 = {
 
 export type GetRecentActivityParams = {
   limit?: number;
+};
+
+export type ListACUsParams = {
+  status?: ListACUsStatus;
+  type?: ListACUsType;
+};
+
+export type ListACUsStatus =
+  (typeof ListACUsStatus)[keyof typeof ListACUsStatus];
+
+export const ListACUsStatus = {
+  DRAFT: "DRAFT",
+  APPROVED: "APPROVED",
+  LOCKED: "LOCKED",
+  LEGAL_PENDING: "LEGAL_PENDING",
+  NAMING_PENDING: "NAMING_PENDING",
+  SUPERSEDED: "SUPERSEDED",
+} as const;
+
+export type ListACUsType = (typeof ListACUsType)[keyof typeof ListACUsType];
+
+export const ListACUsType = {
+  fact: "fact",
+  framing: "framing",
+  reference: "reference",
+  explanation: "explanation",
+  qualifier: "qualifier",
+  prohibited: "prohibited",
+} as const;
+
+export type ApproveACUBody = {
+  approved_by?: string;
+};
+
+export type VersionACUBody = {
+  content?: string;
+  source?: string;
+  notes?: string;
 };

@@ -1132,3 +1132,370 @@ export const GetSeedValidationResponse = zod.object({
   errors: zod.array(zod.string()),
   warnings: zod.array(zod.string()),
 });
+
+/**
+ * @summary List all Approved Content Units
+ */
+export const ListACUsQueryParams = zod.object({
+  status: zod
+    .enum([
+      "DRAFT",
+      "APPROVED",
+      "LOCKED",
+      "LEGAL_PENDING",
+      "NAMING_PENDING",
+      "SUPERSEDED",
+    ])
+    .optional(),
+  type: zod
+    .enum([
+      "fact",
+      "framing",
+      "reference",
+      "explanation",
+      "qualifier",
+      "prohibited",
+    ])
+    .optional(),
+});
+
+export const ListACUsResponseItem = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "APPROVED",
+    "LOCKED",
+    "LEGAL_PENDING",
+    "NAMING_PENDING",
+    "SUPERSEDED",
+  ]),
+  source: zod.string().nullish(),
+  approved_by: zod.string().nullish(),
+  approved_date: zod.string().nullish(),
+  version: zod.number(),
+  expression_variants: zod.array(
+    zod.object({
+      audience: zod.string(),
+      stage: zod.string(),
+      text: zod.string(),
+    }),
+  ),
+  documents_referencing: zod.array(zod.string()),
+  cascade_on_change: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+export const ListACUsResponse = zod.array(ListACUsResponseItem);
+
+/**
+ * @summary Create a new ACU
+ */
+export const CreateACUBody = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  source: zod.string().optional(),
+  notes: zod.string().optional(),
+  expression_variants: zod
+    .array(
+      zod.object({
+        audience: zod.string(),
+        stage: zod.string(),
+        text: zod.string(),
+      }),
+    )
+    .optional(),
+  documents_referencing: zod.array(zod.string()).optional(),
+  cascade_on_change: zod.boolean().optional(),
+});
+
+/**
+ * @summary List prohibited content units (LOCKED + prohibited type)
+ */
+export const ListProhibitedACUsResponseItem = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "APPROVED",
+    "LOCKED",
+    "LEGAL_PENDING",
+    "NAMING_PENDING",
+    "SUPERSEDED",
+  ]),
+  source: zod.string().nullish(),
+  approved_by: zod.string().nullish(),
+  approved_date: zod.string().nullish(),
+  version: zod.number(),
+  expression_variants: zod.array(
+    zod.object({
+      audience: zod.string(),
+      stage: zod.string(),
+      text: zod.string(),
+    }),
+  ),
+  documents_referencing: zod.array(zod.string()),
+  cascade_on_change: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+export const ListProhibitedACUsResponse = zod.array(
+  ListProhibitedACUsResponseItem,
+);
+
+/**
+ * @summary List injectable content units (LOCKED, non-prohibited)
+ */
+export const ListInjectableACUsResponseItem = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "APPROVED",
+    "LOCKED",
+    "LEGAL_PENDING",
+    "NAMING_PENDING",
+    "SUPERSEDED",
+  ]),
+  source: zod.string().nullish(),
+  approved_by: zod.string().nullish(),
+  approved_date: zod.string().nullish(),
+  version: zod.number(),
+  expression_variants: zod.array(
+    zod.object({
+      audience: zod.string(),
+      stage: zod.string(),
+      text: zod.string(),
+    }),
+  ),
+  documents_referencing: zod.array(zod.string()),
+  cascade_on_change: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+export const ListInjectableACUsResponse = zod.array(
+  ListInjectableACUsResponseItem,
+);
+
+/**
+ * @summary Get a single ACU with version history
+ */
+export const GetACUParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetACUResponse = zod.object({
+  unit: zod.object({
+    id: zod.string(),
+    type: zod.enum([
+      "fact",
+      "framing",
+      "reference",
+      "explanation",
+      "qualifier",
+      "prohibited",
+    ]),
+    content: zod.string(),
+    status: zod.enum([
+      "DRAFT",
+      "APPROVED",
+      "LOCKED",
+      "LEGAL_PENDING",
+      "NAMING_PENDING",
+      "SUPERSEDED",
+    ]),
+    source: zod.string().nullish(),
+    approved_by: zod.string().nullish(),
+    approved_date: zod.string().nullish(),
+    version: zod.number(),
+    expression_variants: zod.array(
+      zod.object({
+        audience: zod.string(),
+        stage: zod.string(),
+        text: zod.string(),
+      }),
+    ),
+    documents_referencing: zod.array(zod.string()),
+    cascade_on_change: zod.boolean(),
+    notes: zod.string().nullish(),
+  }),
+  version_history: zod.array(
+    zod.object({
+      id: zod.string(),
+      type: zod.enum([
+        "fact",
+        "framing",
+        "reference",
+        "explanation",
+        "qualifier",
+        "prohibited",
+      ]),
+      content: zod.string(),
+      status: zod.enum([
+        "DRAFT",
+        "APPROVED",
+        "LOCKED",
+        "LEGAL_PENDING",
+        "NAMING_PENDING",
+        "SUPERSEDED",
+      ]),
+      source: zod.string().nullish(),
+      approved_by: zod.string().nullish(),
+      approved_date: zod.string().nullish(),
+      version: zod.number(),
+      expression_variants: zod.array(
+        zod.object({
+          audience: zod.string(),
+          stage: zod.string(),
+          text: zod.string(),
+        }),
+      ),
+      documents_referencing: zod.array(zod.string()),
+      cascade_on_change: zod.boolean(),
+      notes: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Approve a DRAFT ACU
+ */
+export const ApproveACUParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ApproveACUBody = zod.object({
+  approved_by: zod.string().optional(),
+});
+
+export const ApproveACUResponse = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "APPROVED",
+    "LOCKED",
+    "LEGAL_PENDING",
+    "NAMING_PENDING",
+    "SUPERSEDED",
+  ]),
+  source: zod.string().nullish(),
+  approved_by: zod.string().nullish(),
+  approved_date: zod.string().nullish(),
+  version: zod.number(),
+  expression_variants: zod.array(
+    zod.object({
+      audience: zod.string(),
+      stage: zod.string(),
+      text: zod.string(),
+    }),
+  ),
+  documents_referencing: zod.array(zod.string()),
+  cascade_on_change: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Lock an APPROVED ACU (makes content immutable)
+ */
+export const LockACUParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const LockACUResponse = zod.object({
+  id: zod.string(),
+  type: zod.enum([
+    "fact",
+    "framing",
+    "reference",
+    "explanation",
+    "qualifier",
+    "prohibited",
+  ]),
+  content: zod.string(),
+  status: zod.enum([
+    "DRAFT",
+    "APPROVED",
+    "LOCKED",
+    "LEGAL_PENDING",
+    "NAMING_PENDING",
+    "SUPERSEDED",
+  ]),
+  source: zod.string().nullish(),
+  approved_by: zod.string().nullish(),
+  approved_date: zod.string().nullish(),
+  version: zod.number(),
+  expression_variants: zod.array(
+    zod.object({
+      audience: zod.string(),
+      stage: zod.string(),
+      text: zod.string(),
+    }),
+  ),
+  documents_referencing: zod.array(zod.string()),
+  cascade_on_change: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Create a new version of an existing ACU
+ */
+export const VersionACUParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const VersionACUBody = zod.object({
+  content: zod.string().optional(),
+  source: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Trigger cascade review for all documents referencing this ACU
+ */
+export const CascadeACUParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CascadeACUResponse = zod.object({
+  message: zod.string(),
+  affected: zod.number(),
+  document_ids: zod.array(zod.string()).optional(),
+});

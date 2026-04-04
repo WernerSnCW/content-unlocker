@@ -18,6 +18,7 @@ import GapAnalysis from "./pages/gaps";
 import FeatureUpdates from "./pages/feature-updates";
 import CallPrep from "./pages/call-prep";
 import PersonaAnalytics from "./pages/persona-analytics";
+import ACUPage from "./pages/acu";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,7 @@ function Router() {
         <Route path="/feature-updates" component={FeatureUpdates} />
         <Route path="/call-prep" component={CallPrep} />
         <Route path="/analytics/personas" component={PersonaAnalytics} />
+        <Route path="/acu" component={ACUPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

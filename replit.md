@@ -45,6 +45,7 @@ The project is structured as a pnpm workspace monorepo using TypeScript (v5.9).
 -   **API Codegen:** Orval generates API client hooks and Zod schemas from an OpenAPI specification (`lib/api-spec`).
 -   **Build System:** esbuild for API bundles (ESM) and Vite for frontend.
 -   **Document Propagation:** Shared logic in `api-server/src/lib/propagation.ts` handles detection and flagging of downstream dependents.
+-   **Approved Content Units (ACU):** Compliance-critical content atoms (facts, framings, references, qualifiers, prohibited items). 22 ACUs seeded (21 LOCKED, 1 NAMING_PENDING). API at `/api/acu` (9 endpoints: list, prohibited, injectable, get, create, approve, lock, version, cascade). Frontend at `/acu`. Integrated into QC engine (prohibited halt, locked-absent check) and generation prompt (injects LOCKED content verbatim, excludes PROHIBITED). OpenAPI spec + codegen complete.
 -   **QC Evaluator:** Employs a fixed 19-check checklist for compliance and quality, with chunking for large documents.
 -   **Document Usage Matrix:** `api-server/src/data/document-usage-matrix.ts` encodes complex routing rules for document eligibility, exclusion, and weighting.
 -   **Matrix Context Auto-Derivation:** `api-server/src/lib/recommendation-context.ts` automatically detects context flags (e.g., `eis_familiar`) from Claude analysis for recommendation filtering.

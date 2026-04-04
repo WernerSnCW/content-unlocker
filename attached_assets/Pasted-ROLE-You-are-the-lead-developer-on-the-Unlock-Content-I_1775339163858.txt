@@ -1,0 +1,128 @@
+ROLE: You are the lead developer on the Unlock Content Intelligence Platform. You have full context of the existing codebase.
+
+CONTEXT: The platform currently approves content at the document level. A new architectural layer is required: Approved Content Units (ACUs). ACUs approve facts, framings, references, explanations, and qualifiers at source — before generation. Generated documents then draw from locked units rather than producing free-form text. This makes compliance architectural rather than instructional.
+
+The existing molecule store concept is superseded by this framework. ACUs are the full implementation of that instinct.
+
+TASK: Build the ACU framework in four parts, in this order. Complete each part before moving to the next. Confirm completion of each part before proceeding.
+
+---
+
+PART 1 — DATABASE SCHEMA
+
+Create a new table: approved_content_units
+
+Fields:
+- id TEXT PRIMARY KEY — format: acu_{descriptor} e.g. acu_eis_loss_relief
+- type TEXT NOT NULL — one of: fact / framing / reference / explanation / qualifier / prohibited
+- content TEXT NOT NULL — the locked text
+- status TEXT NOT NULL — one of: DRAFT / APPROVED / LOCKED / LEGAL_PENDING / NAMING_PENDING / SUPERSEDED
+- source TEXT — citation (required before APPROVED status can be set)
+- approved_by TEXT — tom_king / legal / compliance
+- approved_date TEXT
+- version INTEGER DEFAULT 1
+- expression_variants JSONB — array of {audience, stage, text}
+- documents_referencing JSONB — array of document IDs
+- cascade_on_change BOOLEAN DEFAULT true
+- notes TEXT
+
+Status rules (enforce in code, not just convention):
+- Cannot move to APPROVED without source field populated
+- Cannot move to LOCKED without being APPROVED first
+- LOCKED content cannot be edited — only a new version can be created
+- LEGAL_PENDING and NAMING_PENDING are non-injectable — generation engine must not use these
+- PROHIBITED type units are always non-injectable and trigger QC fail on detection
+
+---
+
+PART 2 — API ENDPOINTS
+
+Add to the existing Express API:
+
+GET  /api/acu                    — list all units, filterable by status and type
+GET  /api/acu/:id                — single unit with full version history
+POST /api/acu                    — create new unit (status: DRAFT)
+PATCH /api/acu/:id/approve       — move DRAFT → APPROVED (requires source to be populated)
+PATCH /api/acu/:id/lock          — move APPROVED → LOCKED (irreversible)
+POST /api/acu/:id/version        — create new DRAFT version (old LOCKED version remains active)
+GET  /api/acu/prohibited         — list all PROHIBITED units (used by QC engine)
+GET  /api/acu/injectable         — list all LOCKED units (used by generation engine)
+PATCH /api/acu/:id/cascade       — trigger document review flag for all documents_referencing this unit
+
+---
+
+PART 3 — SEED DATA
+
+Populate the table with these 22 initial ACUs. All should start as LOCKED (pre-approved) except where noted.
+
+```json
+[
+  {"id":"acu_eis_relief_30","type":"fact","content":"EIS income tax relief is 30% of the amount invested, up to £1,000,000 per tax year (£2,000,000 for Knowledge Intensive Companies).","source":"HMRC EIS guidance","status":"LOCKED"},
+  {"id":"acu_seis_relief_50","type":"fact","content":"SEIS income tax relief is 50% of the amount invested, up to £200,000 per tax year.","source":"HMRC SEIS guidance","status":"LOCKED"},
+  {"id":"acu_vct_relief_20","type":"fact","content":"VCT income tax relief is 20% from April 6, 2026 (reduced from 30%).","source":"HMRC VCT guidance April 2026","status":"LOCKED"},
+  {"id":"acu_eis_loss_relief","type":"fact","content":"For an additional rate taxpayer (45%), the maximum effective loss on a total EIS failure — after income tax relief and loss relief — is approximately 38.5p per pound of gross investment. Subject to individual tax circumstances.","source":"RSM UK / SeedLegals / WealthClub 2025-26","status":"LOCKED"},
+  {"id":"acu_seis_loss_relief","type":"fact","content":"For an additional rate taxpayer (45%), the maximum effective loss on a total SEIS failure — after income tax relief and loss relief — is approximately 27.5p per pound of gross investment. Subject to individual tax circumstances.","source":"RSM UK / SeedLegals / WealthClub 2025-26","status":"LOCKED"},
+  {"id":"acu_22p_prohibited","type":"prohibited","content":"22p per pound (SEIS loss relief)","source":"Internal correction April 2026 — wrong figure","status":"LOCKED","notes":"This figure is incorrect. Correct figure is 27.5p. Any document containing this figure fails QC automatically."},
+  {"id":"acu_78x_prohibited","type":"prohibited","content":"7.8x average EIS return","source":"No published source — removed from all documents April 2026","status":"LOCKED","notes":"No publicly verifiable source. Must not appear in any call or document."},
+  {"id":"acu_april6_deadline_prohibited","type":"prohibited","content":"April 6 deadline / Act before April 6 / Last chance this tax year","source":"Date passed April 6 2026","status":"LOCKED","notes":"April 6 is a rule change date, not a deadline. Any forward-looking urgency framing around April 6 is prohibited."},
+  {"id":"acu_return_5_6x","type":"framing","content":"We target a 5-6x return on the money you actually put at risk. Income tax relief of 30% returns £30,000 immediately on a £100,000 investment — so your effective cost is £70,000. Our portfolio model produces a base case of 3.8x on the gross investment — that is £380,000 — all CGT-free. On the money you actually risked, that is 5.4x. Subject to individual tax circumstances.","source":"Arithmetic on HMRC EIS figures + Unlock portfolio model","status":"LOCKED"},
+  {"id":"acu_4321_model","type":"framing","content":"Unlock's 4/3/2/1 portfolio model — calibrated to the distributional findings of the NESTA/Wiltbank 2009 study — implies a base case gross return of approximately 3.8x across a diversified portfolio. This is Unlock's analytical model output, not a NESTA headline figure. NESTA's own mean return is approximately 2.2x.","source":"Wiltbank 2009 Siding with the Angels + Unlock model","status":"LOCKED"},
+  {"id":"acu_pitchbook_exit","type":"reference","content":"PitchBook was acquired by Morningstar in 2016 for $225M. Morningstar's rationale: combining public and private market data to create comprehensive multi-asset intelligence.","source":"Morningstar announcement October 14 2016","status":"LOCKED"},
+  {"id":"acu_bvd_exit","type":"reference","content":"Bureau van Dijk was acquired by Moody's in 2017 for €3bn. Rationale: completing data coverage across public and private markets.","source":"Financial press confirmed 2017","status":"LOCKED"},
+  {"id":"acu_refinitiv_exit","type":"reference","content":"Refinitiv was acquired by LSEG in 2021 for $27bn. Rationale: creating a leading global financial markets infrastructure and data business.","source":"Financial press confirmed 2021","status":"LOCKED"},
+  {"id":"acu_nesta_2009","type":"reference","content":"NESTA/Wiltbank 2009 Siding with the Angels: UK angel investment mean return 2.2x invested capital. 56% of exits failed to return initial stake. 9% of exits produced 80% of positive cash flows. Highly skewed power law distribution.","source":"Wiltbank R.E. 2009 Siding with the Angels NESTA/BBAA","status":"LOCKED"},
+  {"id":"acu_sfc_capital_2024","type":"reference","content":"SFC Capital published model December 2024: on a 10-company EIS portfolio, 4 fail completely, 2 return 1x, 2 return 2x, 1 returns 4x, 1 returns 10x. Independently corroborates the power law distribution of EIS returns.","source":"SFC Capital December 2024 — WealthClub fund review","status":"LOCKED"},
+  {"id":"acu_capital_at_risk","type":"qualifier","content":"Capital is at risk. The value of investments can fall as well as rise and investors may not get back the full amount invested.","source":"FCA standard","status":"LOCKED"},
+  {"id":"acu_tax_circumstances","type":"qualifier","content":"Subject to individual tax circumstances.","source":"Standard tax disclaimer","status":"LOCKED"},
+  {"id":"acu_bpr_enactment","type":"qualifier","content":"Subject to final enactment.","source":"Required for BPR cap £2,500,000","status":"LOCKED"},
+  {"id":"acu_pension_legislation","type":"qualifier","content":"Subject to final legislation.","source":"Required for pension IHT April 2027","status":"LOCKED"},
+  {"id":"acu_advice_gap","type":"explanation","content":"Most IFAs cannot practically advise on individual EIS company shares. Suitability obligations, network compliance policies, and the regulatory friction of FCA COBS rules mean the advice effectively stops at the fund level. This is a practical barrier, not a legal prohibition — IFAs are not barred from advising on EIS, but the compliance cost makes it unworkable for most networks.","source":"FCA COBS / Article 53 RAO / network compliance policies","status":"LOCKED"},
+  {"id":"acu_jan_2027_structure","type":"fact","content":"The Instant Investment + ASA two-year structure allows an investor to access both the 2025/26 (carry-back) and 2026/27 (current year) EIS annual limits simultaneously. An Instant Investment provides immediate share issuance eligible for carry-back to reduce the January 2027 Self Assessment bill. An ASA signed now with shares issued in 2026/27 accesses the current year limits. Two positions, two BPR clocks starting.","source":"RW Blears June 2025 / HMRC HS341 2025","status":"LEGAL_PENDING","notes":"Do not use in any generated document or call until Unlock legal confirms the structure is safe to deploy in investor communications."},
+  {"id":"acu_tony_vine_lott","type":"reference","content":"Tony Vine-Lott — former Director General of TISA (Tax Incentivised Savings Association); founder of Barclays Stockbrokers. Founding investor and strategic advisor to Unlock.","source":"Professional biography / direct confirmation","status":"NAMING_PENDING","notes":"Do not use name in investor-facing documents until written naming permission is confirmed by Tony Vine-Lott."}
+]
+```
+
+---
+
+PART 4 — INTEGRATION
+
+4a. QC ENGINE UPDATE
+Add two new check types to the QC engine:
+- ACU_PROHIBITED_PRESENT — scan document content against all PROHIBITED ACUs. If any prohibited content is detected, fail immediately. This check runs before all other checks.
+- ACU_LOCKED_ABSENT — for each LOCKED ACU relevant to the document type, verify the locked content is present. If a required ACU is paraphrased rather than verbatim, flag as a warning (not a hard fail — some flexibility in connective tissue is acceptable, but the core fact must be present).
+
+4b. GENERATION PIPELINE UPDATE
+When generating a brief, the tool must:
+1. Identify which ACUs are relevant based on document type, belief, and persona
+2. Inject all relevant LOCKED ACUs as fixed content blocks in the generation prompt
+3. Inject all relevant PROHIBITED ACUs as explicit prohibitions in the generation prompt
+4. Claude generates the connective tissue around the fixed content — it does not rewrite the locked units
+
+Format for injection in generation prompt:
+```
+LOCKED CONTENT — inject verbatim, do not paraphrase:
+[acu_eis_loss_relief content]
+[acu_capital_at_risk content]
+
+PROHIBITED CONTENT — must not appear:
+[acu_22p_prohibited content]
+[acu_78x_prohibited content]
+```
+
+4c. UI — ACU MANAGEMENT PAGE
+Add a new page: /acu
+
+Display:
+- Summary counts: Locked / Approved / Draft / Legal Pending / Naming Pending / Prohibited
+- Filterable list by status and type
+- Each row: id / type / status pill / source / approved_by / documents_referencing count
+- Click to expand: full content, version history, expression variants, cascade button
+- Actions per status:
+  - DRAFT: Approve button (disabled if source empty) / Edit / Delete
+  - APPROVED: Lock button (with confirmation modal showing blast radius) / Edit
+  - LOCKED: New Version button / View History
+  - LEGAL_PENDING: View only — no actions until legal confirms
+  - NAMING_PENDING: View only — Mark as Confirmed button (requires written confirmation)
+
+Confirmation modal for Lock action:
+"You are about to lock this content unit. This action cannot be undone. Once locked, this exact text will be injected verbatim into all generated documents that reference it. [N] documents currently reference this unit. Locking a new version will flag them for review. Confirm?"

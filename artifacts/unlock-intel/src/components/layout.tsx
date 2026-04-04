@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Phone,
   BarChart3,
+  Shield,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
     { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
     { href: "/analytics/personas", label: "Persona Analytics", icon: BarChart3 },
+    { href: "/acu", label: "Content Units", icon: Shield },
   ];
 
   return (

@@ -1,4 +1,4 @@
-import { db, leadsTable, documentsTable, changelogTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, acuTable } from "@workspace/db";
 import { eq, ilike, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { readFileSync, readdirSync } from "fs";
@@ -6,6 +6,7 @@ import { join } from "path";
 import registryData from "../data/registry.json" with { type: "json" };
 import leadsData from "../data/leads.json" with { type: "json" };
 import complianceData from "../data/compliance_constants.json" with { type: "json" };
+import acuSeedData from "../data/acu-seed.json" with { type: "json" };
 import { logger } from "./logger";
 
 export async function seedDatabase() {
@@ -93,6 +94,24 @@ export async function seedDatabase() {
       notes: lead.notes || [],
     }).onConflictDoNothing();
   }
+
+  for (const acu of (acuSeedData as any[])) {
+    await db.insert(acuTable).values({
+      id: acu.id,
+      type: acu.type,
+      content: acu.content,
+      status: acu.status || "DRAFT",
+      source: acu.source || null,
+      approved_by: acu.approved_by || null,
+      approved_date: acu.approved_date || null,
+      version: acu.version || 1,
+      expression_variants: acu.expression_variants || [],
+      documents_referencing: acu.documents_referencing || [],
+      cascade_on_change: acu.cascade_on_change !== undefined ? acu.cascade_on_change : true,
+      notes: acu.notes || null,
+    }).onConflictDoNothing();
+  }
+  logger.info(`Seeded ${(acuSeedData as any[]).length} ACUs`);
 
   await db.insert(changelogTable).values({
     id: randomUUID(),
