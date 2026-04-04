@@ -1,6 +1,12 @@
 {
   "snapshots": [
     {
+      "id": "gap_20260404_013424_d759eb",
+      "created_at": "2026-04-04T01:34:24.321Z",
+      "total_gaps": 2,
+      "file": "reports/gap-analysis/gap_20260404_013424_d759eb.json"
+    },
+    {
       "id": "gap_20260404_003336_9eddff",
       "created_at": "2026-04-04T00:33:36.040Z",
       "total_gaps": 2,

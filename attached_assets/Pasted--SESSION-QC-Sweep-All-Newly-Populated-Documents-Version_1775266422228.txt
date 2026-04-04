@@ -1,0 +1,225 @@
+# SESSION — QC Sweep: All Newly Populated Documents
+Version: 1.0
+
+17 documents now have content for the first time and need QC
+evaluation. Work through them in priority order — investor-facing
+first, then operational/internal.
+
+The calibrated QC engine (Fix 087) is in place:
+- 18 fixed checks in fixed order
+- False positive auto-resolution
+- Large document chunking (parallel, 15K char threshold)
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### QC false positive handling
+If all failures have auto_resolved_count > 0 and no genuine
+failures remain: set CLEAN. Note the auto-resolved count.
+
+### Approved compliance figures
+- EIS income tax relief: 30%
+- SEIS income tax relief: 50%
+- VCT income tax relief: 20% (not 30%)
+- BPR cap: £2,500,000 — subject to final enactment
+- Pension IHT: April 2027 — subject to final legislation
+- EIS loss relief: up to an effective 38.5% reduction in losses
+  — subject to adviser confirmation
+- SEIS loss relief: up to 72% effective relief
+  — subject to adviser confirmation
+
+### Not-applicable rules for internal/agent documents
+For agent-facing documents (500, 510, 530) and operational
+documents (200, 210, 220, 230):
+- Check 11 (PRODUCT_TAGLINE) → not applicable
+- Check 8 (Instant Investment terminology) → not applicable
+  unless the document explicitly quotes investor-facing copy
+- Check 15 (FCA_STATUS) → not applicable unless document
+  instructs agents to make specific FCA claims to investors
+- Check 17 (CAPITAL_AT_RISK) → not applicable for internal docs
+
+For investor-facing documents (100, 110, 120, 130, 140, 150,
+160, 170, 180, 190): all 18 checks apply in full.
+
+---
+
+## Step 0 — Confirm document list
+
+Before starting, call GET /api/documents and list all documents
+with review_state: REQUIRES_REVIEW.
+
+Confirm the following documents are in the list:
+Investor-facing (10): 100, 110, 120, 130, 140, 150, 160,
+  170, 180, 190
+Operational/internal (7): 200, 210, 220, 230, 500, 510, 530
+
+Report any unexpected documents in the REQUIRES_REVIEW state.
+
+---
+
+## PRIORITY 1 — Investor-facing Tier 3 documents
+## Process these first, in this order
+
+For each document: QC → fix genuine failures → set CLEAN
+Maximum 3 QC attempts per document.
+
+### 120 — Pack1_Founding_Investor
+### 130 — Pack2_Information_Memorandum
+### 100 — One_Page
+### 110 — Founding_Investor_Three_Page
+### 140 — Access_Service
+### 150 — EIS_Investors_Secret_Weapon
+### 160 — EIS_2026_Five_Case_Studies
+### 170 — IHT_EIS_5M_Estate
+### 180 — Duncan_Stewart_Bespoke
+### 190 — UK_Investment_2026
+
+**For each document above, follow this process:**
+
+**a. Run QC**
+Call POST /api/generation/:id/qc-rerun
+
+**b. Assess results**
+For each failed check:
+- Is the failure genuine (offending text ≠ correct version)?
+- Or is it a false positive (auto_resolved_count > 0)?
+
+**c. Fix genuine failures only**
+Apply minimum changes to fix each genuine compliance failure.
+Use PATCH /api/documents/:id with edit_override: true if needed.
+
+Priority fixes (most common issues expected):
+- VCT rate stated as 30% → correct to 20%
+- BPR cap stated as £2.5M without qualifier → correct to
+  £2,500,000 — subject to final enactment
+- Pension IHT without qualifier → add "subject to final
+  legislation"
+- Loss relief stated as per-pound arithmetic → replace with
+  percentage framing (38.5% EIS / 72% SEIS)
+- Decumulation Planner described as live → correct to
+  "Specification complete. Prototype build commencing."
+- Missing "Capital at risk" → add to document footer or
+  disclaimer section
+- Unsubstantiated specific projections → add "illustrative"
+  or "varies by investor" qualifier
+
+**d. Re-run QC after fixes**
+If QC passes (or only false positives remain): set CLEAN.
+If genuine failures remain: fix and re-run (max 3 total attempts).
+If still failing after 3 attempts: set MANUAL_REVIEW_REQUIRED.
+
+**e. Set review_state**
+CLEAN: all checks pass or only false positives remain
+MANUAL_REVIEW_REQUIRED: genuine failures after 3 attempts
+
+Confirm changelog entry for each status change.
+
+---
+
+## PRIORITY 2 — Operational and internal documents
+## Process after all investor-facing documents are done
+
+### 200 — Execution_30K_Database
+### 210 — Pipedrive_Aircall_Setup
+### 220 — Marketing_Investor_Conversion_Strategy
+### 230 — Pack1_Email_Templates
+### 500 — Cold_Call
+### 510 — Agent_Training
+### 530 — Agent_Quick_Reference
+
+**Apply the not-applicable rules from SYSTEM REFERENCE.**
+These documents are internal — checks 8, 11, 15, 17 are
+not applicable unless the document explicitly makes
+investor-facing claims.
+
+Follow the same process as Priority 1 but with the reduced
+check scope.
+
+---
+
+## Running report
+
+Update after each document:
+
+| Doc | Title | Content Length | QC Attempts | Genuine Failures Fixed | Result | State |
+|---|---|---|---|---|---|---|
+| 120 | Pack1 | [chars] | [n] | [list or None] | PASS/FP/FAIL | CLEAN/MRR |
+| 130 | Pack2 | [chars] | [n] | [list or None] | PASS/FP/FAIL | CLEAN/MRR |
+| 100 | One_Page | [chars] | [n] | [list or None] | PASS/FP/FAIL | CLEAN/MRR |
+[continue for all 17 documents]
+
+FP = False positives only (auto-resolved), set CLEAN
+MRR = MANUAL_REVIEW_REQUIRED
+
+---
+
+## After all 17 documents are processed
+
+### Save gap snapshot
+Call GET /api/content/gaps?save=true
+
+Report:
+- Snapshot ID
+- Current gap count
+- Any new gaps that appeared now that content is loaded
+  (the gap analysis can now see actual document content, not
+  just metadata — new gaps may surface)
+
+### Run the recommendation engine test
+POST /api/recommendation/rank with:
+- detected_persona: "Preserver"
+- pipeline_stage: "Demo Booked"
+- archetype: "Preserver"
+- confidence: 0.85
+- transcript_summary: "Investor is approaching retirement,
+  concerned about portfolio protection and income sustainability.
+  Has not done EIS before. Main question was about how the
+  platform handles pension drawdown sequencing."
+
+Report:
+- How many documents are returned
+- Whether any videos are returned
+- Whether a recommendation_gap is detected or not
+- The top-ranked document title and relevance_score
+
+This confirms the registry is now producing meaningful
+recommendations with real document content.
+
+---
+
+## Final report
+
+INVESTOR-FACING DOCUMENTS (10):
+- Set to CLEAN: [n]
+- Set to MANUAL_REVIEW_REQUIRED: [n]
+- Most common genuine failure: [check name]
+- Total false positives auto-resolved: [n]
+
+INTERNAL DOCUMENTS (7):
+- Set to CLEAN: [n]
+- Set to MANUAL_REVIEW_REQUIRED: [n]
+
+RECOMMENDATION ENGINE TEST:
+- Documents returned: [n]
+- Top-ranked document: [title] — relevance_score: [score]
+- Recommendation gap detected: YES / NO
+- Videos returned: [n]
+
+GAP SNAPSHOT:
+- Snapshot ID: [id]
+- Total gaps: [n]
+- New gaps vs previous snapshot: [n more / n fewer / same]
+
+OVERALL:
+- Registry fully populated and QC-verified: YES / NO
+- Ready for whitepaper generation: YES / NO
