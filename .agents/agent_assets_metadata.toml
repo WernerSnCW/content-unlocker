@@ -30,3 +30,9 @@ id = "zhcZU46SaLuUxCet-YviQ"
 uri = "file://MASTER_ALIGNMENT_AUDIT.md"
 type = "text"
 title = "Unlock Tool — Master Document Alignment Audit"
+
+[[outputs]]
+id = "Ufp3tveU5HHSXAq_6WShh"
+uri = "file://artifacts/api-server/src/data/snapshots/gap_assessment_2026-04-04.md"
+type = "text"
+title = "Gap Assessment Report — 4 April 2026"

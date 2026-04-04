@@ -1,0 +1,256 @@
+{
+  "matrix_gaps": [
+    {
+      "archetype": "Growth Seeker",
+      "stage": "Demo Complete",
+      "gap_type": "matrix",
+      "existing_documents": [
+        "pdf_c46426ca",
+        "gap_30ff09d6",
+        "pdf_a0ce9bcc",
+        "gap_a4c69129",
+        "inv_opp_feb26",
+        "gap_29d3cea2",
+        "gap_d53fa534",
+        "duncan_briefing",
+        "gap_c094330b",
+        "decum_explainer",
+        "120",
+        "150",
+        "170",
+        "100",
+        "160",
+        "130",
+        "180",
+        "190",
+        "140",
+        "110",
+        "gen_ca705607",
+        "gen_bea526c5",
+        "gen_07d5ec98",
+        "gen_250297d3",
+        "gen_25038f57"
+      ]
+    },
+    {
+      "archetype": "Growth Seeker",
+      "stage": "Decision",
+      "gap_type": "matrix",
+      "existing_documents": [
+        "pdf_c46426ca",
+        "pdf_a0ce9bcc",
+        "gap_a4c69129",
+        "inv_opp_feb26",
+        "gap_d53fa534",
+        "duncan_briefing",
+        "gap_c094330b",
+        "decum_explainer",
+        "120",
+        "150",
+        "170",
+        "100",
+        "160",
+        "130",
+        "180",
+        "190",
+        "140",
+        "110",
+        "gen_ca705607",
+        "gen_bea526c5",
+        "gen_07d5ec98",
+        "gen_250297d3",
+        "gen_25038f57"
+      ]
+    },
+    {
+      "archetype": "Legacy Builder",
+      "stage": "Outreach",
+      "gap_type": "matrix",
+      "existing_documents": [
+        "pdf_c46426ca",
+        "gap_30ff09d6",
+        "pdf_a0ce9bcc",
+        "gap_a4c69129",
+        "inv_opp_feb26",
+        "gap_29d3cea2",
+        "gap_d53fa534",
+        "gap_f23b14e2",
+        "duncan_briefing",
+        "gap_c094330b",
+        "decum_explainer",
+        "120",
+        "150",
+        "170",
+        "100",
+        "160",
+        "130",
+        "180",
+        "190",
+        "140",
+        "110",
+        "gap_bcca1a64",
+        "gen_bea526c5",
+        "gen_07d5ec98"
+      ]
+    },
+    {
+      "archetype": "Legacy Builder",
+      "stage": "Called",
+      "gap_type": "matrix",
+      "existing_documents": [
+        "pdf_c46426ca",
+        "gap_30ff09d6",
+        "pdf_a0ce9bcc",
+        "gap_a4c69129",
+        "inv_opp_feb26",
+        "gap_29d3cea2",
+        "gap_d53fa534",
+        "gap_f23b14e2",
+        "duncan_briefing",
+        "gap_c094330b",
+        "decum_explainer",
+        "120",
+        "150",
+        "170",
+        "100",
+        "160",
+        "130",
+        "180",
+        "190",
+        "140",
+        "110",
+        "gap_bcca1a64",
+        "gen_ca705607",
+        "gen_bea526c5",
+        "gen_07d5ec98",
+        "gen_250297d3",
+        "gen_25038f57"
+      ]
+    },
+    {
+      "archetype": "Legacy Builder",
+      "stage": "Demo Booked",
+      "gap_type": "matrix",
+      "existing_documents": [
+        "pdf_c46426ca",
+        "gap_30ff09d6",
+        "pdf_a0ce9bcc",
+        "gap_b5faed9e",
+        "gap_32e28167",
+        "gap_a4c69129",
+        "inv_opp_feb26",
+        "gap_29d3cea2",
+        "gap_d53fa534",
+        "gap_f23b14e2",
+        "duncan_briefing",
+        "gap_c094330b",
+        "decum_explainer",
+        "120",
+        "150",
+        "170",
+        "100",
+        "160",
+        "130",
+        "180",
+        "190",
+        "140",
+        "110",
+        "gap_bcca1a64",
+        "gen_ca705607",
+        "gen_bea526c5",
+        "gen_07d5ec98",
+        "gen_250297d3",
+        "gen_25038f57"
+      ]
+    }
+  ],
+  "type_gaps": [
+    {
+      "document_type": "Case study",
+      "gap_type": "type",
+      "existing_documents": [
+        "150",
+        "160"
+      ]
+    },
+    {
+      "document_type": "FAQ / objection handler",
+      "gap_type": "type",
+      "existing_documents": [
+        "gap_dd3587e1",
+        "gap_d53fa534"
+      ]
+    },
+    {
+      "document_type": "Compliance / risk disclosure",
+      "gap_type": "type",
+      "existing_documents": []
+    },
+    {
+      "document_type": "How it works / explainer",
+      "gap_type": "type",
+      "existing_documents": [
+        "120",
+        "180",
+        "140"
+      ]
+    },
+    {
+      "document_type": "Pricing / terms summary",
+      "gap_type": "type",
+      "existing_documents": []
+    }
+  ],
+  "recommendation_gaps": [
+    {
+      "persona": "Growth Seeker",
+      "stage": "Demo Complete",
+      "gap_type": "recommendation_failure",
+      "reason": "No documents tagged for Growth Seeker at Demo Complete stage"
+    },
+    {
+      "persona": "Growth Seeker",
+      "stage": "Decision",
+      "gap_type": "recommendation_failure",
+      "reason": "No documents tagged for Growth Seeker at Decision stage"
+    },
+    {
+      "persona": "Legacy Builder",
+      "stage": "Outreach",
+      "gap_type": "recommendation_failure",
+      "reason": "No documents tagged for Legacy Builder at Outreach stage"
+    },
+    {
+      "persona": "Legacy Builder",
+      "stage": "Called",
+      "gap_type": "recommendation_failure",
+      "reason": "No documents tagged for Legacy Builder at Called stage"
+    },
+    {
+      "persona": "Legacy Builder",
+      "stage": "Demo Booked",
+      "gap_type": "recommendation_failure",
+      "reason": "No documents tagged for Legacy Builder at Demo Booked stage"
+    }
+  ],
+  "information_readiness": {
+    "content_bank": {
+      "status": "SUFFICIENT",
+      "detail": "Content bank loaded with 98269 characters across multiple sections"
+    },
+    "compliance_constants": {
+      "status": "SUFFICIENT",
+      "detail": "All 7 expected compliance fields present",
+      "missing_fields": []
+    },
+    "overall": "READY_TO_GENERATE"
+  },
+  "summary": {
+    "total_gaps": 15,
+    "matrix_gap_count": 5,
+    "type_gap_count": 5,
+    "recommendation_failure_count": 5
+  },
+  "snapshot_id": "gap_20260404_143536_44f437",
+  "created_at": "2026-04-04T14:35:36.730Z"
+}
