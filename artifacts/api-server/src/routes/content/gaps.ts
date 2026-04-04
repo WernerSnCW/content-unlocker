@@ -397,6 +397,14 @@ export async function generateBriefFromGap(gap: any, additional_context?: string
     gapDescription = `Missing document of type "${gap.document_type}". This document type is required in the registry regardless of persona/stage coverage.`;
   } else if (gap.gap_type === "recommendation_failure") {
     gapDescription = `Recommendation engine returned zero results for persona "${gap.archetype || gap.persona}" at stage "${gap.stage}". Reason: ${gap.reason || "No matching documents found."}`;
+  } else if (gap.gap_type === "document_type") {
+    gapDescription = `Missing ${gap.document_type || "document"} for archetype "${gap.archetype}" at pipeline stage "${gap.stage}".`;
+  }
+  if (gap.title) {
+    gapDescription += `\nRequired document title: "${gap.title}"`;
+  }
+  if (gap.description) {
+    gapDescription += `\nDetailed requirements: ${gap.description}`;
   }
 
   const briefMessage = await anthropic.messages.create({

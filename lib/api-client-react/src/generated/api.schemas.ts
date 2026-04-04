@@ -501,6 +501,7 @@ export const GapInputGapType = {
   matrix: "matrix",
   type: "type",
   recommendation_failure: "recommendation_failure",
+  document_type: "document_type",
 } as const;
 
 export interface GapInput {
@@ -510,6 +511,8 @@ export interface GapInput {
   gap_type: GapInputGapType;
   persona?: string;
   reason?: string;
+  title?: string;
+  description?: string;
 }
 
 export interface GenerateBriefRequest {

@@ -13,4 +13,5 @@ export const GapInputGapType = {
   matrix: "matrix",
   type: "type",
   recommendation_failure: "recommendation_failure",
+  document_type: "document_type",
 } as const;

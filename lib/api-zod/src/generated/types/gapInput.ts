@@ -14,4 +14,6 @@ export interface GapInput {
   gap_type: GapInputGapType;
   persona?: string;
   reason?: string;
+  title?: string;
+  description?: string;
 }

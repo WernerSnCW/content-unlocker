@@ -1746,10 +1746,14 @@ components:
           type: string
         gap_type:
           type: string
-          enum: [matrix, type, recommendation_failure]
+          enum: [matrix, type, recommendation_failure, document_type]
         persona:
           type: string
         reason:
+          type: string
+        title:
+          type: string
+        description:
           type: string
       required: [gap_type]
 

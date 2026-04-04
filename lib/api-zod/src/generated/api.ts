@@ -664,9 +664,16 @@ export const GenerateBriefBody = zod.object({
     archetype: zod.string().optional(),
     stage: zod.string().optional(),
     document_type: zod.string().optional(),
-    gap_type: zod.enum(["matrix", "type", "recommendation_failure"]),
+    gap_type: zod.enum([
+      "matrix",
+      "type",
+      "recommendation_failure",
+      "document_type",
+    ]),
     persona: zod.string().optional(),
     reason: zod.string().optional(),
+    title: zod.string().optional(),
+    description: zod.string().optional(),
   }),
   information_readiness: zod
     .object({

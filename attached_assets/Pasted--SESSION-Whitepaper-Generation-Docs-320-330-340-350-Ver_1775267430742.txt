@@ -1,0 +1,326 @@
+# SESSION — Whitepaper Generation: Docs 320, 330, 340, 350
+Version: 1.0
+
+Four whitepapers to generate through the content pipeline.
+The master context auto-loads on every generate-brief call —
+no additional_context needed for any of these.
+
+Generate one at a time. Complete brief → generate → QC → promote
+for each whitepaper before starting the next.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Approved compliance figures
+- EIS income tax relief: 30%
+- SEIS income tax relief: 50%
+- VCT income tax relief: 20% (NOT 30% — reduced April 2026)
+- BPR cap: £2,500,000 — subject to final enactment
+- Pension IHT: April 2027 — subject to final legislation
+- EIS loss relief: up to an effective 38.5% reduction in losses
+  — subject to adviser confirmation
+- SEIS loss relief: up to 72% effective relief
+  — subject to adviser confirmation
+- Minimum investment: £40,000
+- Maximum investment: £500,000
+
+### Approved Decumulation Planner status
+"Specification complete. Prototype build commencing."
+Never: live, available, launching soon.
+
+### QC false positive handling
+Auto-resolved false positives (auto_resolved_count > 0 with no
+genuine failures) → set CLEAN. Note the count.
+
+### Process for each whitepaper
+
+1. Call POST /api/content/generate-brief with the gap definition
+2. Confirm ready_to_generate: true and information_needed: []
+3. Call POST /api/content/generate-from-brief
+4. Call POST /api/generation/:id/qc-rerun
+5. Fix any genuine failures (max 3 attempts)
+6. Call POST /api/generation/:id/promote
+7. PATCH /api/documents/:id with correct persona_relevance
+   and stage_relevance tags
+
+---
+
+## DOC 320 — IHT-Proof Estate: Rolling EIS Programme
+
+**Target persona:** Legacy Builder
+**Pipeline stages:** Called, Demo Booked, Demo Complete
+**Purpose:** Educational whitepaper explaining how a rolling
+annual EIS investment programme, sustained over 5–10 years,
+removes significant assets from the estate entirely through BPR
+while generating income tax relief each year. Positions EIS as
+the structural replacement for the pension as an IHT tool.
+
+**Gap definition for generate-brief:**
+```json
+{
+  "archetype": "Legacy Builder",
+  "stage": "Demo Booked",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "IHT-Proof Estate: The Rolling EIS Programme",
+  "description": "A whitepaper explaining the rolling annual EIS
+    investment programme as an IHT planning tool. Covers the BPR
+    qualifying clock per cohort, how assets exit the estate after
+    2 years per cohort, the compounding effect over 5-10 years,
+    the pension IHT problem as the trigger for urgency, and the
+    maths of a £250K annual programme across 10 years. Target
+    reader: Legacy Builder who understands EIS at a basic level
+    but hasn't modelled the estate planning angle in detail."
+}
+```
+
+**After generation, apply these metadata tags:**
+```json
+{
+  "persona_relevance": ["Legacy Builder", "Preserver"],
+  "stage_relevance": ["Called", "Demo Booked", "Demo Complete"]
+}
+```
+
+---
+
+## DOC 330 — The Advice Gap: EIS
+
+**Target persona:** Cold HNW prospect — Growth Seeker and
+Legacy Builder
+**Pipeline stages:** Outreach, Called
+**Purpose:** Educational whitepaper explaining why IFAs cannot
+advise on individual EIS investments and what this means for
+sophisticated investors. Positions Unlock as the answer to the
+structural advice gap — providing intelligence and deal-flow
+access that regulated advisers are prohibited from offering.
+
+**Gap definition for generate-brief:**
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The Advice Gap: Why Your IFA Can't Help You Here",
+  "description": "A whitepaper explaining the structural advice
+    gap in EIS investing. IFAs are prohibited by FCA regulation
+    from advising on individual EIS company investments — they
+    can only advise on EIS funds run by authorised discretionary
+    managers, and on VCTs. Direct EIS sits entirely outside the
+    scope of regulated advice. This means sophisticated investors
+    evaluating direct EIS opportunities have no regulated adviser
+    to turn to. The whitepaper explains why this gap exists,
+    what it means for investors, how Unlock fills it with
+    intelligence tools and deal-flow access, and why this is
+    actually a feature not a bug — the most interesting EIS
+    opportunities are not in funds. Target reader: HNW investor
+    who relies on an IFA and doesn't understand why the IFA
+    won't engage with EIS directly."
+}
+```
+
+**After generation, apply these metadata tags:**
+```json
+{
+  "persona_relevance": ["Growth Seeker", "Legacy Builder"],
+  "stage_relevance": ["Outreach", "Called", "Demo Booked"]
+}
+```
+
+---
+
+## DOC 340 — The Pension Problem: April 2027
+
+**Target persona:** Preserver and Legacy Builder
+**Pipeline stages:** Called, Demo Booked
+**Purpose:** Educational whitepaper on the April 2027 pension
+IHT change. Explains what is changing, who is affected, what
+the options are, and why EIS/SEIS BPR is the primary structural
+replacement. Creates urgency around starting the BPR clock
+before April 2027.
+
+**Gap definition for generate-brief:**
+```json
+{
+  "archetype": "Preserver",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The Pension Problem: What April 2027 Means for
+    Your Estate",
+  "description": "A whitepaper on the proposed April 2027
+    pension IHT change. Covers: what is changing (undrawn pension
+    pots falling within the IHT taxable estate from April 2027,
+    subject to final legislation), who is most affected (investors
+    with large SIPPs who have been using the pension as an IHT
+    shelter), the scale of the problem (for an £800K SIPP the
+    IHT exposure overnight), why conventional wisdom about drawing
+    the pension last is now wrong, what the options are (draw
+    down earlier and pay income tax, or replace the pension's
+    IHT function with EIS/SEIS BPR), and why the BPR clock
+    needs to start before April 2027. Urgency framing: investors
+    who start an EIS programme before April 2027 will have
+    cohorts qualifying for BPR before the pension changes take
+    full effect. Those who wait will not. All pension IHT
+    references must include 'subject to final legislation'
+    qualifier throughout."
+}
+```
+
+**After generation, apply these metadata tags:**
+```json
+{
+  "persona_relevance": ["Preserver", "Legacy Builder"],
+  "stage_relevance": ["Called", "Demo Booked", "Demo Complete"]
+}
+```
+
+---
+
+## DOC 350 — The Iran Effect: Portfolio Concentration
+
+**Target persona:** Cold HNW prospect — Growth Seeker and
+Preserver
+**Pipeline stages:** Outreach, Called
+**Purpose:** Educational whitepaper on the hidden risk of
+portfolio concentration. Uses the example of investors with
+heavy exposure to a single sector, geography, or asset class
+who think they are diversified but are not. Positions Unlock's
+portfolio simulator and correlation analysis as the tool that
+surfaces these hidden concentrations before they cause damage.
+
+**Gap definition for generate-brief:**
+```json
+{
+  "archetype": "Growth Seeker",
+  "stage": "Called",
+  "gap_type": "document_type",
+  "document_type": "whitepaper",
+  "title": "The Iran Effect: The Hidden Risk in a Concentrated
+    Portfolio",
+  "description": "A whitepaper on portfolio concentration risk.
+    The 'Iran Effect' refers to how a single geopolitical or
+    macro event can simultaneously damage assets that appear
+    unrelated — property values, pension fund equity exposure,
+    tech stock holdings, and energy prices can all move together
+    when the underlying driver is the same. Investors who believe
+    they are diversified across asset classes often have hidden
+    correlation — particularly those with heavy UK property,
+    global equities, and a pension invested in equity funds.
+    The whitepaper explains: what concentration risk actually
+    means, how correlation works in practice, the specific hidden
+    correlations most HNW UK investors carry without realising,
+    how stress-testing across 30+ scenarios reveals concentration
+    that a standard asset allocation view misses, and how Unlock's
+    portfolio simulator gives institutional-grade scenario
+    analysis at consumer cost. Target reader: HNW investor who
+    thinks of themselves as well-diversified but has never stress-
+    tested their portfolio against correlated macro scenarios."
+}
+```
+
+**After generation, apply these metadata tags:**
+```json
+{
+  "persona_relevance": ["Growth Seeker", "Preserver"],
+  "stage_relevance": ["Outreach", "Called", "Demo Booked"]
+}
+```
+
+---
+
+## After all four whitepapers are generated and promoted
+
+### Run recommendation engine verification
+
+Test 1 — Legacy Builder × Demo Booked:
+```json
+{
+  "detected_persona": "Legacy Builder",
+  "pipeline_stage": "Demo Booked",
+  "archetype": "Legacy Builder",
+  "confidence": 0.85,
+  "transcript_summary": "Investor has substantial estate and is
+    concerned about IHT exposure. Understands EIS at a basic level
+    but hasn't modelled the estate planning angle in detail.
+    Main question was about how EIS interacts with existing
+    pension and property holdings."
+}
+```
+Expected: IHT-Proof Estate whitepaper (320) should surface.
+
+Test 2 — Preserver × Called:
+```json
+{
+  "detected_persona": "Preserver",
+  "pipeline_stage": "Called",
+  "archetype": "Preserver",
+  "confidence": 0.8,
+  "transcript_summary": "First call. Investor has a large SIPP
+    and is worried about the April 2027 pension IHT change.
+    Doesn't know what to do about it. IFA hasn't been helpful."
+}
+```
+Expected: Pension Problem whitepaper (340) and Advice Gap (330)
+should surface.
+
+Test 3 — Growth Seeker × Outreach:
+```json
+{
+  "detected_persona": "Growth Seeker",
+  "pipeline_stage": "Outreach",
+  "archetype": "Growth Seeker",
+  "confidence": 0.75,
+  "transcript_summary": "Early contact. Investor has a diversified
+    portfolio but it's all conventional assets. Interested in
+    growth opportunities. Has heard of EIS but doesn't know much
+    about it."
+}
+```
+Expected: Iran Effect whitepaper (350) and Advice Gap (330)
+should surface alongside the one-pager.
+
+### Save gap snapshot
+Call GET /api/content/gaps?save=true after all whitepapers
+are promoted.
+
+---
+
+## Final report
+
+For each whitepaper:
+
+| Doc | Title | QC Attempts | Genuine Fixes | Result | State |
+|---|---|---|---|---|---|
+| 320 | IHT-Proof Estate | [n] | [list] | PASS/FP | CLEAN |
+| 330 | Advice Gap | [n] | [list] | PASS/FP | CLEAN |
+| 340 | Pension Problem | [n] | [list] | PASS/FP | CLEAN |
+| 350 | Iran Effect | [n] | [list] | PASS/FP | CLEAN |
+
+RECOMMENDATION TESTS:
+- Legacy Builder × Demo Booked: Doc 320 surfaced: YES / NO
+- Preserver × Called: Doc 340 surfaced: YES / NO
+- Growth Seeker × Outreach: Doc 350 surfaced: YES / NO
+
+GAP SNAPSHOT:
+- Snapshot ID: [id]
+- Total gaps remaining: [n]
+- Type gaps resolved by whitepapers: [n]
+
+OVERALL:
+- All 4 whitepapers CLEAN: YES / NO
+- Registry campaign-ready: YES / NO
