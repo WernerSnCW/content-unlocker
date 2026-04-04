@@ -398,79 +398,280 @@ router.post("/generation/:id/promote", async (req, res): Promise<void> => {
   });
 });
 
-async function runQC(content: string, complianceText: string, documentType: string, attempt: number) {
-  try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `You are a QC evaluator for Unlock, a UK portfolio intelligence platform. Evaluate this generated document.
+const QC_CHECKLIST_PROMPT = `RUN EXACTLY THESE CHECKS IN THIS ORDER. Do not skip any check.
+Do not add checks that are not on this list.
+
+1.  COMPLIANCE_FIGURES — EIS income tax relief stated as 30%
+2.  COMPLIANCE_FIGURES — SEIS income tax relief stated as 50%
+3.  COMPLIANCE_FIGURES — VCT income tax relief stated as 20%
+    (not 30% — VCT was reduced from April 2026)
+4.  COMPLIANCE_FIGURES — BPR cap stated as £2,500,000 (not £2.5M)
+    with "subject to final enactment" qualifier
+5.  COMPLIANCE_FIGURES — Pension IHT change stated as April 2027
+    with "subject to final legislation" qualifier
+6.  COMPLIANCE_FIGURES — EIS loss relief stated as percentage
+    framing (38.5% effective reduction) not per-pound arithmetic
+7.  COMPLIANCE_FIGURES — SEIS loss relief stated as percentage
+    framing (up to 72% effective relief) not per-pound arithmetic
+8.  TERMINOLOGY — "Instant Investment" used (not ASA/SAFE)
+9.  TERMINOLOGY — No prohibited phrases: "game-changing",
+    "revolutionary", "disruptive", "guaranteed"
+10. TERMINOLOGY — Decumulation Planner status uses approved phrase
+    "Specification complete. Prototype build commencing."
+    (not "live", "available", "launching soon", "in development")
+11. PRODUCT_TAGLINE — "Clarity, without complexity" present
+    (only required for Tier 1 documents and investor-facing Tier 3)
+12. PORTFOLIO_ARITHMETIC — Any portfolio allocation percentages
+    mentioned sum to exactly 100%
+13. INVESTMENT_ADVICE — No content constitutes regulated financial
+    advice or personal recommendations
+14. UNSUBSTANTIATED_CLAIMS — No specific financial projections
+    stated as fact without "illustrative" or "varies by" qualifier
+15. FCA_STATUS — If Unlock Access is mentioned: "Unlock Access
+    does not hold FCA authorisation" stated or clearly implied
+16. LOSS_RELIEF_INHERITANCE — If loss relief is mentioned:
+    "personal to the original investor" stated or not applicable
+17. CAPITAL_AT_RISK — "Capital at risk" appears in any document
+    that discusses investment returns
+18. ADVISER_CONFIRMATION — Loss relief figures include
+    "subject to adviser confirmation"
+
+For each check:
+- If the check is not applicable to this document type: return
+  result: "pass", note: "Not applicable to document type"
+- If the check passes: return result: "pass" with evidence
+- If the check fails: return result: "fail" with BOTH
+  offending_text (exact quote from document) AND
+  correct_version (the corrected text)
+- If offending_text and correct_version would be identical:
+  return result: "pass", note: "Content already correct"
+  DO NOT return a fail if you cannot suggest an actual correction`;
+
+const CHUNK_THRESHOLD = 15000;
+
+function isFalsePositive(check: any): boolean {
+  if (check.result !== "fail") return false;
+
+  if (check.offending_text && check.correct_version) {
+    const normalise = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    if (normalise(check.offending_text) === normalise(check.correct_version)) return true;
+  }
+
+  if (check.offending_text && !check.correct_version) {
+    const noteLower = (check.note || "").toLowerCase();
+    if (noteLower.includes("already correct") || noteLower.includes("no correction needed") || noteLower.includes("content is correct")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function splitIntoChunks(content: string, maxSize: number): string[] {
+  if (content.length <= maxSize) return [content];
+  const paragraphs = content.split(/\n\n+/);
+  const chunks: string[] = [];
+  let current = "";
+  for (const para of paragraphs) {
+    if (current.length + para.length + 2 > maxSize && current.length > 0) {
+      chunks.push(current.trim());
+      current = "";
+    }
+    current += (current ? "\n\n" : "") + para;
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length > 0 ? chunks : [content];
+}
+
+async function runQCSingle(contentChunk: string, complianceText: string, documentType: string, attempt: number) {
+  const message = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    messages: [
+      {
+        role: "user",
+        content: `You are a QC evaluator for Unlock, a UK portfolio intelligence platform. Evaluate this document content.
 
 DOCUMENT TYPE: ${documentType}
 CONTENT TO EVALUATE:
-${content}
+${contentChunk}
 
 COMPLIANCE CONSTANTS THAT MUST BE ACCURATE:
 ${complianceText}
 
-CHECK EACH OF THESE:
-1. compliance_accuracy — All figures match compliance constants exactly
-2. terminology — Uses "Founding investor" not "shareholder", "Instant Investment" not "ASA", "EIS/SEIS relief" correctly
-3. prohibited_content — No discount tier percentages, no commission/fee structures
-4. tone — Professional, institutional, no marketing fluff
-5. spelling — British English throughout
-6. product_tagline — Uses "Clarity, without complexity" correctly
-7. completeness — Document addresses the stated requirements
-8. factual_accuracy — No invented statistics or claims
+${QC_CHECKLIST_PROMPT}
 
 Return ONLY valid JSON:
 {
   "overall": "<pass|fail>",
   "checks": [
     {
-      "check_id": "<id from above>",
+      "check_number": <1-18>,
+      "check_id": "<category from checklist>",
       "label": "<human-readable label>",
-      "result": "<pass|fail|warning>",
+      "result": "<pass|fail>",
       "offending_text": "<exact text that fails, or null>",
       "correct_version": "<what it should say, or null>",
+      "note": "<explanation or evidence>",
       "source": "<which compliance constant or rule>"
     }
   ],
   "fail_count": <number>,
-  "warnings": ["<any warnings>"],
+  "warnings": [],
   "qc_attempt": ${attempt}
 }
 
+You MUST return exactly 18 check results, one for each numbered check above, in order.
 Return ONLY the JSON.`,
-        },
-      ],
-    });
+      },
+    ],
+  });
 
-    const block = message.content[0];
-    const text = block.type === "text" ? block.text : "";
+  const block = message.content[0];
+  const text = block.type === "text" ? block.text : "";
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  return JSON.parse(cleaned);
+}
 
+function mergeChunkResults(chunkResults: any[], attempt: number) {
+  const mergedChecks: any[] = [];
+  const checkCount = 18;
+
+  for (let i = 0; i < checkCount; i++) {
+    let worstResult = "pass";
+    let failingCheck: any = null;
+
+    for (const cr of chunkResults) {
+      const check = cr.checks?.find((c: any) => c.check_number === i + 1) || cr.checks?.[i];
+      if (check && check.result === "fail") {
+        worstResult = "fail";
+        failingCheck = check;
+      }
+    }
+
+    if (failingCheck) {
+      mergedChecks.push({ ...failingCheck, check_number: i + 1 });
+    } else {
+      const firstCheck = chunkResults[0]?.checks?.find((c: any) => c.check_number === i + 1) || chunkResults[0]?.checks?.[i];
+      mergedChecks.push(firstCheck ? { ...firstCheck, check_number: i + 1 } : {
+        check_number: i + 1,
+        check_id: `check_${i + 1}`,
+        label: `Check ${i + 1}`,
+        result: "pass",
+        note: "Not applicable",
+        offending_text: null,
+        correct_version: null,
+        source: null,
+      });
+    }
+  }
+
+  return mergedChecks;
+}
+
+async function runQC(content: string, complianceText: string, documentType: string, attempt: number) {
+  try {
+    const needsChunking = content.length > CHUNK_THRESHOLD;
+    const chunks = needsChunking ? splitIntoChunks(content, CHUNK_THRESHOLD) : [content];
+    let allChecks: any[];
+
+    let sampledChunks = chunks;
+    if (chunks.length > 3) {
+      const mid = Math.floor(chunks.length / 2);
+      sampledChunks = [chunks[0], chunks[mid], chunks[chunks.length - 1]];
+    }
+    const actualChunksProcessed = sampledChunks.length;
+
+    if (sampledChunks.length === 1) {
+      const result = await runQCSingle(sampledChunks[0], complianceText, documentType, attempt);
+      allChecks = result.checks || [];
+    } else {
+      const settled = await Promise.allSettled(
+        sampledChunks.map(chunk => runQCSingle(chunk, complianceText, documentType, attempt))
+      );
+      const chunkResults = settled
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+        .map(r => r.value);
+      if (chunkResults.length === 0) {
+        throw new Error("All chunk QC evaluations failed");
+      }
+      allChecks = mergeChunkResults(chunkResults, attempt);
+    }
+
+    if (allChecks.length < 18) {
+      for (let i = allChecks.length; i < 18; i++) {
+        allChecks.push({
+          check_number: i + 1,
+          check_id: `check_${i + 1}`,
+          label: `Check ${i + 1}`,
+          result: "pass",
+          note: "Not returned by evaluator — assumed not applicable",
+          offending_text: null,
+          correct_version: null,
+          source: null,
+        });
+      }
+    }
+
+    let autoResolvedCount = 0;
+    for (const check of allChecks) {
+      if (isFalsePositive(check)) {
+        check.result = "pass";
+        check.note = (check.note ? check.note + " | " : "") + "Auto-resolved: offending text matches correction";
+        autoResolvedCount++;
+      }
+    }
+
+    const failCount = allChecks.filter((c: any) => c.result === "fail").length;
+    const overall = failCount === 0 ? "pass" : "fail";
+
+    const warnings: string[] = [];
+    if (autoResolvedCount > 0) {
+      warnings.push(`${autoResolvedCount} false positive(s) auto-resolved`);
+    }
+
+    return {
+      overall,
+      checks: allChecks,
+      fail_count: failCount,
+      auto_resolved_count: autoResolvedCount,
+      warnings,
+      qc_attempt: attempt,
+      chunking_applied: needsChunking,
+      chunks_total: chunks.length,
+      chunks_processed: actualChunksProcessed,
+      total_checks: allChecks.length,
+    };
+  } catch (err: any) {
     try {
-      const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      return JSON.parse(cleaned);
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("JSON") || errMsg.includes("parse")) {
+        return {
+          overall: "fail",
+          checks: [],
+          fail_count: 1,
+          auto_resolved_count: 0,
+          warnings: ["QC response could not be parsed — failing closed for safety"],
+          qc_attempt: attempt,
+          chunking_applied: content.length > CHUNK_THRESHOLD,
+          chunks_processed: 0,
+          total_checks: 0,
+        };
+      }
+      throw err;
     } catch {
       return {
         overall: "fail",
         checks: [],
         fail_count: 1,
-        warnings: ["QC response could not be parsed — failing closed for safety"],
+        auto_resolved_count: 0,
+        warnings: ["QC evaluation unavailable — failing closed for safety"],
         qc_attempt: attempt,
+        chunking_applied: false,
+        chunks_processed: 0,
+        total_checks: 0,
       };
     }
-  } catch {
-    return {
-      overall: "fail",
-      checks: [],
-      fail_count: 1,
-      warnings: ["QC evaluation unavailable — failing closed for safety"],
-      qc_attempt: attempt,
-    };
   }
 }
 

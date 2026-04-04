@@ -1,0 +1,238 @@
+# FIX — QC Engine Calibration
+Version: 1.0
+Priority: HIGH — must be complete before Tier 2/3 cascade review
+
+Three problems identified across the Tier 1 remediation sessions:
+
+1. FALSE POSITIVES: The VCT check fails consistently across 9+
+   consecutive runs with offending text identical to correct text.
+   The QC engine acknowledges the content is correct in the
+   correction field but still returns "fail".
+
+2. NON-DETERMINISM: Each run of the QC evaluator surfaces
+   different findings on the same content. A document that passes
+   25 checks in run 1 may fail 3 different checks in run 2.
+   This makes it impossible to reach a stable PASS state.
+
+3. PARSE FAILURE: The QC evaluator returned an unparseable
+   response on doc 520 (large document, attempt 3). The existing
+   fail-open fix catches this but loses all QC data.
+
+This fix addresses all three.
+
+---
+
+## SYSTEM REFERENCE
+
+### Canonical QC result values
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### QC fail-open behaviour (confirmed in prior fix session)
+If QC response cannot be parsed: default to FAIL, not PASS.
+This is correct — do not change this behaviour.
+
+---
+
+## Fix 1 — False positive detection
+
+### The problem
+When the QC evaluator returns a check result where:
+- result: "fail"
+- offending_text === correct_version (exactly the same string)
+
+...the check is a false positive. The evaluator flagged content
+it cannot actually correct. These should be treated as PASS.
+
+### The fix
+
+In the QC evaluation response processing code, add a
+false-positive detection step after the AI response is parsed
+and before review_state is set:
+
+```typescript
+function isfalsePositive(check: QCCheck): boolean {
+  if (check.result !== 'fail') return false
+  if (!check.offending_text || !check.correct_version) return false
+
+  // Normalise both strings before comparing
+  const normalise = (s: string) =>
+    s.trim().toLowerCase().replace(/\s+/g, ' ')
+
+  return normalise(check.offending_text) ===
+         normalise(check.correct_version)
+}
+```
+
+Apply this to every check in the QC response. If
+isfalsePositive() returns true for a check:
+- Change the check result to "pass" in the processed output
+- Add a note: "Auto-resolved: offending text matches correction"
+- Do not count it as a failure when calculating overall result
+
+A document passes QC if all checks either pass natively or are
+resolved as false positives.
+
+Log the count of auto-resolved false positives per QC run for
+monitoring purposes.
+
+---
+
+## Fix 2 — Reduce non-determinism in the QC prompt
+
+### The problem
+The QC evaluator prompt does not constrain which checks to run
+or in what order. Each run surfaces a different subset of issues
+because the AI has discretion over what to flag. A document that
+passes check X in run 1 may fail it in run 2 because the AI
+evaluated the same content differently.
+
+### The fix
+
+Update the QC evaluator prompt to include an explicit,
+numbered checklist of every check that must be run, in a
+fixed order. The evaluator must run all checks every time —
+not a subset it selects at runtime.
+
+The mandatory checklist (run in this order, every time):
+
+```
+RUN EXACTLY THESE CHECKS IN THIS ORDER. Do not skip any check.
+Do not add checks that are not on this list.
+
+1.  COMPLIANCE_FIGURES — EIS income tax relief stated as 30%
+2.  COMPLIANCE_FIGURES — SEIS income tax relief stated as 50%
+3.  COMPLIANCE_FIGURES — VCT income tax relief stated as 20%
+    (not 30% — VCT was reduced from April 2026)
+4.  COMPLIANCE_FIGURES — BPR cap stated as £2,500,000 (not £2.5M)
+    with "subject to final enactment" qualifier
+5.  COMPLIANCE_FIGURES — Pension IHT change stated as April 2027
+    with "subject to final legislation" qualifier
+6.  COMPLIANCE_FIGURES — EIS loss relief stated as percentage
+    framing (38.5% effective reduction) not per-pound arithmetic
+7.  COMPLIANCE_FIGURES — SEIS loss relief stated as percentage
+    framing (up to 72% effective relief) not per-pound arithmetic
+8.  TERMINOLOGY — "Instant Investment" used (not ASA/SAFE)
+9.  TERMINOLOGY — No prohibited phrases: "game-changing",
+    "revolutionary", "disruptive", "guaranteed"
+10. TERMINOLOGY — Decumulation Planner status uses approved phrase
+    "Specification complete. Prototype build commencing."
+    (not "live", "available", "launching soon", "in development")
+11. PRODUCT_TAGLINE — "Clarity, without complexity" present
+    (only required for Tier 1 documents and investor-facing Tier 3)
+12. PORTFOLIO_ARITHMETIC — Any portfolio allocation percentages
+    mentioned sum to exactly 100%
+13. INVESTMENT_ADVICE — No content constitutes regulated financial
+    advice or personal recommendations
+14. UNSUBSTANTIATED_CLAIMS — No specific financial projections
+    stated as fact without "illustrative" or "varies by" qualifier
+15. FCA_STATUS — If Unlock Access is mentioned: "Unlock Access
+    does not hold FCA authorisation" stated or clearly implied
+16. LOSS_RELIEF_INHERITANCE — If loss relief is mentioned:
+    "personal to the original investor" stated or not applicable
+17. CAPITAL_AT_RISK — "Capital at risk" appears in any document
+    that discusses investment returns
+18. ADVISER_CONFIRMATION — Loss relief figures include
+    "subject to adviser confirmation"
+
+For each check:
+- If the check is not applicable to this document type
+  (e.g. PRODUCT_TAGLINE on an internal spec): return
+  result: "pass", note: "Not applicable to document type"
+- If the check passes: return result: "pass" with evidence
+- If the check fails: return result: "fail" with BOTH
+  offending_text (exact quote from document) AND
+  correct_version (the corrected text)
+- If offending_text and correct_version would be identical:
+  return result: "pass", note: "Content already correct"
+  DO NOT return a fail if you cannot suggest an actual correction
+```
+
+This replaces the existing open-ended QC prompt.
+The evaluator must return exactly 18 check results, in order.
+If the document does not contain content relevant to a check,
+return "pass" with "Not applicable."
+
+---
+
+## Fix 3 — Handle large document parse failures
+
+### The problem
+On large documents (doc 520, 42,982 chars), the QC evaluator
+response sometimes cannot be parsed. The current fail-closed
+behaviour is correct but loses all QC data.
+
+### The fix
+
+Split large documents before sending to the QC evaluator.
+
+If document content exceeds 15,000 characters:
+1. Split into chunks of maximum 15,000 characters at paragraph
+   boundaries (never mid-sentence)
+2. Run QC on each chunk independently
+3. Merge results: if the same check number fails in any chunk,
+   it fails overall
+4. If a check passes in all chunks, it passes overall
+5. A check that is "not applicable" in all chunks is not applicable
+
+This ensures the evaluator never receives more content than it
+can reliably process in a single call.
+
+Add chunking_applied: boolean and chunks_processed: number
+to the QC response metadata so it is visible in qc_history.
+
+---
+
+## Confirm with live tests
+
+Test 1 — False positive detection:
+- Run POST /api/generation/400/qc-rerun on doc 400
+  (known to have VCT false positive)
+- Confirm the VCT check is auto-resolved to "pass"
+- Confirm auto_resolved_count > 0 in the QC response
+- Confirm review_state is set to CLEAN if all other checks pass
+
+Test 2 — Fixed checklist:
+- Run QC on the same document twice consecutively
+- Confirm both runs return exactly 18 check results
+- Confirm the same checks appear in the same order in both runs
+- Confirm no run returns fewer than 18 results
+
+Test 3 — Consistency across runs:
+- Run QC 3 times on doc 700 (previously non-deterministic)
+- Confirm the overall result (PASS/FAIL) is the same across
+  all 3 runs
+- Confirm any genuine failures appear in all 3 runs
+
+Test 4 — Large document chunking:
+- Run QC on doc 520 (42,982 chars — previously caused parse
+  failure)
+- Confirm chunking_applied: true in QC response metadata
+- Confirm a complete 18-check result is returned
+- Confirm no parse failure
+
+Test 5 — Non-applicable checks:
+- Run QC on an internal document (e.g. doc 400 — Decumulation
+  Engine spec, not investor-facing)
+- Confirm PRODUCT_TAGLINE returns "pass" with "Not applicable"
+  rather than failing because the tagline is absent
+
+---
+
+## Final report
+
+Fix 1 — False positive detection:
+- Auto-resolution implemented: YES / NO
+- VCT false positive auto-resolved on doc 400: YES / NO
+- Auto-resolved count visible in QC response: YES / NO
+
+Fix 2 — Fixed checklist:
+- 18 mandatory checks implemented: YES / NO
+- Same 18 checks returned on consecutive runs: YES / NO
+- Non-determinism eliminated (same result across 3 runs): YES / NO
+
+Fix 3 — Large document chunking:
+- Chunking implemented at 15,000 char threshold: YES / NO
+- Doc 520 processed without parse failure: YES / NO
+- chunking_applied visible in QC metadata: YES / NO
+
+Overall: QC engine ready for Tier 2/3 cascade review: YES / NO

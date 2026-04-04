@@ -40,7 +40,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Google Docs sync**: Export document to Google Docs, edit in Docs, pull changes back. Uses `@replit/connectors-sdk` proxy with `google-drive` connector. DB fields `gdoc_id`/`gdoc_url` track link.
 - **Immutable send logs**: Corrections via appended audit entry, originals remain
 - **Propagation cascade**: Shared propagation logic in `api-server/src/lib/propagation.ts`. `detectPropagationTargets()` identifies downstream dependents without writing (used by feature-update). `propagateFromDocument()` detects + flags + writes changelog (used by `POST /documents/:id/propagate`). Tier 1 update flags Tier 2 + Tier 3 dependents; Tier 2 flags Tier 3 only.
-- **QC evaluator**: Separate API call, separate system prompt, never shares context with generator
+- **QC evaluator**: Fixed 18-check checklist (compliance figures, terminology, product tagline, portfolio arithmetic, investment advice, unsubstantiated claims, FCA status, loss relief inheritance, capital at risk, adviser confirmation). False positive auto-resolution (offending_text === correct_version). Large documents (>15K chars) chunked at paragraph boundaries and processed in parallel (max 3 sampled chunks). Fail-closed on parse errors.
 - **Terminology**: "Founding investor" (not shareholder), "Instant Investment" (not ASA), "EIS/SEIS relief"
 
 ## Structure
