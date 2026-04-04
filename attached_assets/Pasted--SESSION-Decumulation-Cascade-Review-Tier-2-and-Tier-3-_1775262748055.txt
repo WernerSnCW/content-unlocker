@@ -1,0 +1,224 @@
+# SESSION — Decumulation Cascade Review: Tier 2 and Tier 3
+Version: 1.0
+
+14 documents remaining in the Decumulation Planner cascade review
+queue. This session clears all of them.
+
+Complete Tier 2 first. Then work through Tier 3 documents
+systematically. Do not skip ahead.
+
+---
+
+## SYSTEM REFERENCE — Verify before starting
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Propagation utility
+Location: api-server/src/lib/propagation.ts
+- detectPropagationTargets() — read-only, no DB writes
+- propagateFromDocument() — detects, flags, writes changelog
+Do not reimplement. Do not call both on the same document.
+
+### Approved Decumulation Planner language — use exactly
+Status: "Specification complete. Prototype build commencing."
+Never: live, available, launching soon, in development, coming soon.
+
+### Approved compliance figures (from compliance_constants.json)
+- EIS income tax relief: 30%
+- SEIS income tax relief: 50%
+- VCT income tax relief: 20% (reduced from April 2026, not 30%)
+- BPR cap: £2,500,000 — subject to final enactment
+- Pension IHT: April 2027 — subject to final legislation
+- EIS loss relief: up to an effective 38.5% reduction in losses
+  — subject to adviser confirmation
+- SEIS loss relief: up to 72% effective relief
+  — subject to adviser confirmation
+- EIS annual limit: £1,000,000 (£2,000,000 knowledge-intensive)
+- SEIS annual limit: £200,000
+
+### QC false positive handling (from calibration fix 087)
+The QC engine now auto-resolves false positives where offending
+text matches correction text. If QC returns FAIL with only
+auto-resolved false positives, treat the document as CLEAN.
+Check the auto_resolved_count field in the QC response.
+
+---
+
+## Step 0 — Confirm the current queue
+
+Call GET /api/content/feature-update/{update_id}/queue
+
+Report:
+- Total documents remaining: [n]
+- Tier 2 documents: [list with IDs and titles]
+- Tier 3 documents: [list with IDs and titles]
+- Any documents already CLEAN (skip these)
+
+---
+
+## TIER 2 — Doc 200 (Execution_30K_Database)
+
+### Process
+
+**1a. Read the document**
+Call GET /api/documents/200 and read the content field.
+
+Identify every section referencing:
+- The Decumulation Planner or decumulation
+- Drawdown sequencing or pension planning
+- BPR cap figures or pension IHT dates
+- VCT income tax relief rates
+
+Report what you find before making any changes.
+
+**1b. Identify changes needed**
+
+For each reference found:
+- Is the Decumulation Planner status language correct?
+  ("Specification complete. Prototype build commencing.")
+- Are BPR cap figures stated as £2,500,000 with qualifier?
+- Are pension IHT references dated April 2027 with qualifier?
+- Is VCT stated as 20% (not 30%)?
+
+If no Decumulation Planner references exist: the cascade
+over-flagged this document. Note this and proceed to QC
+without content changes.
+
+**1c. Apply minimum fixes**
+
+Make only the changes identified in 1b.
+Do not rewrite sections that are already correct.
+PATCH /api/documents/200 with corrected content.
+edit_override: true if required for this tier.
+
+**1d. Run QC**
+Call POST /api/generation/200/qc-rerun
+
+If QC passes (or only false positives remain):
+- Set review_state: CLEAN
+- Confirm changelog entry
+
+If genuine failures remain: report them and fix.
+Maximum 3 QC attempts. If still failing after 3, flag for
+human review and move to Tier 3.
+
+**1e. Report**
+- Decumulation references found: YES / NO
+- Sections changed: [list or "None — cascade over-flagged"]
+- QC attempts: [n]
+- QC result: PASS / FAIL / FALSE_POSITIVES_ONLY
+- review_state CLEAN: YES / NO
+
+---
+
+## TIER 3 — 13 Documents
+
+Work through each document using the same process as Tier 2.
+Complete one document fully before starting the next.
+
+The 13 Tier 3 documents are:
+100 (One_Page), 110 (Founding_Investor_Three_Page),
+120 (Pack1), 130 (Pack2), 140 (Access_Service),
+150 (EIS_Secret_Weapon), 160 (EIS_Case_Studies),
+170 (IHT_EIS_5M_Estate), 180 (Duncan_Stewart_Bespoke),
+190 (UK_Investment_2026), 500 (Cold_Call),
+510 (Agent_Training), 530 (Agent_Quick_Reference)
+
+For each document:
+
+### Process (repeat for each Tier 3 document)
+
+**Read → Identify → Fix (minimum changes only) → QC → Clear**
+
+Step 1: Call GET /api/documents/:id
+Step 2: Identify Decumulation Planner references and any
+        compliance figure issues flagged by the cascade
+Step 3: Apply minimum fixes — only where language is incorrect
+Step 4: Call POST /api/generation/:id/qc-rerun
+Step 5: Set review_state: CLEAN if QC passes
+
+**Escalation rules:**
+- If no Decumulation references found → QC without changes,
+  note "cascade over-flagged"
+- If QC fails with only false positives (auto_resolved_count > 0,
+  no genuine failures) → set CLEAN, note false positives count
+- If genuine QC failures remain after 3 attempts → flag
+  MANUAL_REVIEW_REQUIRED, move to next document
+- Do not spend more than 3 QC attempts on any single document
+
+**Important for investor-facing documents (100, 110, 120, 130,
+140, 150, 160, 170, 180, 190):**
+These are send-ready documents. Any compliance failure is
+genuinely important — do not accept false positive resolution
+without confirming the content is actually correct.
+
+**For agent-facing documents (500, 510, 530):**
+QC rules still apply but PRODUCT_TAGLINE (check 11) is not
+required — these are internal documents, not investor-facing.
+
+---
+
+## Running report — update after each document
+
+Keep a running report as you work through the queue.
+After each document is processed, add a row:
+
+| Doc ID | Title | Changes | QC Attempts | Result | State |
+|---|---|---|---|---|---|
+| 200 | Execution_30K_Database | [changes or None] | [n] | PASS/FAIL/FP | CLEAN/MRR |
+| 100 | One_Page | ... | ... | ... | ... |
+[continue for all 14 documents]
+
+MRR = MANUAL_REVIEW_REQUIRED
+
+---
+
+## Step — Save gap snapshot after all documents are processed
+
+After all 14 documents are attempted, call:
+GET /api/content/gaps?save=true
+
+This saves the post-cascade baseline.
+
+---
+
+## Final report
+
+QUEUE CLEARED:
+- Documents set to CLEAN: [n of 14]
+- Documents flagged MANUAL_REVIEW_REQUIRED: [n]
+  List any flagged documents with reason
+
+CASCADE OVER-FLAGGING:
+- Documents with no Decumulation references found: [n]
+  (These were flagged by semantic match on "pension" or "IHT"
+  rather than actual Decumulation Planner product claims)
+
+QC ENGINE PERFORMANCE:
+- Documents cleared in 1 QC attempt: [n]
+- Documents cleared in 2 attempts: [n]
+- Documents cleared in 3 attempts: [n]
+- False positives auto-resolved: [total count across all docs]
+
+GAP SNAPSHOT:
+- Snapshot ID: [id]
+- Current gap count: [n]
+
+NEXT SESSION:
+- Any documents flagged MANUAL_REVIEW_REQUIRED need human
+  review before being set to CLEAN
+- Confirm the complete cascade queue is empty
+- Proceed to gap baseline re-run and whitepaper generation

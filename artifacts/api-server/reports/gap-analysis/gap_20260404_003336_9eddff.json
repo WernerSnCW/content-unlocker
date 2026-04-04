@@ -1,0 +1,36 @@
+{
+  "matrix_gaps": [],
+  "type_gaps": [
+    {
+      "document_type": "Compliance / risk disclosure",
+      "gap_type": "type",
+      "existing_documents": []
+    },
+    {
+      "document_type": "Pricing / terms summary",
+      "gap_type": "type",
+      "existing_documents": []
+    }
+  ],
+  "recommendation_gaps": [],
+  "information_readiness": {
+    "content_bank": {
+      "status": "SUFFICIENT",
+      "detail": "Content bank loaded with 98148 characters across multiple sections"
+    },
+    "compliance_constants": {
+      "status": "SUFFICIENT",
+      "detail": "All 7 expected compliance fields present",
+      "missing_fields": []
+    },
+    "overall": "READY_TO_GENERATE"
+  },
+  "summary": {
+    "total_gaps": 2,
+    "matrix_gap_count": 0,
+    "type_gap_count": 2,
+    "recommendation_failure_count": 0
+  },
+  "snapshot_id": "gap_20260404_003336_9eddff",
+  "created_at": "2026-04-04T00:33:36.040Z"
+}
