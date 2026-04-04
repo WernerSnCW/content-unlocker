@@ -1,0 +1,114 @@
+# FIX — Add Minimum Investment Check to QC Engine
+Version: 1.0
+Priority: HIGH — confirmed error pattern in investor-facing documents
+
+The pitch deck (inv_opp_feb26) contained "from £10K" as the
+minimum investment figure. The correct minimum is £40,000.
+This error would have been sent to investors without correction.
+
+This fix adds check 19 to the QC engine's fixed checklist to
+catch any document that states an incorrect minimum investment
+figure.
+
+---
+
+## SYSTEM REFERENCE
+
+### Approved minimum investment figure
+£40,000 — this is the confirmed founding investor minimum.
+Never state: £10,000 / £10K / "from £10K" / "from £10,000"
+or any figure below £40,000 in any investor-facing document.
+
+### Approved maximum investment figure
+£500,000 — maximum per founding investor.
+
+### Approved founding round terms (investor-facing)
+- Minimum: £40,000
+- Maximum: £500,000
+- Instrument: Instant Investment via SeedLegals (not ASA)
+- Discounts: negotiated individually — never state percentages
+
+---
+
+## The fix
+
+Update the QC engine's fixed checklist prompt to include
+check 19 as a mandatory check on all investor-facing documents.
+
+Add to the existing 18-check prompt, immediately after check 18:
+
+```
+19. INVESTMENT_MINIMUMS — If a minimum investment figure is
+    stated, it must be £40,000 or above. Any figure below
+    £40,000 (including £10,000, £10K, "from £10K", "from £5K",
+    or any similar low figure) is a compliance failure.
+    If no minimum investment figure is stated: return
+    result: "pass", note: "No minimum stated — not applicable"
+    If the figure is £40,000 or above: return "pass" with
+    the figure as evidence.
+    If the figure is below £40,000: return "fail" with the
+    offending figure and the correct version: "£40,000 minimum".
+```
+
+The total mandatory check count is now 19.
+
+Update all references to "18 checks" or "18-check" in the
+QC engine code to "19 checks" or "19-check".
+
+Update the validation that pads missing checks to expect 19
+results, not 18.
+
+### Not-applicable rule
+Check 19 is not applicable to:
+- Internal/agent documents (500, 510, 530)
+- Operational documents (200, 210, 220, 230)
+- Technical specifications (400)
+- Source/reference documents (520, 700)
+
+Check 19 applies to all investor-facing Tier 3 documents and
+any imported PDFs that are investor-facing.
+
+---
+
+## Confirm with live tests
+
+Test 1 — Check 19 present in QC output:
+- POST /api/generation/100/qc-rerun (One_Page — investor-facing)
+- Confirm response contains exactly 19 check results
+- Confirm check 19 ID is INVESTMENT_MINIMUMS
+- Confirm check 19 returns "pass" if no minimum is stated,
+  or the correct result if a minimum is found
+
+Test 2 — Correct minimum passes:
+- If any investor-facing document states £40,000 correctly:
+  confirm check 19 returns "pass" with the figure as evidence
+
+Test 3 — Incorrect minimum fails:
+- The pitch deck (inv_opp_feb26) contains "from £10K"
+- Run POST /api/generation/inv_opp_feb26/qc-rerun
+- Confirm check 19 returns "fail" with offending text
+  containing the £10K figure
+- Confirm correct_version states "£40,000 minimum"
+
+Test 4 — Internal document not applicable:
+- POST /api/generation/500/qc-rerun (Cold_Call — internal)
+- Confirm check 19 returns "pass" with "Not applicable"
+
+Test 5 — Count validation:
+- Run QC on any document
+- Confirm response contains exactly 19 checks
+- Confirm no check is missing or duplicated
+
+---
+
+## Final report
+
+Check 19 added to prompt: YES / NO
+Total checks now 19: YES / NO
+Validation updated to expect 19: YES / NO
+
+Test results:
+- Check 19 present in investor-facing QC output: YES / NO
+- Incorrect minimum (£10K) detected on pitch deck: YES / NO
+- Internal document returns not-applicable: YES / NO
+- All 19 checks present in every QC run: YES / NO

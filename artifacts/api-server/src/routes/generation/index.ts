@@ -435,6 +435,16 @@ Do not add checks that are not on this list.
     that discusses investment returns
 18. ADVISER_CONFIRMATION — Loss relief figures include
     "subject to adviser confirmation"
+19. INVESTMENT_MINIMUMS — If a minimum investment figure is
+    stated, it must be £40,000 or above. Any figure below
+    £40,000 (including £10,000, £10K, "from £10K", "from £5K",
+    or any similar low figure) is a compliance failure.
+    If no minimum investment figure is stated: return
+    result: "pass", note: "No minimum stated — not applicable"
+    If the figure is £40,000 or above: return "pass" with
+    the figure as evidence.
+    If the figure is below £40,000: return "fail" with the
+    offending figure and the correct version: "£40,000 minimum".
 
 For each check:
 - If the check is not applicable to this document type: return
@@ -506,7 +516,7 @@ Return ONLY valid JSON:
   "overall": "<pass|fail>",
   "checks": [
     {
-      "check_number": <1-18>,
+      "check_number": <1-19>,
       "check_id": "<category from checklist>",
       "label": "<human-readable label>",
       "result": "<pass|fail>",
@@ -521,7 +531,7 @@ Return ONLY valid JSON:
   "qc_attempt": ${attempt}
 }
 
-You MUST return exactly 18 check results, one for each numbered check above, in order.
+You MUST return exactly 19 check results, one for each numbered check above, in order.
 Return ONLY the JSON.`,
       },
     ],
@@ -535,7 +545,7 @@ Return ONLY the JSON.`,
 
 function mergeChunkResults(chunkResults: any[], attempt: number) {
   const mergedChecks: any[] = [];
-  const checkCount = 18;
+  const checkCount = 19;
 
   for (let i = 0; i < checkCount; i++) {
     let worstResult = "pass";
@@ -598,8 +608,8 @@ async function runQC(content: string, complianceText: string, documentType: stri
       allChecks = mergeChunkResults(chunkResults, attempt);
     }
 
-    if (allChecks.length < 18) {
-      for (let i = allChecks.length; i < 18; i++) {
+    if (allChecks.length < 19) {
+      for (let i = allChecks.length; i < 19; i++) {
         allChecks.push({
           check_number: i + 1,
           check_id: `check_${i + 1}`,
