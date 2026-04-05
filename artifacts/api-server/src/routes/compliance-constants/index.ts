@@ -62,6 +62,11 @@ router.post("/compliance-constants/propose", async (req, res): Promise<void> => 
       return;
     }
 
+    if (currentRecord.is_prohibited) {
+      res.status(400).json({ error: "This constant is prohibited and cannot be overridden" });
+      return;
+    }
+
     const validation = validateOverride(key, newValue, currentRecord);
     if (!validation.valid) {
       if (validation.error === "Prohibited value") {

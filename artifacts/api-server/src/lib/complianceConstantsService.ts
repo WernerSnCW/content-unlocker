@@ -72,9 +72,5 @@ export function validateOverride(
     }
   }
 
-  if (currentConstant.subject_to_qualifier && !currentConstant.subject_to_qualifier) {
-    return { valid: false, error: "Cannot remove qualifier requirement from a qualifier-protected constant" };
-  }
-
   return { valid: true };
 }
