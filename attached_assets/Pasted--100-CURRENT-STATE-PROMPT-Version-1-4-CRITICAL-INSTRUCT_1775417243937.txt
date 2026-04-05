@@ -1,0 +1,145 @@
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+---
+
+CRITICAL INSTRUCTION: Your only output must be the completed template below.
+Do not write any prose before or after it. Do not describe what you are doing.
+Do not say "Let me scan" or "I'll read" or "Good" or anything else.
+Start your response with "## CURRENT STATE OUTPUT" and end it with the last
+line of Section 8. Nothing else.
+
+SCOPE: Scan the following files only — these are the files added or modified
+in the most recent build (RR-2026-04-06-007a). Do not scan anything outside
+this list.
+
+Files to scan:
+- lib/db/src/schema/compliance-constants.ts
+- lib/db/src/schema/index.ts (exports section only — confirm new export present)
+- artifacts/api-server/src/lib/complianceConstantsService.ts
+- artifacts/api-server/src/routes/compliance-constants/index.ts
+- artifacts/api-server/src/routes/index.ts (confirm compliance-constants mount)
+- artifacts/api-server/src/lib/dataManager.ts (seedComplianceConstants function only)
+- artifacts/api-server/src/routes/generation/index.ts (confirm getConstants() call sites — do not describe the full file)
+- artifacts/unlock-intel/src/pages/compliance-constants.tsx
+- artifacts/unlock-intel/src/components/layout.tsx (System group only)
+- artifacts/api-server/src/data/compliance_constants.json (confirm file still present, list keys)
+
+Read every file in scope before completing the template.
+Do not fill in any placeholder until you have read all files.
+Do not write "Purpose unclear from scan" unless you have actually read the file
+and cannot determine its purpose from the code.
+
+---
+
+SIGNIFICANCE RULE:
+A file is significant if it defines business logic, routing, persistence,
+validation, shared types, UI composition, tests, configuration, migrations,
+or integration code. All files in scope are significant — include all of them.
+
+ANTI-INFERENCE RULE:
+Describe only what actually exists in the code. Do not infer from filenames.
+Do not describe functions that are not in the file.
+
+SCAN COVERAGE RULE:
+If you cannot reach a file, say so explicitly under "Could not reach."
+Do not produce a scan that appears complete but is not.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to RR-2026-04-06-007a output files only
+**Fully scanned:** [list every file you read]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list any files you could not open, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+For every file you read, complete one block exactly as shown:
+
+#### `[exact file path]`
+**What it does:** [one sentence from code inspection — not from the filename]
+**Key functions, variables, data structures:** [list specific named functions,
+exported constants, table definitions, route handlers — with one-line descriptions
+of what each does]
+
+Do not skip any file you read. Do not merge multiple files into one block.
+
+---
+
+### 2. Data model
+
+For the compliance_constants table:
+
+- **compliance_constants:** columns: [name: type, name: type, ...] | status values: [list] | source values: [list]
+
+For each of the 22 seeded constants, list:
+- key | value | value_type | is_prohibited | subject_to_qualifier | category
+
+---
+
+### 3. Data flow
+
+Describe how data moves through the compliance constants system for each flow:
+
+- **Startup / seed flow:** [what happens, which functions, what is written]
+- **Read flow (runtime):** [how getConstants() is called, what it returns, cache behaviour]
+- **Propose flow:** [POST /propose — what it validates, what it writes]
+- **Confirm flow:** [POST /confirm — what state transitions occur, what side effects]
+- **Generation QC read flow:** [how generation/index.ts now reads constants]
+- **Feature flag flow:** [what happens when COMPLIANCE_CONSTANTS_DB is false]
+
+---
+
+### 4. Dependencies between files
+
+- **[file or function]:** depends on [what] for [reason]
+
+Include every import relationship between the new files. Pay particular
+attention to:
+- What complianceConstantsService imports
+- What the compliance-constants route imports
+- How generation/index.ts now imports from complianceConstantsService
+- Whether any file still imports getComplianceConstants from dataManager
+
+---
+
+### 5. Test coverage
+
+- **[Test file or suite]:** [what it covers]
+
+If no tests exist: "No tests currently exist."
+
+---
+
+### 6. External services
+
+- **[Service or library]:** [how it is used]
+
+If none introduced in this build: "No new external services introduced."
+
+---
+
+### 7. Patterns and conventions
+
+Note any patterns established by this build that future builds must follow:
+
+- [pattern — where it is established and what it governs]
+
+---
+
+### 8. Inconsistencies and flags
+
+List anything that:
+- Does not match the phase doc spec exactly
+- Creates a risk for Phase B (the import pipeline build)
+- Is a known legacy call site (getComplianceConstants in dashboard/gaps)
+- Is a DRAFT record left in the DB from testing
+- Any other flag relevant to the next build
+
+- [flag, or "None identified"]
