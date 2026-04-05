@@ -1,0 +1,248 @@
+# PHASE DOCUMENT — Template-Based Generation UI (R1)
+
+Version: v1.1
+Date: 2026-04-05
+Build ID: RR-2026-04-05-001
+Effort: 3–4 hours
+Dependencies: None
+Risk: MEDIUM
+
+-----
+
+## Section 1 — Feature
+
+Adds a “From Template” mode to the existing Content Generation page (`artifacts/unlock-intel/src/pages/generate.tsx`) via a two-tab toggle. When the user selects “From Template”, they choose from the 22 registered output templates, see the template’s section structure and compliance constraints (required/prohibited ACUs with content previews), provide a document name and optional context brief, and submit to the existing template-aware generation endpoint. The existing “Custom” tab and all its logic remain completely unchanged.
+
+-----
+
+## Section 2 — Why this is necessary
+
+Every document generated through the current Content Generation page bypasses the Template Registry entirely. `POST /generation/generate` (the current endpoint) applies no template section definitions, no required ACU enforcement, no prohibited ACU checking, and no parent template inheritance. The backend already has a complete compliant generation path — `generateFromTemplate()` in `artifacts/api-server/src/lib/generationEngine.ts`, served by `POST /generation/from-template` — but it has zero frontend exposure. As a result, the compliance value of the Template Registry (22 templates, required ACU injection at 95% match rate, prohibited ACU absence enforcement, section-level QC) is entirely invisible to users and produces no governed output. This is an output quality problem, not a UX preference.
+
+-----
+
+## Section 3 — Current state
+
+- `artifacts/unlock-intel/src/pages/generate.tsx`: single-mode page with a free-text form (document name, type, requirements, personas) submitting to `POST /generation/generate`. Contains existing QC result display (pass/fail badge, issues list, regenerate button, promote button). No template awareness. No tab structure.
+- `artifacts/api-server/src/routes/generation/index.ts`: implements `POST /generation/from-template`, which calls `generateFromTemplate()`. Exact request body shape must be confirmed from this file — it is not documented in the scan.
+- `artifacts/api-server/src/lib/generationEngine.ts`: `generateFromTemplate(request)` accepts `template_id`, optional `context`, and optional `channel_temperature`. Merges parent template ACUs, injects locked ACU content verbatim, runs `checkTemplateCompliance()`. Response shape must be confirmed against the Custom mode response shape before QC display reuse is confirmed.
+- `artifacts/api-server/src/routes/templates/index.ts`: `GET /templates` returns all 22 templates. `GET /templates/:id` returns a single template with merged parent sections.
+- `artifacts/api-server/src/routes/acu/index.ts`: `GET /acu` returns all ACUs with full content, status, and type.
+- `lib/api-client-react/src/generated/`: auto-generated hooks — whether hooks for `GET /templates` and `POST /generation/from-template` exist is unconfirmed. Manual fetch is the fallback.
+
+-----
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+
+- [ ] Data model / type definitions — NO
+- [ ] API contract changes (OpenAPI, generated client) — NO
+- [x] New UI components — YES (template picker, detail panel, tab toggle, ACU preview list)
+- [x] Additive edits to existing files — YES (`pages/generate.tsx`)
+- [ ] Database schema or migration — NO
+- [ ] External service integration — NO
+
+Layer count: 2 (UI + additive edit to existing file)
+Split required: NO
+Split rationale: Scope touches a single existing page file with no backend changes and no new routes. Both external LLM reviewers confirmed single pass. The GATE on request body confirmation manages the primary risk without requiring a phase split.
+
+-----
+
+## Section 5 — Required behaviour
+
+### 5.1 — Inspect route handler before writing any form code
+
+**File:** `artifacts/api-server/src/routes/generation/index.ts`
+
+Read the `POST /generation/from-template` route handler. Identify:
+
+- The exact JSON request body fields (names, types, required vs optional)
+- The exact JSON response shape returned on success
+- Whether the success response shape matches the response shape returned by `POST /generation/generate` (used by Custom mode)
+
+> **GATE: REQUEST BODY CONFIRMATION**
+> Stop here. Return the following to the user and wait for explicit confirmation before writing any form submission code:
+> 
+> ```
+> POST /generation/from-template request body:
+>   [list every field: name, type, required/optional]
+> 
+> Response shape matches Custom mode (POST /generation/generate): YES / NO
+>   [if NO — list the specific fields that differ]
+> ```
+> 
+> Do not proceed past this point until the user replies with: “ANSWER: confirmed” or “ANSWER: [correction]”.
+
+### 5.2 — Check for generated React Query hooks
+
+**File:** `lib/api-client-react/src/generated/`
+
+Check whether typed hooks exist for:
+
+- `GET /templates` (list all templates)
+- `POST /generation/from-template`
+
+If hooks exist for both: use them.
+If either hook is absent: use manual `fetch()` with `API_BASE` prefix for both template endpoints, consistent with the pattern in `artifacts/unlock-intel/src/pages/acu.tsx`. Do not run, modify, or regenerate Orval codegen.
+
+### 5.3 — Add two-tab toggle to generate.tsx
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+Before making any edits to this file: read the full file and list the names of all existing state variables, handler functions, and the QC result rendering block. Include this list in the pre-build report before writing any code.
+
+Add a tab toggle at the top of the page using Shadcn UI `Tabs` / `TabsList` / `TabsTrigger` / `TabsContent` components (consistent with `acu.tsx` tab pattern). Two tabs:
+
+- **“From Template”** (default active tab)
+- **“Custom”**
+
+The existing Custom mode form and all its state, handlers, and submission logic must be wrapped inside the “Custom” `TabsContent` block without any modification. No existing variable names, function names, or state declarations in the Custom mode block may be changed.
+
+Switching tabs must reset: all From Template form fields, the selected template, the template detail panel, and any prior generation result state from the From Template flow. Custom mode state is independent and must not be affected by tab switches.
+
+From Template state variables must be declared as a separate block from Custom mode state. No shared form state, no shared submit handlers, no shared result state between the two modes.
+
+### 5.4 — Template picker
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+Inside the “From Template” `TabsContent`:
+
+Load templates from `GET /templates` on component mount (or on first tab activation). Display a grouped picker using the `output_type` field from the `GET /templates` response. Group templates by their `output_type` value (e.g. “email”, “whitepaper”, “one-pager”) using a `<Select>` or grouped `<select>` element, or a card list with group headers — use whichever is consistent with existing Shadcn UI patterns on the page.
+
+Each template item must display: template `name`, `output_type`, and `channel` (if present).
+
+Loading state: show a loading spinner or skeleton while `GET /templates` is in flight.
+Error state: show an inline error message if `GET /templates` fails: “Could not load templates. Please try again.”
+Empty state: if the response returns an empty array, show: “No templates available.”
+
+### 5.5 — Template detail panel
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+When a template is selected from the picker, fetch `GET /templates/:id` to load the full template detail (sections, required_acus, prohibited_acus). Also load `GET /acu` to resolve ACU content previews. Both fetches may run in parallel.
+
+Display a detail panel below the picker containing:
+
+**Sections:** List the section names from the `sections` JSONB field (array of section objects — display the `name` or `title` field from each section object, whichever is present). Label: “Sections”.
+
+**Required ACUs:** For each ID in `required_acus`, find the matching ACU from `GET /acu` by ID and display a truncated content preview (first 100 characters of the `content` field, followed by “…” if truncated). Label each item with its ACU `type` field. If an ACU ID cannot be matched from `GET /acu`, display the raw ID in greyed text with the label “Content unavailable”. Do not omit unresolved IDs silently.
+
+**Prohibited ACUs:** Same display pattern as Required ACUs. Label the group “Prohibited Content”.
+
+Loading state for detail panel: show a skeleton or spinner while fetches are in flight.
+Error state: if `GET /templates/:id` fails, show: “Could not load template details.”
+
+The ACU list from `GET /acu` must be fetched once and stored in component state. Do not re-fetch it on every template selection.
+
+### 5.6 — Document name and context fields
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+Below the detail panel, display:
+
+- **Document name** (required): text input, placeholder “Document name”. Submission must be blocked if this field is empty — show inline validation error: “Document name is required.”
+- **Context / brief** (optional): textarea, placeholder “Additional context or brief (optional).”
+
+### 5.7 — Form submission
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+On submit, send a request to `POST /generation/from-template` with the request body shape confirmed at the GATE in 5.1. The payload must include at minimum: `template_id` (the selected template’s `id`) and the document name field. Include `context` if the user has entered text in the context field.
+
+Do not include `channel_temperature` — omit it entirely (use the engine default).
+
+Loading state: disable the submit button and show a spinner during the request.
+Error state: if the request fails, show an inline error below the submit button with the server error message if available, or “Generation failed. Please try again.”
+
+### 5.8 — QC result display
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+If the `POST /generation/from-template` response shape matches `POST /generation/generate` (confirmed at GATE 5.1): reuse the existing QC result display component/block from Custom mode without any modification. Render it below the From Template form on success.
+
+If the response shapes differ (confirmed at GATE 5.1): **stop**. Do not invent an adapter or modify the existing QC display. Report to the user:
+
+```
+SPEC-CONSTRAINT CONFLICT — POST /generation/from-template response shape
+differs from POST /generation/generate. QC display cannot be reused without
+modification. Return to Step 3.
+```
+
+-----
+
+## Section 6 — Acceptance criteria
+
+AC1. The Content Generation page (`/generate`) renders a two-tab toggle with tabs labelled “From Template” and “Custom”. The “From Template” tab is active by default on page load.
+
+AC2. The “Custom” tab renders the existing generation form with identical fields, layout, and submit behaviour as before this build. Submitting from the Custom tab calls `POST /generation/generate` with the same request body fields as prior to this build (document name, type, requirements, personas).
+
+AC3. Switching from “From Template” to “Custom” and back clears all From Template form state (selected template, document name, context, and any prior generation result from the From Template flow). Custom mode state is unaffected by tab switches.
+
+AC4. On “From Template” tab activation, `GET /templates` is called exactly once. The template picker displays all returned templates grouped by the `output_type` field.
+
+AC5. Selecting a template from the picker calls `GET /templates/:id` for the selected template’s ID. The detail panel renders: (a) section names from the `sections` array, (b) required ACU content previews truncated to 100 characters with “…” if the content exceeds 100 characters, (c) prohibited ACU content previews truncated to 100 characters with “…”. Manual test required: live app with seeded templates and ACUs.
+
+AC6. For any required or prohibited ACU ID that cannot be matched in the `GET /acu` response, the detail panel displays the raw ACU ID in greyed text with the label “Content unavailable”. No unresolved IDs are silently omitted.
+
+AC7. `GET /acu` is called once per page session and cached in component state. It is not re-fetched on subsequent template selections within the same session.
+
+AC8. Submitting the From Template form with an empty document name field is blocked. An inline validation message “Document name is required.” is displayed adjacent to the document name field.
+
+AC9. Submitting the From Template form with a valid document name and a selected template calls `POST /generation/from-template` with the confirmed request body shape (template_id, document name, and context if provided). Manual test required: live app; inspect network request payload.
+
+AC10. On successful generation via the From Template flow, the QC result display renders below the form showing pass/fail status, issues list (if any), regenerate button, and promote button — identical in appearance and behaviour to the Custom mode QC display. Manual test required: live app with seeded templates and ACUs.
+
+AC11. If `GET /templates` returns an error, the template picker area displays: “Could not load templates. Please try again.” If `GET /templates/:id` returns an error, the detail panel displays: “Could not load template details.” If `POST /generation/from-template` returns an error, an inline error is displayed below the submit button.
+
+AC12. No change to `artifacts/api-server/src/routes/generation/index.ts`, `artifacts/api-server/src/lib/generationEngine.ts`, or any other backend file. Manual test required: confirm git diff contains no changes to files outside `artifacts/unlock-intel/src/pages/generate.tsx` and any new component files created in `artifacts/unlock-intel/src/`.
+
+-----
+
+## Section 7 — Constraints
+
+- `artifacts/unlock-intel/src/pages/generate.tsx` — before making any edits, the agent must read the full file and list the names of all existing state variables and handler functions. These must not be renamed, restructured, or have their logic altered. They must remain exactly as they are, wrapped inside the “Custom” TabsContent.
+- `artifacts/api-server/src/routes/generation/index.ts` — must not be modified. Read-only inspection only (for GATE 5.1).
+- `artifacts/api-server/src/lib/generationEngine.ts` — must not be modified.
+- `lib/api-client-react/src/generated/` — must not be modified. Do not run Orval codegen.
+- `lib/api-spec/openapi.yaml` — must not be modified. No new endpoints are added.
+- Backward compatibility: documents generated via Custom mode before this build must continue to work. The `POST /generation/generate` endpoint and its response handling are unchanged.
+- All new UI must use Shadcn UI components and Lucide icons consistent with existing page patterns.
+
+-----
+
+## Section 8 — Non-goals
+
+- This build does not modify the sidebar navigation or add a new sidebar entry for templates — that is deferred to the R3 sidebar restructure phase.
+- This build does not implement `GET /templates` as a standalone template browser page — templates remain accessible only within the generation flow and the ACU page Templates tab.
+- This build does not run or update Orval codegen — if generated hooks are absent, manual fetch is used.
+- This build does not add `channel_temperature` control to the UI — the engine default is used for all template-based generation.
+- This build does not implement regeneration or promotion for the From Template QC result differently from Custom mode — the same buttons with the same endpoint calls are reused.
+
+-----
+
+## Section 9 — Assumptions
+
+- `GET /templates` response includes an `output_type` field on each template object, consistent with `outputTemplatesTable` schema (`output_type text`). If the field is named differently in the actual response, the grouping logic must use the correct field name — inspect the response and adjust.
+- `GET /acu` returns a flat array of all ACUs including `id`, `content`, and `type` fields without pagination. If the response is paginated, a full fetch strategy must be confirmed before proceeding.
+- The `sections` JSONB field in the template response contains an array of objects each with a `name` or `title` field. If the section objects use a different field name, use whichever field is present.
+- `POST /generation/from-template` returns a response shape compatible with `POST /generation/generate` — this is the highest-risk assumption and is gated at 5.1.
+- The existing QC display in `pages/generate.tsx` is self-contained enough to be rendered conditionally from either mode without refactoring — confirmed by the scan showing the page handles mutations via React Query `useMutation` states.
+
+-----
+
+## Section 10 — Rollback
+
+Risk is MEDIUM. Rollback is straightforward:
+
+- Revert `artifacts/unlock-intel/src/pages/generate.tsx` to its pre-build state.
+- No database writes. No schema changes. No new backend endpoints.
+- No external state affected.
+- No feature flag required — reverting the single frontend file fully restores prior behaviour.
+
+-----
+
+## Section 11 — What comes next
+
+After this ships, the next phase is R2 + R3: lead creation form (fixes the /leads/new 404) and sidebar navigation restructure (groups 13 flat items into sections). Both are LOW effort and can be bundled. A fresh Step 1 scan scoped to `artifacts/unlock-intel/src/` should be run after R1 ships to confirm the generate.tsx changes before R2/R3 are specced.
