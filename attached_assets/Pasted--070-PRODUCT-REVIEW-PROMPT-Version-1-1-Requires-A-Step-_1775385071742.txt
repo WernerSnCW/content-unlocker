@@ -1,0 +1,161 @@
+# 070 — PRODUCT REVIEW PROMPT
+Version: 1.1
+Requires: A Step 1 current state scan run first. Do not run without a
+CURRENT STATE OUTPUT — the review will be superficial.
+
+---
+
+This prompt assesses the tool as a product: how a user experiences it,
+whether the organisation serves real workflows, and where friction exists.
+It is not a technical health check (050) and not a strategic fit review (060).
+Complete the template below exactly.
+
+---
+
+## CONSTRAINTS
+
+- Assess what exists in CURRENT STATE OUTPUT. Do not design new pages or flows
+  in this prompt — new flows belong under "Potential new features" only.
+- For each user journey: reference at least one file, route, or component from
+  the CURRENT STATE OUTPUT that implements it. If none exists: mark the journey
+  as "Not currently implemented."
+- Outputs from this prompt are advisory only. Any structural change proposed
+  here must be pulled into a future Step 2 idea — it does not update CTX files
+  or phase docs directly.
+- Do not propose changes that contradict CTX_architecture.md without flagging
+  them as requiring architectural review.
+
+---
+
+## INPUTS
+
+CURRENT STATE OUTPUT (from Step 1): [paste here]
+PRODUCT GOALS (from PRODUCT_GOALS.md or 2–3 sentences): [paste here]
+PRIMARY USER: [role, context, technical level]
+KNOWN PAIN POINTS (optional): [describe, or "None provided"]
+
+---
+
+## PRODUCT REVIEW OUTPUT
+
+### 1. User journeys identified
+
+#### `[Journey name]`
+**The job:** [what the user is trying to accomplish — one sentence]
+**Current path:** [step by step — page/screen → action → page/screen]
+**Implemented by:** [file, route, or component from CURRENT STATE OUTPUT]
+**Where it breaks or creates friction:** [specific point, or "None identified"]
+**Is this journey complete?** [YES / PARTIAL — missing step X / NOT IMPLEMENTED]
+
+---
+
+### 2. Information architecture assessment
+
+#### Home page / entry point
+**What it currently does:** [list every element present]
+**First-time user needs:** [what should be here vs what can move]
+**Returning user needs:** [may differ from first-time]
+**Verdict:** [APPROPRIATE / OVERLOADED / UNDERSPECIFIED]
+**Specific problem:** [if not APPROPRIATE]
+
+#### `[Other major section or page]`
+**What it currently does:** [list elements]
+**Should it exist as standalone?** [YES / NO / SHOULD MERGE WITH: X]
+**Verdict:** [APPROPRIATE / OVERLOADED / UNDERSPECIFIED / MISPLACED]
+
+---
+
+### 3. Feature grouping and phase opportunities
+
+#### `[Feature group with a grouping problem]`
+**Current state:** [what features are shown together]
+**The problem:** [why this creates friction]
+**Proposed grouping:** [specific reorganisation]
+**Rationale:** [why this reflects how users actually work]
+**Effort:** [LOW / MEDIUM / HIGH]
+
+If none identified: "None identified."
+
+---
+
+### 4. Progressive disclosure opportunities
+
+#### `[Screen or feature]`
+**Currently shown:** [list elements]
+**Immediately needed:** [minimal set]
+**Can be deferred:** [the rest]
+**Trigger for revealing:** [user action, completion of prior step, toggle]
+
+If none identified: "None identified."
+
+---
+
+### 5. Back-to-front coherence gaps
+
+**Backend capability not surfaced:**
+- [Capability]: [what it does, where it should appear in UI]
+
+**Frontend promise not backed by capability:**
+- [UI element]: [what it implies to user, what backend actually does]
+
+If none in either category: "None identified."
+
+---
+
+### 6. Missing connective tissue
+
+- **[Feature A] → [Feature B]:** [what the natural handoff should be,
+  what currently exists instead, what a simple connection would look like]
+
+If none: "None identified."
+
+---
+
+### 7. Friction inventory
+
+| Location | Friction point | Severity | Likely fix |
+|---|---|---|---|
+| [page or feature] | [what causes friction] | HIGH / MEDIUM / LOW | [one-line fix] |
+
+Severity definitions:
+- HIGH: user cannot complete the journey without help or guessing
+- MEDIUM: user completes the journey but with unnecessary effort or confusion
+- LOW: minor annoyance, does not block completion
+
+---
+
+### 8. Error UX
+
+For each major user journey: how does the system communicate failure?
+
+| Journey | Error state | Communication | Rating |
+|---|---|---|---|
+| [journey name] | [what can go wrong] | [what the user sees] | CLEAR / VAGUE / NONE |
+
+---
+
+### 9. Prioritised recommendations
+
+#### `[Recommendation name]`
+**Type:** [RESTRUCTURE / REGROUP / REORDER / ADD CONNECTIVE TISSUE / SIMPLIFY / SURFACE EXISTING CAPABILITY]
+**What to change:** [specific]
+**Who it helps:** [which journey or user type]
+**Effort:** [LOW / MEDIUM / HIGH]
+**Priority:** [HIGH / MEDIUM / LOW]
+
+---
+
+### 10. Overall verdict
+
+| Dimension | Status | Notes |
+|---|---|---|
+| User journey completeness | 🟢 / 🟡 / 🔴 | 🟢 = all complete; 🟡 = partial; 🔴 = key journeys missing |
+| Information architecture | 🟢 / 🟡 / 🔴 | 🟢 = appropriate; 🟡 = overloaded in one area; 🔴 = fundamental IA problem |
+| Feature grouping logic | 🟢 / 🟡 / 🔴 | |
+| Progressive disclosure | 🟢 / 🟡 / 🔴 | |
+| Back-to-front coherence | 🟢 / 🟡 / 🔴 | |
+| Connective tissue | 🟢 / 🟡 / 🔴 | |
+| Error UX | 🟢 / 🟡 / 🔴 | 🟢 = CLEAR across all journeys; 🟡 = VAGUE in some; 🔴 = NONE in key journeys |
+
+**Recommendation:** [PROCEED AS-IS / RESTRUCTURE BEFORE BUILDING MORE / MAJOR IA REVIEW NEEDED]
+**One thing to fix first:** [the single highest-impact change — specific]
