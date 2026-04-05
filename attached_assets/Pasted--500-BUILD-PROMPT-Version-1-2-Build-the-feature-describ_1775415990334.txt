@@ -1,0 +1,578 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- Cache anything the spec says to cache — never compute on every render
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+GATE RULE:
+If the spec contains a section marked as a GATE: stop at that point, return
+the required output to the user exactly as specified, and wait for explicit
+confirmation before continuing. Do not proceed past a gate autonomously under
+any circumstances.
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Compliance Constants DB Migration
+Version: v1.1 (post Step 4 readiness check)
+Date: 2026-04-06
+Build ID: RR-2026-04-06-007a
+Effort: 2 days
+Dependencies: RR-2026-04-05-006b (must be complete — confirmed)
+Risk: HIGH
+Feature flag: compliance_constants_db: boolean
+
+---
+
+## NON-NEGOTIABLES (from CTX)
+
+- `artifacts/api-server/src/lib/generationEngine.ts` must not be modified
+- All IDs via `randomUUID()` from crypto — no nanoid
+- Static routes declared before parameterized `:id` routes in every router
+- LLM model: `claude-sonnet-4-6`, max 8192 tokens — no new LLM calls in this phase
+- Compliance constants are safety-critical — wrong values cause QC failures and compliance breaches
+- Prohibited values 22p, 7.8x, 78x must be blocked at API level, not just flagged in storage
+- All tax figures require `subject_to_qualifier: true` — cannot be false for any tax figure
+- Backward compatibility: existing documents, ACUs, templates, and QC checks must be unaffected
+- Drizzle ORM schema-first — schema changes via `drizzle-kit push` only, no raw SQL
+- Brand: dark navy #0F1629, charcoal #2D2D3F, Unlock Green #00C853, Inter font
+
+---
+
+## Section 1 — Feature
+
+This build migrates the 19 compliance constants currently stored in
+`compliance_constants.json` into a PostgreSQL table managed via Drizzle ORM,
+introduces a governed lifecycle (ACTIVE / DRAFT / SUPERSEDED) with a two-step
+override-confirmation flow, and exposes the constants through API endpoints and
+a minimal admin UI. It replaces the startup JSON load in `dataManager.ts` with
+a service/repository layer that caches constants in memory and invalidates on
+update. This is Phase A of the import pipeline project — it makes compliance
+constants writable at runtime through a safe, auditable path, which Phase B
+(the full import pipeline) depends on.
+
+---
+
+## Section 2 — Why this is necessary
+
+Currently, compliance constants live in `compliance_constants.json` and are
+loaded at startup via a JSON import assertion in `dataManager.ts`. There is no
+API endpoint, no lifecycle control, no audit trail, and no way to update a
+constant value without a code/config change and server restart. The 19-check QC
+engine in `generation/index.ts` references these constants for the
+TAX_FIGURE_ACCURACY check — an incorrect value silently corrupts every document
+QC'd after it. The Phase B import pipeline cannot safely write to compliance
+constants without a governed update path. Without this phase, updating a
+compliance figure (e.g. the VCT rate from 30% to 20%) requires a deployment
+rather than an auditable runtime operation.
+
+---
+
+## Section 3 — Current state
+
+- `artifacts/api-server/src/data/compliance_constants.json` — 19 constants stored
+  as a flat JSON object. Loaded at startup via JSON import assertion in dataManager.ts.
+- `artifacts/api-server/src/lib/dataManager.ts` — `seedDatabase()` loads constants
+  from JSON. No DB table exists for constants. No runtime update path.
+- `artifacts/api-server/src/routes/generation/index.ts` — TAX_FIGURE_ACCURACY check
+  (check #6 in the 19-check QC engine) references compliance constants. Exact
+  reference mechanism must be confirmed during build — do not assume the import path.
+- `lib/db/src/schema/` — no compliance_constants table exists. 14 tables currently.
+- No existing route file handles `/compliance-constants`.
+- `artifacts/unlock-intel/src/pages/` — no constants management page exists.
+- `artifacts/unlock-intel/src/components/layout.tsx` — sidebar System group currently
+  contains only Changelog. Constants page will be added here.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data — new Drizzle schema table: compliance_constants
+- [x] API — new route file: artifacts/api-server/src/routes/compliance-constants/index.ts
+- [x] Domain — new service: artifacts/api-server/src/lib/complianceConstantsService.ts
+- [x] UI — new page: artifacts/unlock-intel/src/pages/compliance-constants.tsx
+- [x] Additive edits to existing files — dataManager.ts (bootstrap seed), layout.tsx
+  (sidebar entry), generation/index.ts (redirect TAX_FIGURE_ACCURACY to service layer),
+  routes/index.ts (mount new router)
+
+Layer count: 4 (Data, API, Domain, UI)
+Split required: NO
+Rationale: All changes are within a new subdomain (compliance constants) with no
+shared state modifications to existing tables or route handlers. The only existing
+file changes are additive (new sidebar entry, bootstrap seed call, service layer
+swap for QC reads). Coherent for a single Replit AI pass.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 Drizzle schema — new table
+
+Create `lib/db/src/schema/compliance-constants.ts`:
+
+```typescript
+export const complianceConstants = pgTable("compliance_constants", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  value: text("value").notNull(),
+  value_type: text("value_type").notNull(), // "percentage" | "currency" | "text" | "boolean"
+  status: text("status").notNull().default("ACTIVE"), // "ACTIVE" | "DRAFT" | "SUPERSEDED"
+  is_prohibited: boolean("is_prohibited").notNull().default(false),
+  prohibited_reason: text("prohibited_reason"),
+  subject_to_qualifier: boolean("subject_to_qualifier").notNull().default(false),
+  qualifier_text: text("qualifier_text"),
+  category: text("category").notNull(), // "tax_relief" | "prohibited" | "instrument" | "limits" | "messaging"
+  notes: text("notes"),
+  superseded_by: text("superseded_by"), // id of the ACTIVE record that replaced this
+  override_reason: text("override_reason"),
+  actor: text("actor"),
+  source: text("source").notNull().default("manual_ui"), // "manual_ui" | "phase_b_import"
+  activated_at: timestamp("activated_at"),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+});
+```
+
+Add export to `lib/db/src/schema/index.ts` barrel.
+
+Run `drizzle-kit push` to apply schema.
+
+### 5.2 Bootstrap seed
+
+In `dataManager.ts`, after existing seed functions, add
+`seedComplianceConstants()`:
+
+- Reads from `compliance_constants.json` (existing file — do not delete it yet)
+- For each constant: checks if a record with that key and status=ACTIVE already exists
+- If not: inserts with status=ACTIVE, source=manual_ui, activated_at=now()
+- If exists: skips (idempotent)
+- Must run before any route is served — place call at top of `seedDatabase()` sequence
+- If table is empty after seed attempt: throw error and halt startup
+
+Seed the following 19 constants from `compliance_constants.json`. Map each to
+the schema fields above:
+
+| key | label | value | value_type | is_prohibited | subject_to_qualifier | category |
+|-----|-------|-------|------------|---------------|---------------------|----------|
+| eis_income_tax_relief | EIS Income Tax Relief | 30% | percentage | false | true | tax_relief |
+| seis_income_tax_relief | SEIS Income Tax Relief | 50% | percentage | false | true | tax_relief |
+| vct_relief_rate | VCT Relief Rate | 20% | percentage | false | true | tax_relief |
+| eis_cgt_deferral | EIS CGT Deferral | 100% | percentage | false | true | tax_relief |
+| bpr_cap | BPR Cap | £2,500,000 | currency | false | false | limits |
+| pension_iht_change | Pension IHT Change Date | April 2027 | text | false | false | tax_relief |
+| eis_loss_relief_per_pound | EIS Loss Relief Per Pound | ~38.5p | text | false | true | tax_relief |
+| seis_loss_relief_per_pound | SEIS Loss Relief Per Pound | ~27.5p | text | false | true | tax_relief |
+| seis_loss_relief_prohibited | SEIS Prohibited Loss Figure | 22p | text | true | false | prohibited |
+| founding_investor_minimum | Founding Investor Minimum | £40,000 | currency | false | false | limits |
+| founding_investor_maximum | Founding Investor Maximum | £500,000 | currency | false | false | limits |
+| pre_money_valuation | Pre-Money Valuation | £6,500,000 | currency | false | false | limits |
+| instrument | Investment Instrument | Instant Investment | text | false | false | instrument |
+| platform_pricing_prohibition | Platform Pricing | £99/£249 | text | true | false | prohibited |
+| decumulation_planner_status | Decumulation Planner Status | Specification complete. Prototype build commencing. | text | false | false | messaging |
+| product_tagline | Product Tagline | Clarity, without complexity | text | false | false | messaging |
+| target_portfolio_range | Target Portfolio Range | £250K–£5M | text | false | false | limits |
+| annual_eis_limit | Annual EIS Limit | £1M (£2M if ≥£1M in KICs) | text | false | true | tax_relief |
+| annual_seis_limit | Annual SEIS Limit | £200,000 | currency | false | true | tax_relief |
+
+### 5.3 Service layer
+
+Create `artifacts/api-server/src/lib/complianceConstantsService.ts`:
+
+**In-memory cache:**
+```typescript
+let _cache: ComplianceConstant[] | null = null;
+```
+
+**`loadConstants()`** — fetches all status=ACTIVE records from DB, populates
+cache. Called at startup and after any successful override confirmation.
+
+**`getConstants()`** — checks feature flag `compliance_constants_db` first.
+If flag is false: loads from `compliance_constants.json` directly and returns
+without DB access. If flag is true: returns cache. If cache is null, calls
+loadConstants() first. Never returns null — throws if DB is unreachable.
+
+**`getConstantByKey(key: string)`** — returns single constant from cache by key.
+Returns undefined if not found (caller handles missing key).
+
+**`invalidateCache()`** — sets `_cache = null`. Called by override confirmation
+route after successful write.
+
+**`validateOverride(key: string, newValue: string)`** — checks:
+- Key exists and has status=ACTIVE
+- New value is not a prohibited value (22p, 7.8x, 78x) regardless of which
+  constant is being updated — if new value matches any prohibited string, reject
+- If constant has `subject_to_qualifier: true`, new value must not remove the
+  qualifier requirement
+- Returns `{ valid: boolean, error?: string }`
+
+### 5.4 QC read path update
+
+In `artifacts/api-server/src/routes/generation/index.ts`:
+
+- Before making any changes: read the TAX_FIGURE_ACCURACY check block and
+  identify exactly how it currently reads compliance constants. Two possible
+  cases:
+  - **Case A — direct JSON import** (e.g. `import constants from '../data/compliance_constants.json'`):
+    remove the import and replace all constant reads within the TAX_FIGURE_ACCURACY
+    block with `getConstants()` from complianceConstantsService.
+  - **Case B — shared runtime variable** (e.g. a variable populated elsewhere
+    in the file or passed as argument): locate all call sites that populate or
+    pass that variable, replace only the TAX_FIGURE_ACCURACY usage with
+    `getConstants()`, and report the other call sites in the post-build report
+    as "Additional constant read sites found — not modified in this build."
+
+> **GATE: QC READ PATH**
+> Before modifying generation/index.ts: report which case applies (A or B),
+> the exact line numbers of the constant read(s) within TAX_FIGURE_ACCURACY,
+> and confirm no other checks in the 19-check engine use the same constant
+> source. Wait for confirmation before proceeding.
+
+- Do not modify any other part of generation/index.ts beyond the TAX_FIGURE_ACCURACY block.
+- Do not touch `artifacts/api-server/src/lib/generationEngine.ts` at all.
+
+### 5.5 API routes
+
+Create `artifacts/api-server/src/routes/compliance-constants/index.ts`.
+
+Mount in `artifacts/api-server/src/routes/index.ts` as `/compliance-constants`.
+
+**Static routes first, then parameterized:**
+
+`GET /compliance-constants`
+- Returns all ACTIVE constants from cache (via getConstants())
+- Response: `{ constants: ComplianceConstant[] }`
+
+`GET /compliance-constants/categories`
+- Returns list of distinct category values from ACTIVE constants
+- Static route — must be declared before /:id
+
+`POST /compliance-constants/propose`
+- Creates a DRAFT record for a proposed override
+- Body: `{ key, newValue, reason, actor }`
+- Validates: key exists as ACTIVE, newValue passes validateOverride()
+- If prohibited value detected: returns 400 with `{ error: "Prohibited value", prohibited_value: newValue }`
+- If subject_to_qualifier constant and reason is absent: returns 400
+- On success: inserts DRAFT record, returns `{ draft_id, key, currentValue, proposedValue, reason }`
+- Does NOT activate the override — confirmation required
+
+`POST /compliance-constants/confirm`
+- Confirms and activates a proposed DRAFT override
+- Body: `{ draft_id, confirmation_text }` — confirmation_text must be non-empty
+- Marks current ACTIVE record as SUPERSEDED (sets superseded_by = new record id)
+- Marks DRAFT record as ACTIVE, sets activated_at = now()
+- Calls invalidateCache() then loadConstants()
+- Flags any documents in documentsTable where content references the changed
+  constant key as REQUIRES_REVIEW (query documents where content ILIKE
+  '%' || old_value || '%' — set review_state = 'REQUIRES_REVIEW')
+- Creates changelog entry: `{ document_id: null, action: 'COMPLIANCE_CONSTANT_UPDATED', details: { key, old_value, new_value, reason, actor, source } }`
+- Returns `{ success: true, activated_id, superseded_id, documents_flagged: number }`
+
+`GET /compliance-constants/key/:key`
+- Returns full history for a key: ACTIVE record + all SUPERSEDED records ordered by activated_at desc
+- Declare after /categories, before /:id
+
+`GET /compliance-constants/:id`
+- Returns single constant record by id (any status)
+- Parameterized — declared after all static routes
+
+### 5.6 Startup integration
+
+In the server startup sequence (app.ts or equivalent):
+- Call `loadConstants()` from complianceConstantsService after seedDatabase()
+  completes and before the server begins accepting requests
+- If loadConstants() throws: halt startup with error log
+
+### 5.7 Admin UI — new page
+
+Create `artifacts/unlock-intel/src/pages/compliance-constants.tsx`.
+
+**List view (default):**
+- Table with columns: Label, Key, Value, Category, Qualifier Required, Status badge
+- Filter by category (dropdown)
+- Each row has an "Edit" button — opens detail/edit view
+- Prohibited constants shown with red badge — no "Edit" button (is_prohibited=true rows are read-only)
+- Brand: dark navy background, Unlock Green accents, Inter font
+
+**Detail / edit view (inline panel or modal):**
+- Shows: label, key, current value, category, qualifier requirement, notes, history (SUPERSEDED records)
+- "Propose Change" button — opens override confirmation modal
+
+**Override confirmation modal (two steps):**
+
+Step 1 — Propose:
+- Fields: New Value (text input), Reason (textarea, required), Actor (text, pre-filled if available)
+- Shows current value prominently for comparison
+- Submit calls POST /compliance-constants/propose
+- On success: shows diff (current vs proposed) and proceeds to Step 2
+
+Step 2 — Confirm:
+- Shows: key, current value, proposed value, reason, actor
+- Warning banner: "This will update a compliance-critical value and flag affected documents for review."
+- Confirmation text input: user must type "CONFIRM" before button activates
+- Submit calls POST /compliance-constants/confirm
+- On success: shows "Constant updated. N documents flagged for review." and returns to list
+
+**Error states:**
+- Prohibited value attempted: "This value is prohibited. Correction: [correct value from notes]"
+- Missing reason: "A reason is required for compliance constant overrides."
+- Confirmation text mismatch: button remains disabled
+
+**Add to sidebar:**
+In `artifacts/unlock-intel/src/components/layout.tsx`:
+- Add "Compliance Constants" to the System group (alongside Changelog)
+- Route: `/compliance-constants`
+- Icon: ShieldCheck (Lucide)
+
+**Add route:**
+In the frontend router (App.tsx or equivalent):
+- Add route for `/compliance-constants` pointing to the ComplianceConstants page component
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `GET /compliance-constants` returns exactly 19 records with status=ACTIVE
+     on a fresh database after seedDatabase() runs.
+
+AC2. `GET /compliance-constants` reads from in-memory cache — a second call
+     within the same server session does not produce an additional DB query.
+     Verify by calling the endpoint twice in sequence and confirming that the
+     server log shows exactly one DB query for compliance_constants (the initial
+     loadConstants() call at startup), with no additional query on the second
+     HTTP request. Add a console.log or logger.debug call inside loadConstants()
+     with the text "compliance_constants: DB read" to make this verifiable.
+
+AC3. `POST /compliance-constants/propose` with `{ key: "seis_loss_relief_per_pound", newValue: "22p", reason: "test", actor: "test" }`
+     returns HTTP 400 with `{ error: "Prohibited value" }` and creates no DRAFT record.
+
+AC4. `POST /compliance-constants/propose` with `{ key: "vct_relief_rate", newValue: "25%", reason: "Budget update", actor: "Tom" }`
+     returns HTTP 200 with `{ draft_id, key: "vct_relief_rate", currentValue: "20%", proposedValue: "25%" }`
+     and creates exactly one DRAFT record in compliance_constants table.
+
+AC5. `POST /compliance-constants/confirm` with valid draft_id and
+     `confirmation_text: "CONFIRM"` sets the DRAFT record to ACTIVE, sets the
+     previously ACTIVE record to SUPERSEDED with superseded_by = new record id,
+     and returns `{ success: true }`.
+
+AC6. After AC5 completes, `GET /compliance-constants` returns the new value
+     for vct_relief_rate ("25%") — confirming cache was invalidated and reloaded.
+
+AC7. After AC5 completes, `GET /compliance-constants/key/vct_relief_rate` returns
+     2 records: one ACTIVE (new value) and one SUPERSEDED (old value), ordered
+     by activated_at descending.
+
+AC8. `POST /compliance-constants/confirm` with `confirmation_text: ""` (empty)
+     returns HTTP 400 and does not activate the DRAFT record.
+
+AC9. After a constant override is confirmed, at least one document whose content
+     contains the old value string is present in documentsTable with
+     review_state = 'REQUIRES_REVIEW'.
+     Manual test required: seed at least one document containing the old constant
+     value string before running the confirm endpoint.
+
+AC10. The TAX_FIGURE_ACCURACY check block in generation/index.ts calls
+      `getConstants()` from complianceConstantsService to obtain compliance
+      figures — not from a JSON import or inline constant. Verify by locating
+      the TAX_FIGURE_ACCURACY check block in generation/index.ts and confirming
+      that (a) `complianceConstantsService` is imported at the top of the file,
+      and (b) `getConstants()` is called within that specific check block, not
+      outside it.
+
+AC11. `artifacts/api-server/src/lib/generationEngine.ts` is byte-for-byte
+      identical to its pre-build state. Verify via git diff.
+
+AC12. All 14 existing DB tables remain intact and unmodified after drizzle-kit push.
+      Manual test required: inspect schema after push, confirm no existing table
+      columns were altered or dropped.
+
+AC13. The Compliance Constants page is reachable at `/compliance-constants` in
+      the frontend and appears in the sidebar System group alongside Changelog.
+      Manual test required: navigate to the page in browser.
+
+AC14. Prohibited constants (is_prohibited=true) display a red badge in the list
+      view and have no "Edit" button.
+      Manual test required: verify in browser that seis_loss_relief_prohibited
+      and platform_pricing_prohibition rows show red badge and no edit action.
+
+AC15. Server startup halts with an explicit error log if compliance_constants
+      table is empty after seedDatabase() runs.
+      Manual test required: drop all compliance_constants rows and restart server;
+      confirm startup failure with error message.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/lib/generationEngine.ts`: must not be modified —
+  any change to this file is a spec violation requiring return to Step 3.
+- `lib/db/src/schema/index.ts`: add new export only — do not remove or reorder
+  existing exports.
+- `artifacts/api-server/src/routes/index.ts`: additive mount only — do not
+  modify existing route mounts.
+- `artifacts/unlock-intel/src/components/layout.tsx`: add sidebar entry to
+  System group only — do not restructure existing groups.
+- `artifacts/api-server/src/data/compliance_constants.json`: do not delete —
+  required for bootstrap seed. File remains as seed source only.
+- `dataManager.ts`: add seedComplianceConstants() call only — do not modify
+  existing seed functions.
+- `generation/index.ts`: TAX_FIGURE_ACCURACY check only — no other changes
+  to this file.
+- Backward compatibility: all 14 existing DB tables must remain unmodified.
+  Existing documents, ACUs, templates, QC outputs must be unaffected.
+- Feature flag: `compliance_constants_db: boolean` — if false,
+  `complianceConstantsService.getConstants()` must fall back to loading from
+  `compliance_constants.json` directly and must not attempt a DB query. The flag
+  must be checked as the first operation inside `getConstants()` before any DB access.
+- All IDs: `randomUUID()` from crypto — no nanoid anywhere in new code.
+- Route ordering: in compliance-constants/index.ts, static routes
+  (/categories, /key/:key, /propose, /confirm) must be declared before
+  parameterized (/:id).
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not implement bulk editing of compliance constants — all
+  changes go through the single propose → confirm flow.
+- This build does not modify ACU lifecycle mechanics or propagation.ts —
+  constant override propagation uses a narrow document-flagging approach only.
+- This build does not add LLM calls — no AI is involved in constant management.
+- This build does not implement the Phase B import pipeline — this phase only
+  makes constants writable via the governed path that Phase B will use.
+- This build does not add authentication or role-based access control — the
+  constants management UI is internal admin only, consistent with the rest of
+  the platform.
+- This build does not delete compliance_constants.json — it remains as the
+  bootstrap seed source.
+
+---
+
+## Section 9 — Assumptions
+
+- The TAX_FIGURE_ACCURACY check in generation/index.ts reads from the JSON
+  import directly (not via a shared module) — if it reads from a shared
+  runtime object, the service layer swap may affect more than one call site.
+  Build agent must inspect and report before modifying.
+- The frontend router is in App.tsx or a similarly named root file — if the
+  routing file has a different name, agent must identify it and report before
+  adding the route.
+- `activated_at` timestamp on ACTIVE records seeded from JSON will be set to
+  the time of first seed run — this is acceptable for audit purposes.
+- "System group" in layout.tsx is identifiable by its existing Changelog entry —
+  if the group label differs in code, agent must match by content not label name.
+- The feature flag `compliance_constants_db` will be set to true in the
+  development environment for this build — if false, JSON fallback is used.
+- source="manual_ui" is sufficient for all overrides made through the UI in
+  this phase — "phase_b_import" source value will be used by Phase B.
+
+---
+
+## Section 10 — Rollback
+
+Risk is HIGH — rollback plan required.
+
+1. **Feature flag**: set `compliance_constants_db: false` in environment —
+   complianceConstantsService falls back to JSON load. No data loss.
+2. **Schema rollback**: compliance_constants table can be dropped without
+   affecting any other table (no foreign keys from existing tables point to it).
+   Run: `DROP TABLE compliance_constants;`
+3. **File rollback**: revert any changes to generation/index.ts, dataManager.ts,
+   layout.tsx, routes/index.ts, App.tsx. generationEngine.ts is unchanged.
+4. **External state**: documents flagged as REQUIRES_REVIEW can remain — this
+   is a safe state. No documents are deleted or content-modified by this build.
+5. **Cannot roll back**: changelog entries written during constant overrides
+   (if any were performed before rollback). These are append-only and harmless.
+
+---
+
+## Section 11 — What comes next
+
+Phase B (RR-2026-04-06-007b) is the full import pipeline — a single MD file
+upload that parses mixed content and routes it to every writable destination
+in the system, including compliance constants (via the governed path built
+in this phase). Before Phase B can be specced, a fresh Step 1 scan is required
+scoped to: the new compliance-constants route and service files, the updated
+dataManager.ts and generation/index.ts, and the new frontend page — to confirm
+Phase A shipped cleanly and the service layer boundary is as expected.
+
+After this build ships, `CTX_architecture.md` must be updated to record:
+the new `compliance_constants` table, the `complianceConstantsService` layer,
+the new `/compliance-constants` route, the in-memory cache pattern with
+invalidation, and the constraint that all compliance constant reads must go
+through `complianceConstantsService.getConstants()`. FEATURE STATUS cannot
+be marked COMPLETE until CTX is updated.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST → exact manual test steps]
+  [COULD NOT SATISFY → why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]
+
+PHASE DOC FINAL:
+[paste here]
