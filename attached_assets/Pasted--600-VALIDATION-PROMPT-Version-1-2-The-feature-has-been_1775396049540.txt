@@ -1,0 +1,88 @@
+# 600 — VALIDATION PROMPT
+
+Version: 1.2
+
+-----
+
+The feature has been built. Verify it against every acceptance criterion.
+
+ACCEPTANCE CRITERIA:
+[paste numbered criteria from the phase doc]
+
+-----
+
+SCOPE DISCIPLINE RULE:
+When applying fixes, do not implement new behaviours beyond the phase doc.
+For every code change during validation or regression fixing, reference the
+specific acceptance criterion and phase-doc requirement it implements.
+If a change cannot be traced to an existing requirement: do not implement it.
+Describe it under CRITERIA FAILED AND FIXED as “Requires spec update.”
+
+TEST INTEGRITY RULE:
+Do not reduce the scope of an existing assertion to make a test pass.
+Do not delete test cases without a documented reason tied to an acceptance
+criterion. If fixing a failure requires structural changes to code or spec
+assumptions: stop and recommend returning to Step 3 rather than narrowing
+the test.
+
+NEW TEST CREATION RULE:
+New tests may be created in this step only if:
+
+- Linked to a specific acceptance criterion from the phase doc (cite it)
+- Accompanied by a coverage note: “Before: [N] tests. After: [M] tests. Added: [what]”
+
+Do not create tests to cover behaviour not specified in the phase doc.
+
+CANNOT AUTO-TEST RULE:
+CANNOT AUTO-TEST is only permitted if the criterion:
+
+- Requires external UI interaction that cannot be scripted, or
+- Depends on a third-party system with no sandbox available
+
+If neither condition applies: attempt automation. Do not default to manual.
+
+-----
+
+For each criterion:
+
+1. AUTOMATED TEST
+   Write and run a unit or integration test.
+   Report: PASS / FAIL / CANNOT AUTO-TEST (with justification)
+
+Include one adversarial test per criterion: attempt to break the feature
+using invalid inputs, empty strings, wrong types, or unauthorised access
+where relevant. Report the adversarial result alongside the primary result.
+
+1. IF CANNOT AUTO-TEST
+   Exact step-by-step manual test instructions.
+   Specific: which page, what to set up, what to look for.
+   If “Manual test required: [X]” appears in the criterion, confirm those
+   dependencies are in place before attempting the test.
+1. IF FAIL
+   Diagnose: what was found vs expected, which file and function, the specific fix.
+   Apply the fix. Re-run the test.
+   If the fix requires structural code changes or scope expansion: stop and
+   recommend returning to Step 3.
+1. REGRESSION CHECK
+   Run existing tests covering changed areas. Report failures. Fix them.
+   Do not delete or weaken existing tests to resolve regression failures.
+
+-----
+
+FINAL REPORT:
+CRITERIA VERIFIED: [list — PASS]
+CRITERIA NEEDING MANUAL TEST: [list + exact instructions + dependencies needed]
+CRITERIA FAILED AND FIXED: [list + bug + fix applied + AC reference]
+REGRESSIONS FIXED: [list]
+REGRESSIONS NOT FIXED: [list — flag for senior developer]
+TEST CHANGES: [list any new tests created + coverage delta]
+FEATURE STATUS: COMPLETE / COMPLETE WITH CAVEATS / INCOMPLETE
+
+COMPLETE WITH CAVEATS requires: list every caveat explicitly.
+INCOMPLETE requires: list which criteria are unmet and why.
+
+REMINDER: After shipping, update CTX_architecture.md to reflect what this
+feature added and any new constraints it creates for future builds.
+FEATURE STATUS may only be COMPLETE if CTX_architecture.md has been updated.
+If CTX was not updated: mark COMPLETE WITH CAVEATS and list “CTX not updated”
+as the caveat.
