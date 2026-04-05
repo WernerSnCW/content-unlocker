@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const campaignsTable = pgTable("campaigns", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  description: text("description"),
   status: text("status").notNull().default("DRAFT"),
   target_cluster: text("target_cluster").notNull(),
   personas: jsonb("personas").notNull().default([]),
@@ -17,8 +18,10 @@ export const campaignsTable = pgTable("campaigns", {
   secondary_beliefs: jsonb("secondary_beliefs").notNull().default([]),
   primary_cta: text("primary_cta"),
   secondary_cta: text("secondary_cta"),
+  lead_magnet: text("lead_magnet"),
   compliance_constraints: jsonb("compliance_constraints").notNull().default([]),
   blocked_content: jsonb("blocked_content").notNull().default([]),
+  prohibited_acus: jsonb("prohibited_acus").notNull().default([]),
   notes: text("notes"),
   sequence: jsonb("sequence").notNull().default([]),
   qc_status: text("qc_status").notNull().default("PENDING"),

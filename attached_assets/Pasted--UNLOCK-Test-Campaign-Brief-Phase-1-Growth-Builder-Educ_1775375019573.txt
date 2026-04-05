@@ -1,0 +1,63 @@
+# UNLOCK — Test Campaign Brief
+## Phase 1: Growth Builder Education
+## Paste into: POST /api/campaigns
+
+```json
+{
+  "name": "Phase 1 — Growth Builder Education",
+  "description": "Cold education campaign targeting Growth Builder cluster. No investment ask. No Unlock branding in primary content. Goal is to establish U1 (advice gap) and U4 (EIS risk mechanics) beliefs before any product introduction.",
+  "target_cluster": "Growth Builders",
+  "personas": ["P003", "P006", "P015"],
+  "entry_stage": "Outreach",
+  "target_stage": "Called",
+  "channels": ["email_cold", "email_warm", "call_script", "voicemail", "linkedin_message", "meta_ad", "linkedin_ad", "display_ad"],
+  "duration_weeks": 8,
+  "daily_volume": 100,
+  "primary_belief": "U1",
+  "secondary_beliefs": ["U4", "G1"],
+  "primary_cta": "report_download",
+  "secondary_cta": "book_call",
+  "lead_magnet": "EIS Report — The Investor's Guide to EIS and SEIS",
+  "blocked_content": ["acu_jan_2027_structure"],
+  "compliance_constraints": ["acu_capital_at_risk", "acu_tax_circumstances", "acu_advice_gap"],
+  "prohibited_acus": ["acu_22p_prohibited", "acu_78x_prohibited", "acu_april6_deadline_prohibited"],
+  "notes": "Phase 1 education only. Do not mention Unlock by name in cold content. Do not include return figures — this is belief-building not a pitch. The advice gap and risk mechanics must be established before any product introduction. All content must pass campaign QC before activation."
+}
+```
+
+---
+
+## What to verify in the output
+
+After generating, check:
+
+1. **Email sequence** — E1 through E5 generated with correct channel constraints (plain text cold, light HTML warm, word count within limits, max 1 link for E1)
+2. **Call script** — CS1 under 45 seconds, goal is book-a-call not sell EIS, max 3 objection responses
+3. **Voicemail** — VM1 under 20 seconds, name + company + callback only
+4. **LinkedIn InMail** — LI1 max 3 sentences, subject under 60 chars
+5. **Ad creative briefs** — AD1 (Meta cold/warm/hot), AD2 (LinkedIn), AD3 (Display) — briefs not final copy
+6. **ACU injection** — verify acu_advice_gap and acu_capital_at_risk appear verbatim in EIS content
+7. **Prohibited content** — verify 22p, 7.8x, April 6 deadline language absent from all assets
+8. **Sequence map** — directed graph with branch conditions at Day 3 (opened/no-open/clicked)
+9. **ActiveCampaign build** — automation trigger table, custom fields, sequence architecture
+10. **Aircall tag table** — all 7 tags with downstream actions
+
+---
+
+## Expected sequence structure
+
+```
+Day 0:   E1 (plain text cold) → AdRoll cold audiences activated
+Day 3:   Branch on E1 behaviour:
+         → Opened, no click: E2A (different angle, specific number)
+         → No open: E2B (different subject, ultra short)
+         → Clicked: E2C (friction removal, two CTAs)
+Day 5:   LI1 (LinkedIn InMail — warm audience)
+         Call attempt 1 (CS1)
+Day 7:   E3 (social proof, light HTML)
+         Call attempt 2 if no-answer (voicemail VM1)
+Day 21:  E4 (January 2027 head-start framing — not April 6 deadline)
+         Call attempt 3 final
+Day 42:  E5 (final attempt — honest sign-off)
+Day 56:  8-week exit automation
+```

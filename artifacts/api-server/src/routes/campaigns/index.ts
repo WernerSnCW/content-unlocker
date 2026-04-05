@@ -24,6 +24,7 @@ router.post("/campaigns", async (req, res): Promise<void> => {
   const {
     campaign_id,
     name,
+    description,
     target_cluster,
     personas,
     entry_stage,
@@ -35,31 +36,36 @@ router.post("/campaigns", async (req, res): Promise<void> => {
     secondary_beliefs,
     primary_cta,
     secondary_cta,
+    lead_magnet,
     compliance_constraints,
     blocked_content,
+    prohibited_acus,
     notes,
   } = req.body;
 
-  if (!campaign_id || !name || !target_cluster || !entry_stage || !target_stage) {
+  if (!name || !target_cluster || !entry_stage || !target_stage) {
     res.status(400).json({
       error:
-        "campaign_id, name, target_cluster, entry_stage, and target_stage are required",
+        "name, target_cluster, entry_stage, and target_stage are required",
     });
     return;
   }
 
+  const id = campaign_id || `cam_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "").slice(0, 40)}`;
+
   const [existing] = await db
     .select()
     .from(campaignsTable)
-    .where(eq(campaignsTable.id, campaign_id));
+    .where(eq(campaignsTable.id, id));
   if (existing) {
-    res.status(409).json({ error: `Campaign ${campaign_id} already exists` });
+    res.status(409).json({ error: `Campaign ${id} already exists` });
     return;
   }
 
   const brief = {
-    campaign_id,
+    campaign_id: id,
     name,
+    description,
     target_cluster,
     personas: personas || [],
     entry_stage,
@@ -71,8 +77,10 @@ router.post("/campaigns", async (req, res): Promise<void> => {
     secondary_beliefs: secondary_beliefs || [],
     primary_cta,
     secondary_cta,
+    lead_magnet,
     compliance_constraints: compliance_constraints || [],
     blocked_content: blocked_content || [],
+    prohibited_acus: prohibited_acus || [],
     notes,
   };
 
@@ -81,8 +89,9 @@ router.post("/campaigns", async (req, res): Promise<void> => {
   const [campaign] = await db
     .insert(campaignsTable)
     .values({
-      id: campaign_id,
+      id,
       name,
+      description: description || null,
       status: "DRAFT",
       target_cluster,
       personas: personas || [],
@@ -95,8 +104,10 @@ router.post("/campaigns", async (req, res): Promise<void> => {
       secondary_beliefs: secondary_beliefs || [],
       primary_cta: primary_cta || null,
       secondary_cta: secondary_cta || null,
+      lead_magnet: lead_magnet || null,
       compliance_constraints: compliance_constraints || [],
       blocked_content: blocked_content || [],
+      prohibited_acus: prohibited_acus || [],
       notes: notes || null,
       sequence: sequence,
       asset_count: sequence.length,
@@ -106,8 +117,8 @@ router.post("/campaigns", async (req, res): Promise<void> => {
 
   for (const node of sequence) {
     await db.insert(campaignAssetsTable).values({
-      id: `${campaign_id}_asset_${node.node_id}`,
-      campaign_id,
+      id: `${id}_asset_${node.node_id}`,
+      campaign_id: id,
       node_id: node.node_id,
       channel: node.channel,
       output_type: node.output_type,
@@ -500,13 +511,9 @@ router.get("/campaigns/:id/tag-table", async (req, res): Promise<void> => {
   };
 
   const sequence = (campaign.sequence as any[]) || [];
-  const tagTable = buildTagTable(brief, sequence);
+  const tagTableResult = buildTagTable(brief, sequence);
 
-  res.json({
-    campaign_id: campaign.id,
-    campaign_name: campaign.name,
-    tags: tagTable,
-  });
+  res.json(tagTableResult);
 });
 
 router.get("/channels", async (_req, res): Promise<void> => {
