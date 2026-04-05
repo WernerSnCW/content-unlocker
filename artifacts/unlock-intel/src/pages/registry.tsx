@@ -2,7 +2,7 @@ import { useListDocuments } from "@workspace/api-client-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo, useRef } from "react";
-import { Search, FileText, Upload, X } from "lucide-react";
+import { Search, FileText, Upload, X, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,6 +18,34 @@ export default function Registry() {
   const [reviewState, setReviewState] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [rowScores, setRowScores] = useState<Map<string, { loading: boolean; result: any | null; error: string | null }>>(new Map());
+
+  const handleRowScore = async (docId: string) => {
+    setRowScores(prev => {
+      const next = new Map(prev);
+      next.set(docId, { loading: true, result: null, error: null });
+      return next;
+    });
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.origin}/api`;
+      const resp = await fetch(`${baseUrl}/documents/${docId}/quality-score`, {
+        method: "POST",
+      });
+      if (!resp.ok) throw new Error("Failed");
+      const data = await resp.json();
+      setRowScores(prev => {
+        const next = new Map(prev);
+        next.set(docId, { loading: false, result: data, error: null });
+        return next;
+      });
+    } catch {
+      setRowScores(prev => {
+        const next = new Map(prev);
+        next.set(docId, { loading: false, result: null, error: "Failed" });
+        return next;
+      });
+    }
+  };
 
   const queryParams: any = {};
   if (lifecycleStatus !== "all") queryParams.lifecycle_status = lifecycleStatus;
@@ -184,6 +212,7 @@ export default function Registry() {
                         <TableHead>Status</TableHead>
                         <TableHead>Review</TableHead>
                         <TableHead>Version</TableHead>
+                        <TableHead>Quality</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -204,6 +233,34 @@ export default function Registry() {
                           <TableCell>{getStatusBadge(doc.lifecycle_status)}</TableCell>
                           <TableCell>{getReviewBadge(doc.review_state)}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">v{doc.version}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const entry = rowScores.get(doc.id);
+                              if (!entry) {
+                                return (
+                                  <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => handleRowScore(doc.id)}>
+                                    Score
+                                  </Button>
+                                );
+                              }
+                              if (entry.loading) {
+                                return <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />;
+                              }
+                              if (entry.result) {
+                                const v = entry.result.overall_verdict;
+                                const badgeClass = v === "PASS" ? "border-green-200 text-green-700 bg-green-50"
+                                  : v === "ADVISORY" ? "border-amber-200 text-amber-700 bg-amber-50"
+                                  : "bg-destructive text-destructive-foreground";
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-medium">{entry.result.overall_score}/10</span>
+                                    <Badge variant="outline" className={`text-xs ${badgeClass}`}>{v}</Badge>
+                                  </div>
+                                );
+                              }
+                              return <span className="text-xs text-muted-foreground">—</span>;
+                            })()}
+                          </TableCell>
                           <TableCell>
                             <Link href={`/registry/${doc.id}`} className="text-xs text-muted-foreground hover:text-foreground">
                               View

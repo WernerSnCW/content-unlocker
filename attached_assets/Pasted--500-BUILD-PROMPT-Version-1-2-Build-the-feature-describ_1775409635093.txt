@@ -1,0 +1,295 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+3. List the files you plan to change and why
+4. List any questions
+5. Wait for my confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Do not implement anything not in the spec
+- Do not modify any file not listed in your change plan
+- Do not run or modify Orval codegen
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan.
+If deletion of existing code is required: stop and report.
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate a stated constraint: stop and report.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Document Quality Scorer, Phase B (Frontend)
+
+Version: v1.0
+Date: 2026-04-05
+Build ID: RR-2026-04-05-006b
+Effort: 2–3 hours
+Dependencies: RR-2026-04-05-006a (complete — backend endpoint live)
+Risk: LOW
+
+---
+
+## Section 1 — Feature
+
+Adds quality scoring UI to the Document Registry. The Document Detail page
+gets a "Quality Score" panel in the right sidebar with a "Score Document"
+button that triggers the Phase A endpoint on demand. The Document Registry
+list gets a "Score" button per row that fetches the score for that document
+on demand and shows the overall result inline. No auto-fetching on page load.
+
+---
+
+## Section 2 — Why this is necessary
+
+The Phase A endpoint exists but has no UI. Users cannot access quality scores
+without making raw API calls. This phase surfaces scoring at the two natural
+entry points: the document detail view (where a user reviews a specific document)
+and the registry list (where a user can scan across documents).
+
+---
+
+## Section 3 — Current state
+
+From Step 1 scan:
+- artifacts/unlock-intel/src/pages/document-detail.tsx: right sidebar has three
+  cards stacked (Google Docs, Metadata, Compliance Context). The Compliance
+  Context card is the last card in the sidebar. Quality Score panel goes after it.
+  Manual fetch uses baseUrl resolved as:
+  import.meta.env.VITE_API_URL || `${window.location.origin}/api`
+  All existing action buttons use generated hooks or direct fetch. Page uses
+  useGetDocument(id) hook. No per-document quality score state exists.
+- artifacts/unlock-intel/src/pages/registry.tsx: document list rendered as
+  Table per tier. Columns: File Code, Name, Category, Status, Review, Version,
+  View. No quality score column exists. Page uses useListDocuments(queryParams).
+  Per-row state would require a Map from doc.id to score result.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] New UI components — YES (Quality Score panel, per-row score state)
+- [x] Additive edits to existing files — YES (document-detail.tsx, registry.tsx)
+- [ ] API, Data, External — NO (endpoint already exists from Phase A)
+
+Layer count: 2
+Split required: NO — frontend-only, no backend changes, no schema changes.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Quality Score panel in document-detail.tsx
+
+**File:** artifacts/unlock-intel/src/pages/document-detail.tsx
+
+Add new state variables in the From Document state block (not shared with
+any existing state):
+- `qualityScore` — the score result object or null (initially null)
+- `qualityScoring` — boolean loading state (initially false)
+- `qualityScoreError` — string or null (initially null)
+
+Add new handler `handleQualityScore()`:
+- Set qualityScoring = true, qualityScoreError = null
+- POST to `${baseUrl}/documents/${id}/quality-score` using the same baseUrl
+  pattern as handleExportPdf in this file (import.meta.env.VITE_API_URL ||
+  `${window.location.origin}/api`)
+- On success: set qualityScore = parsed response JSON, qualityScoring = false
+- On error: set qualityScoreError = "Could not score document. Please try again.",
+  qualityScoring = false
+
+Reset qualityScore, qualityScoring, qualityScoreError to initial values in the
+useEffect that resets state on id change (the existing useEffect on line 105-110
+that resets editing, tier1Unlocked etc.).
+
+Add a Quality Score card to the right sidebar, **after the Compliance Context
+card** (which is the last card in the sidebar). The card must use the same
+Shadcn Card component and styling as the other sidebar cards.
+
+**Card content — before scoring (qualityScore is null):**
+- Card header: "Quality Score" label with a Star or Award icon (Lucide)
+- Body: muted text "Score this document against the Unlock quality rubric."
+- Button: "Score Document" — calls handleQualityScore() on click
+  - Disabled and shows spinner when qualityScoring is true
+  - Label changes to "Scoring..." when qualityScoring is true
+- If qualityScoreError is set: show error text below the button in red/destructive
+
+**Card content — after scoring (qualityScore is not null):**
+- Overall score banner: show overall_score/10 and overall_verdict as a badge
+  - PASS: green badge
+  - ADVISORY: amber/yellow badge
+  - FAIL: red/destructive badge
+- Six dimension rows, one per dimension, in this order:
+  1. structural_completeness — label "Structure"
+  2. compliance_constant_accuracy — label "Compliance"
+  3. strategic_alignment — label "Strategy"
+  4. persona_fit — label "Persona Fit"
+  5. prohibited_content_absence — label "Prohibited Content"
+  6. tone_compliance — label "Tone"
+  For each dimension: show label, score/10, verdict badge (same colour coding
+  as overall), and findings as a collapsed/expandable list (collapsed by default,
+  expand on click — use a simple toggle state or disclosure pattern)
+- "Re-score" button below the dimensions — same as "Score Document", resets
+  and re-calls handleQualityScore()
+- content_truncated === true: show a small note below: "Note: document was
+  truncated to 6,000 characters for scoring."
+
+### 5.2 — Quality score column in registry.tsx
+
+**File:** artifacts/unlock-intel/src/pages/registry.tsx
+
+Add new state:
+- `rowScores` — a Map<string, { loading: boolean, result: any | null,
+  error: string | null }> (initially empty Map)
+
+Add handler `handleRowScore(docId: string)`:
+- Set rowScores entry for docId to { loading: true, result: null, error: null }
+  (use a new Map to trigger re-render)
+- POST to `${baseUrl}/documents/${docId}/quality-score` using the same baseUrl
+  pattern as ImportPdfModal in this file
+- On success: set rowScores entry to { loading: false, result: parsed JSON,
+  error: null }
+- On error: set rowScores entry to { loading: false, result: null,
+  error: "Failed" }
+
+Add a "Quality" column to the document table, **after the "Version" column
+and before the "View" column**. This column must appear in every tier table.
+
+Column content per row:
+- If no entry in rowScores for this doc.id: show a small "Score" button
+  (compact, secondary/outline variant) that calls handleRowScore(doc.id)
+- If rowScores entry has loading: true — show a small spinner
+- If rowScores entry has result: show overall_score/10 and overall_verdict
+  badge (PASS green, ADVISORY amber, FAIL red) inline — compact display
+- If rowScores entry has error: show "—" in muted text
+
+Do NOT auto-fetch scores on page load, on filter change, or on any other
+event. Scores are fetched only when the user clicks "Score" for a specific row.
+
+The baseUrl for the fetch must be resolved as:
+`import.meta.env.VITE_API_URL || \`${window.location.origin}/api\``
+following the existing pattern in ImportPdfModal in this file.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. The Document Detail page (/registry/:id) for any document with content
+shows a "Quality Score" card in the right sidebar below the Compliance Context
+card, containing a "Score Document" button. Manual test required: open any
+document detail page and confirm the card is visible below Compliance Context.
+
+AC2. Clicking "Score Document" shows a loading spinner and "Scoring..." label,
+then on success renders the six dimension rows with scores, verdicts, and
+overall score banner. Manual test required: score a document and inspect the
+rendered panel.
+
+AC3. The overall_verdict badge colour matches the verdict: green for PASS,
+amber for ADVISORY, red for FAIL. Dimension verdict badges follow the same
+colour coding. Manual test required: visual inspection.
+
+AC4. Each dimension row's findings are collapsed by default and expand on click.
+Manual test required: click a dimension row and confirm findings appear.
+
+AC5. When content_truncated is true in the response, the note "Note: document
+was truncated to 6,000 characters for scoring." appears in the Quality Score
+card. Manual test required: score a long document (>6000 chars).
+
+AC6. If POST /documents/:id/quality-score returns an error, the Quality Score
+card shows "Could not score document. Please try again." below the button.
+Manual test required: requires a document that triggers an error — or verify
+code path via inspection.
+
+AC7. The Document Registry list (/registry) shows a "Quality" column after
+"Version" and before "View" in every tier table. Each row shows a compact
+"Score" button by default. Manual test required: visual inspection.
+
+AC8. Clicking "Score" for a row fetches only that document's score. Other rows
+are unaffected. The button shows a spinner while loading, then shows
+overall_score/10 and overall_verdict badge on success. Manual test required:
+score two rows independently and confirm both show results.
+
+AC9. No scores are fetched automatically on page load, filter change, or
+navigation. Manual test required: load /registry, confirm no network requests
+to /quality-score in the browser DevTools Network tab.
+
+AC10. No changes to any backend files. Manual test required: git diff shows
+only registry.tsx and document-detail.tsx changed.
+
+---
+
+## Section 7 — Constraints
+
+- artifacts/unlock-intel/src/pages/document-detail.tsx: only the Quality Score
+  card and its associated state/handler are added. No existing panels, state
+  variables, handlers, or imports are modified.
+- artifacts/unlock-intel/src/pages/registry.tsx: only the Quality column and
+  rowScores state/handler are added. No existing columns, state variables,
+  handlers, or imports are modified.
+- No other files may be modified.
+- Do not run or modify Orval codegen — no generated hook exists for the quality
+  score endpoint; use manual fetch with the baseUrl pattern already in each file.
+- Do not auto-fetch quality scores at any point — on-demand only.
+- All new UI must use Shadcn UI components and Lucide icons consistent with
+  existing patterns in each file.
+- From Template state and Custom mode state independence rules (from prior builds)
+  are unaffected — these files are separate.
+- Backward compatibility: all existing document detail and registry functionality
+  unchanged.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add quality score filtering or sorting to the registry list.
+- This build does not persist quality scores.
+- This build does not add batch scoring ("Score All" button).
+- This build does not add quality score to the document edit flow.
+- This build does not modify the backend endpoint.
+- This build does not add quality score to any page other than registry.tsx
+  and document-detail.tsx.
+
+---
+
+## Section 9 — Assumptions
+
+- The baseUrl pattern (import.meta.env.VITE_API_URL || window.location.origin/api)
+  is correct for both files — confirmed from scan.
+- The Quality Score card in document-detail.tsx fits naturally after the
+  Compliance Context card in the right sidebar without layout changes.
+- The "Quality" column fits in the existing registry table without overflow —
+  compact display (score/10 + badge) is narrow enough.
+- Findings toggle can use simple local boolean state per dimension (useState
+  array or object) — no complex state management needed.
+- qualityScore state resets on id change via the existing useEffect that already
+  resets editing and other per-document state (line 105-110).
+
+---
+
+## Section 10 — Rollback
+
+Risk is LOW. Rollback:
+- Revert artifacts/unlock-intel/src/pages/document-detail.tsx
+- Revert artifacts/unlock-intel/src/pages/registry.tsx
+- No database writes. No schema changes. No backend changes.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]

@@ -2,7 +2,7 @@ import { useParams, Link } from "wouter";
 import { useGetDocument, useGetComplianceConstants, useUpdateDocument, useExportToGoogleDocs, useImportFromGoogleDocs, useGetGdocsStatus } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, AlertTriangle, ShieldCheck, FileText, Download, Pencil, X, Save, ExternalLink, RefreshCw, FileUp, Lock, Unlock, Shield } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ShieldCheck, FileText, Download, Pencil, X, Save, ExternalLink, RefreshCw, FileUp, Lock, Unlock, Shield, Award, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +93,9 @@ export default function DocumentDetail() {
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<"edit" | "import" | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [qualityScore, setQualityScore] = useState<any>(null);
+  const [qualityScoring, setQualityScoring] = useState(false);
+  const [qualityScoreError, setQualityScoreError] = useState<string | null>(null);
 
   useEffect(() => {
     if (document) {
@@ -107,6 +110,9 @@ export default function DocumentDetail() {
     setEditing(false);
     setPendingAction(null);
     setShowUnlockDialog(false);
+    setQualityScore(null);
+    setQualityScoring(false);
+    setQualityScoreError(null);
   }, [id]);
 
   const isTier1 = document?.tier === 1;
@@ -235,6 +241,40 @@ export default function DocumentDetail() {
         },
       }
     );
+  };
+
+  const [expandedDimensions, setExpandedDimensions] = useState<Record<string, boolean>>({});
+
+  const handleQualityScore = async () => {
+    setQualityScoring(true);
+    setQualityScoreError(null);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.origin}/api`;
+      const resp = await fetch(`${baseUrl}/documents/${id}/quality-score`, {
+        method: "POST",
+      });
+      if (!resp.ok) throw new Error("Failed");
+      const data = await resp.json();
+      setQualityScore(data);
+      setExpandedDimensions({});
+    } catch {
+      setQualityScoreError("Could not score document. Please try again.");
+    } finally {
+      setQualityScoring(false);
+    }
+  };
+
+  const toggleDimension = (key: string) => {
+    setExpandedDimensions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const verdictBadge = (verdict: string) => {
+    switch (verdict) {
+      case "PASS": return <Badge variant="outline" className="border-green-200 text-green-700 bg-green-50 text-xs">{verdict}</Badge>;
+      case "ADVISORY": return <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50 text-xs">{verdict}</Badge>;
+      case "FAIL": return <Badge variant="destructive" className="text-xs">{verdict}</Badge>;
+      default: return <Badge variant="secondary" className="text-xs">{verdict}</Badge>;
+    }
   };
 
   if (isDocumentLoading) {
@@ -622,6 +662,84 @@ export default function DocumentDetail() {
                       <span className="font-mono font-medium">{c.value}</span>
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Award className="w-4 h-4 text-primary" /> Quality Score
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {qualityScore ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-2xl font-bold">{qualityScore.overall_score}/10</div>
+                    {verdictBadge(qualityScore.overall_verdict)}
+                  </div>
+
+                  <div className="space-y-2">
+                    {([
+                      ["structural_completeness", "Structure"],
+                      ["compliance_constant_accuracy", "Compliance"],
+                      ["strategic_alignment", "Strategy"],
+                      ["persona_fit", "Persona Fit"],
+                      ["prohibited_content_absence", "Prohibited Content"],
+                      ["tone_compliance", "Tone"],
+                    ] as const).map(([key, label]) => {
+                      const dim = qualityScore.dimensions[key];
+                      if (!dim) return null;
+                      const isExpanded = expandedDimensions[key] || false;
+                      return (
+                        <div key={key} className="border rounded p-2">
+                          <button
+                            className="w-full flex items-center justify-between text-sm"
+                            onClick={() => toggleDimension(key)}
+                          >
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                              <span className="font-medium">{label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">{dim.score}/10</span>
+                              {verdictBadge(dim.verdict)}
+                            </div>
+                          </button>
+                          {isExpanded && dim.findings && (
+                            <ul className="mt-2 ml-5 space-y-1">
+                              {dim.findings.map((f: string, i: number) => (
+                                <li key={i} className="text-xs text-muted-foreground list-disc">{f}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {qualityScore.content_truncated && (
+                    <p className="text-xs text-muted-foreground italic">Note: document was truncated to 6,000 characters for scoring.</p>
+                  )}
+
+                  <Button variant="outline" size="sm" className="w-full" onClick={handleQualityScore} disabled={qualityScoring}>
+                    {qualityScoring ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Re-scoring...</> : "Re-score"}
+                  </Button>
+                  {qualityScoreError && (
+                    <p className="text-sm text-destructive">{qualityScoreError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Score this document against the Unlock quality rubric.</p>
+                  <Button variant="outline" size="sm" className="w-full" onClick={handleQualityScore} disabled={qualityScoring}>
+                    {qualityScoring ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Scoring...</> : "Score Document"}
+                  </Button>
+                  {qualityScoreError && (
+                    <p className="text-sm text-destructive">{qualityScoreError}</p>
+                  )}
                 </div>
               )}
             </CardContent>
