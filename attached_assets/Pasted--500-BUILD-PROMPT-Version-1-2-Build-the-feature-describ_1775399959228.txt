@@ -1,0 +1,373 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- Cache anything the spec says to cache — never compute on every render
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+GATE RULE:
+If the spec contains a section marked as a GATE: stop at that point, return
+the required output to the user exactly as specified, and wait for explicit
+confirmation before continuing. Do not proceed past a gate autonomously under
+any circumstances.
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Lead Creation Form + Sidebar Restructure (R2 + R3)
+
+Version: v1.0
+Date: 2026-04-05
+Build ID: RR-2026-04-05-002
+Effort: 2–3 hours
+Dependencies: RR-2026-04-05-001 (complete)
+Risk: LOW
+
+---
+
+## Section 1 — Feature
+
+Fixes two visible product gaps in the Unlock Intel frontend. R2 adds a lead
+creation modal to the Lead Management page, triggered by the existing "New Lead"
+button that currently produces a 404. R3 restructures the sidebar navigation from
+a flat 13-item list into four labelled groups (Operations, Content, Governance,
+System). Both changes are frontend-only with no backend modifications and no new
+API endpoints.
+
+---
+
+## Section 2 — Why this is necessary
+
+R2: The "New Lead" button appears in two places — the Lead Management page
+(/leads) and the Dashboard Quick Actions panel. Both link to /leads/new which
+matches no route and produces a 404. There is no way to create a lead from the UI
+despite POST /leads being fully implemented on the backend.
+
+R3: The sidebar has 13 items in a flat list with no grouping or hierarchy.
+Related features are scattered — "Content Generation" and "Content Gaps" are
+separated by "Changelog"; "Call Prep" and "Recommendation Engine" are sequential
+workflow steps positioned as independent items. The 070 product review rated this
+MEDIUM severity friction affecting all users on every page load.
+
+---
+
+## Section 3 — Current state
+
+- artifacts/unlock-intel/src/pages/leads.tsx: renders a searchable lead table
+  with a "New Lead" button. Button currently links to /leads/new which has no
+  route handler. Uses useListLeads({ search }) hook.
+- artifacts/unlock-intel/src/pages/dashboard.tsx: Quick Actions panel has an
+  "Add New Lead" link pointing to /leads/new.
+- Sidebar component: location not confirmed from scan — may be in App.tsx, a
+  layout component, or a dedicated sidebar file. Build agent must locate before
+  modifying.
+- artifacts/api-server/src/routes/leads/index.ts: implements POST /leads.
+  Exact request body shape must be confirmed from this file before the form is
+  wired.
+- artifacts/unlock-intel/src/App.tsx: defines all 16 routes via Wouter Switch.
+  No /leads/new route is defined — confirms the 404.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- New UI components — YES (lead creation modal)
+- Additive edits to existing files — YES (leads.tsx, dashboard.tsx, sidebar)
+
+Layer count: 2
+Split required: NO
+Split rationale: All changes are frontend-only, touch no shared state beyond the
+lead list query cache, and have no ordering dependency on each other. Coherent
+for a single Replit AI pass.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Inspect POST /leads route handler before writing form code
+
+File: artifacts/api-server/src/routes/leads/index.ts
+
+Read the POST /leads route handler. Identify:
+- The exact JSON request body fields (names, types, required vs optional)
+- Any validation applied (Zod schema or manual checks)
+
+> GATE: POST /leads REQUEST BODY
+> Stop here. Return the following before writing any form submission code:
+>
+> POST /leads request body:
+>   [list every field: name, type, required/optional]
+>
+> Validation: [Zod schema name if present, or "manual validation"]
+>
+> Do not proceed past this point until the user replies with:
+> "ANSWER: confirmed" or "ANSWER: [correction]".
+
+### 5.2 — Locate sidebar component
+
+Files to check: artifacts/unlock-intel/src/App.tsx,
+artifacts/unlock-intel/src/components/ (if it exists),
+any layout file in artifacts/unlock-intel/src/
+
+Identify the exact file and component that renders the sidebar navigation items.
+Include this in the pre-build report before writing any code.
+
+### 5.3 — R2: Lead creation modal in leads.tsx
+
+File: artifacts/unlock-intel/src/pages/leads.tsx
+
+Replace the "New Lead" button's current link-to-/leads/new behaviour with a
+click handler that opens a modal. Use Shadcn UI Dialog / DialogContent /
+DialogHeader / DialogTitle / DialogFooter components consistent with the
+PDF import modal pattern on registry.tsx.
+
+The modal must contain:
+- Name (required): text input, placeholder "Full name". Submission blocked
+  if empty — show inline error "Name is required."
+- Company (optional): text input, placeholder "Company name"
+- Pipeline stage (optional): Select component with options matching the
+  canonical pipeline stages: "Outreach", "Called", "Demo Booked", "Demo Complete",
+  "Decision". Default: no selection. Use whatever values the route handler enforces.
+- Source (optional): text input, placeholder "e.g. Referral, LinkedIn"
+
+Submit button label: "Create Lead". Cancel button closes modal and clears all fields.
+
+On submit: send POST /leads with the confirmed request body shape from the GATE
+in 5.1. Include only fields that have values — omit empty optional fields.
+
+On success:
+- Close the modal
+- Clear all form fields
+- Invalidate the leads list query so the table refreshes automatically
+- Do not navigate away from /leads
+
+On error: show inline error below submit button: "Could not create lead. Please
+try again." Do not close the modal on error.
+
+Loading state: disable submit button and show a spinner during the request.
+
+### 5.4 — Fix dashboard Quick Action link
+
+File: artifacts/unlock-intel/src/pages/dashboard.tsx
+
+Change the "Add New Lead" Quick Action link from /leads/new to /leads.
+One-line change only. Do not add modal trigger logic to the dashboard.
+
+### 5.5 — R3: Sidebar restructure
+
+File: whichever file contains the sidebar navigation (confirmed in 5.2)
+
+Restructure the sidebar navigation items into four labelled groups. Do not
+remove any existing items — only reorder and add group labels.
+
+Groups and items in this exact order:
+
+Operations:
+- Dashboard
+- Recommendation Engine
+- Call Prep
+- Lead Management
+
+Content:
+- Content Bank
+- Content Gaps
+- Content Generation
+- Document Registry
+- Feature Updates
+
+Governance:
+- Content Units
+- Campaigns
+- Persona Analytics
+
+System:
+- Changelog
+
+Group labels must be visually distinct from nav items — smaller text, muted
+colour, non-clickable. Use existing Tailwind/Shadcn patterns from the file.
+Do not introduce new CSS classes.
+
+The active route highlight behaviour must remain unchanged for all items.
+All existing route paths must remain exactly as they are — do not change any
+href or to values.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. On the Lead Management page (/leads), clicking "New Lead" opens a modal
+containing inputs for name, company, pipeline stage (Select), and source.
+The modal does not navigate to /leads/new.
+
+AC2. Submitting the lead creation modal with an empty name field is blocked.
+An inline error "Name is required." is displayed. The form is not submitted.
+
+AC3. Submitting the modal with a valid name calls POST /leads with the confirmed
+request body. On success the modal closes, form fields are cleared, and the lead
+appears in the leads table without a page reload. Manual test required: live app;
+verify lead appears in table and in the database.
+
+AC4. Submitting the modal with a valid name and all optional fields populated
+calls POST /leads with all provided fields included in the request body.
+Manual test required: live app; inspect network request payload.
+
+AC5. If POST /leads returns an error, the modal remains open and displays
+"Could not create lead. Please try again." below the submit button.
+
+AC6. The "Add New Lead" Quick Action on the Dashboard navigates to /leads
+(not /leads/new). Clicking it does not produce a 404.
+
+AC7. The sidebar navigation renders four labelled groups: "Operations",
+"Content", "Governance", "System". Each group label is visually distinct
+from nav items (smaller, muted, non-clickable). Manual test required: visual
+inspection in browser.
+
+AC8. All 13 existing sidebar navigation items are present after the restructure.
+No items have been removed. All route paths are unchanged. Manual test required:
+click each item and verify it navigates to the correct route.
+
+AC9. The active route highlight applies correctly to all nav items after
+restructure — the currently active page item is highlighted regardless of
+which group it is in. Manual test required: navigate to each page and verify
+correct item is highlighted.
+
+AC10. No changes to any file in artifacts/api-server/ or lib/. Manual test
+required: confirm git diff contains no backend file changes.
+
+---
+
+## Section 7 — Constraints
+
+- artifacts/unlock-intel/src/App.tsx: route definitions must not be changed.
+  Do not add a /leads/new route. Do not remove any existing routes.
+- artifacts/unlock-intel/src/pages/leads.tsx: existing lead table, search input,
+  useListLeads hook, and pipeline/persona badge rendering must remain unchanged.
+  Only the "New Lead" button behaviour and modal addition are in scope.
+- artifacts/unlock-intel/src/pages/dashboard.tsx: only the "Add New Lead" Quick
+  Action link target changes. No other dashboard content may be modified.
+- Sidebar component (file confirmed at 5.2): all existing route paths and
+  active-state logic must remain exactly as-is. Only grouping labels and item
+  order change.
+- artifacts/api-server/ (all files): must not be modified.
+- Backward compatibility: existing leads in the database are unaffected.
+- All new UI must use Shadcn UI components and Lucide icons consistent with
+  existing patterns.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add lead editing from the Lead Detail page.
+- This build does not merge Call Prep into the Recommendation Engine page.
+- This build does not add any new routes to App.tsx.
+- This build does not implement the global search bar, notification bell, or
+  settings icon.
+- This build does not change any backend files.
+
+---
+
+## Section 9 — Assumptions
+
+- POST /leads accepts at minimum a name field. Other fields (company,
+  pipeline_stage, source) are assumed optional — confirmed at GATE in 5.1.
+- Pipeline stage values are assumed from canonical stages: "Outreach", "Called",
+  "Demo Booked", "Demo Complete", "Decision". If the route handler enforces
+  different values, use those instead.
+- The sidebar is rendered in a component or layout file separate from the page
+  routing logic in App.tsx, or is a clearly isolated block within App.tsx — the
+  restructure must not touch route definitions regardless of file location.
+- The leads list query uses TanStack React Query and can be invalidated on
+  success using queryClient.invalidateQueries.
+- The Shadcn UI Dialog component is available — consistent with its use in the
+  PDF import modal on registry.tsx.
+
+---
+
+## Section 10 — Rollback
+
+Risk is LOW. Rollback is trivial:
+- Revert artifacts/unlock-intel/src/pages/leads.tsx
+- Revert artifacts/unlock-intel/src/pages/dashboard.tsx
+- Revert sidebar file
+- No database writes. No schema changes. No backend changes. No external state.
+
+---
+
+## Section 11 — What comes next
+
+After R2 + R3 ship, the most likely next phase is template generation persistence
+or a fresh 060 Strategic Assessment. Both require a new Step 1 scan.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST → exact manual test steps]
+  [COULD NOT SATISFY → why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]
+
+PHASE DOC FINAL:
+[paste here]
