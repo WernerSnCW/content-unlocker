@@ -16,6 +16,7 @@ import {
   Shield,
   Megaphone,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
         { href: "/generate", label: "Content Generation", icon: FileText },
         { href: "/registry", label: "Document Registry", icon: FileText },
+        { href: "/import", label: "Import Content", icon: Upload },
         { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
       ],
     },

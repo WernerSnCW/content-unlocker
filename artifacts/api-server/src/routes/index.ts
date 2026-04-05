@@ -15,6 +15,7 @@ import campaignsRouter from "./campaigns";
 import templatesRouter from "./templates";
 import promptsRouter from "./prompts";
 import complianceConstantsRouter from "./compliance-constants";
+import importRouter from "./import";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(campaignsRouter);
 router.use(templatesRouter);
 router.use(promptsRouter);
 router.use(complianceConstantsRouter);
+router.use(importRouter);
 
 export default router;

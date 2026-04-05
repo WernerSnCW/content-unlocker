@@ -22,6 +22,7 @@ import ACUPage from "./pages/acu";
 import CampaignsPage from "./pages/campaigns";
 import CampaignDetailPage from "./pages/campaign-detail";
 import ComplianceConstants from "./pages/compliance-constants";
+import ImportPage from "./pages/import";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,6 +54,7 @@ function Router() {
         <Route path="/campaigns" component={CampaignsPage} />
         <Route path="/campaigns/:id" component={CampaignDetailPage} />
         <Route path="/compliance-constants" component={ComplianceConstants} />
+        <Route path="/import" component={ImportPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

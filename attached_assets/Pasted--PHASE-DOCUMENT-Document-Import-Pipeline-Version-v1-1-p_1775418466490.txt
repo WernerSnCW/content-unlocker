@@ -1,0 +1,534 @@
+# PHASE DOCUMENT — Document Import Pipeline
+Version: v1.1 (post Step 4 readiness check)
+Date: 2026-04-06
+Build ID: RR-2026-04-06-007b
+Effort: 1 day
+Dependencies: RR-2026-04-06-007a (complete — confirmed)
+Risk: MEDIUM
+
+---
+
+## NON-NEGOTIABLES (from CTX)
+
+- All IDs via `randomUUID()` from crypto — no nanoid
+- Static routes declared before parameterized `:id` routes in every router
+- No new LLM calls in this phase — parser is deterministic
+- Drizzle ORM schema-first — schema changes via `drizzle-kit push` only, no raw SQL
+- `artifacts/api-server/src/lib/generationEngine.ts` must not be modified
+- `artifacts/api-server/src/lib/propagation.ts` — do not reimplement cascade logic
+- Brand: dark navy #0F1629, charcoal #2D2D3F, Unlock Green #00C853, Inter font
+- Backward compatibility: existing documents, ACUs, templates, QC outputs must be unaffected
+- Prohibited values (22p, 7.8x, 78x, ASA/SAFE, Series A, £99/£249 pricing)
+  must be blocked at parse time — no override exists
+
+---
+
+## Section 1 — Feature
+
+This build adds an MD file import pipeline scoped to the document destination.
+The operator uploads a single MD file containing one or more IMPORT_BLOCK
+sections. The server parses the file, validates each block, blocks prohibited
+values at parse time, and creates or updates document records in the existing
+documents table. A UI page allows the operator to upload the file, review the
+parse result, and trigger execution with a summary on completion. This is the
+primary mechanism for bulk-loading the Unlock content library (investor docs,
+strategy docs, agent tools) into the platform.
+
+---
+
+## Section 2 — Why this is necessary
+
+The Unlock content library contains 32+ documents across the 100–700 series.
+Currently there is no way to load multiple documents in a single operation —
+each document must be created individually via the document registry UI or
+the PDF import route. This makes bulk content loading impractical. The import
+pipeline allows the operator to upload the entire compiled content library as
+a single MD file and have it parsed and stored in one operation.
+
+---
+
+## Section 3 — Current state
+
+- `artifacts/api-server/src/routes/documents/index.ts` — existing routes:
+  `GET /documents`, `GET /documents/:id`, `POST /documents` (create),
+  `PUT /documents/:id` (update), `POST /documents/import-pdf` (multer, PDF only).
+  No bulk or MD import endpoint exists.
+- `lib/db/src/schema/documents.ts` — documents table with 30 columns.
+  Required fields for a minimal create: `id`, `title`, `content`.
+  Key optional fields relevant to import: `output_type`, `tier`, `category`,
+  `lifecycle_status`, `send_status`, `file_code`.
+- `artifacts/unlock-intel/src/pages/` — no import pipeline page exists.
+- `artifacts/unlock-intel/src/components/layout.tsx` — Content group in sidebar
+  currently contains: Content Bank, Content Gaps, Content Generation, Document
+  Registry, Feature Updates. Import page will be added here.
+- Multer is already installed and configured for PDF import and transcript upload.
+- Changelog table: `id`, `action`, `details`, `document_id` (nullable),
+  `lead_id` (nullable), `triggered_by` (nullable), `timestamp` (auto).
+  Each route writes directly via `db.insert(changelogTable).values({...})`.
+- No import session table exists currently.
+- No MD file parser exists in the codebase.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data — new Drizzle schema table: import_sessions
+- [x] API — new route file: artifacts/api-server/src/routes/import/index.ts
+- [x] Domain — new service: artifacts/api-server/src/lib/importParser.ts
+- [x] UI — new page: artifacts/unlock-intel/src/pages/import.tsx
+- [x] Additive edits to existing files — routes/index.ts (mount new router),
+  layout.tsx (sidebar entry)
+
+Layer count: 4 (Data, API, Domain, UI)
+Split required: NO
+Rationale: All changes are within a new subdomain (import pipeline) with one
+destination (document). No existing routes are modified. The only existing
+file changes are additive. Coherent for a single Replit AI pass.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 Drizzle schema — new table
+
+Create `lib/db/src/schema/import-sessions.ts`:
+
+```typescript
+export const importSessions = pgTable("import_sessions", {
+  id: text("id").primaryKey(),
+  file_name: text("file_name").notNull(),
+  file_hash: text("file_hash").notNull(),
+  status: text("status").notNull().default("PENDING"),
+  // "PENDING" | "PARSED" | "EXECUTING" | "COMPLETE" | "PARTIAL" | "FAILED"
+  total_blocks: integer("total_blocks").notNull().default(0),
+  valid_blocks: integer("valid_blocks").notNull().default(0),
+  rejected_blocks: integer("rejected_blocks").notNull().default(0),
+  executed_blocks: integer("executed_blocks").notNull().default(0),
+  failed_blocks: integer("failed_blocks").notNull().default(0),
+  block_results: jsonb("block_results").notNull().default([]),
+  // Array of { index, destination, action, title, status, error? }
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  completed_at: timestamp("completed_at"),
+});
+```
+
+Add export to `lib/db/src/schema/index.ts` barrel.
+
+Run `drizzle-kit push` to apply schema.
+
+### 5.2 MD file parser service
+
+Create `artifacts/api-server/src/lib/importParser.ts`:
+
+**`parseImportFile(fileContent: string): ParsedImportFile`**
+
+Parses the MD file and returns a structured result. The parser must:
+
+1. Extract the optional file header block:
+   ```
+   <!-- IMPORT_FILE
+   title: ...
+   author: ...
+   date: ...
+   description: ...
+   -->
+   ```
+   If present, extract key-value pairs. If absent, continue without error.
+
+2. Extract all IMPORT_BLOCK sections using the pattern:
+   ```
+   <!-- IMPORT_BLOCK
+   [key: value pairs]
+   -->
+   [content]
+   <!-- /IMPORT_BLOCK -->
+   ```
+   For each block:
+   - Extract header key-value pairs (destination, action, id, key, title,
+     output_type, tier, category, lifecycle_status, send_status, propagate)
+   - Extract content (everything between closing --> and <!-- /IMPORT_BLOCK -->)
+   - Trim leading/trailing whitespace from content
+
+3. Validate each block:
+   - `destination` must be present and equal to "document" — blocks with
+     other destinations are marked REJECTED with error "Destination not
+     supported in this version: [destination]"
+   - `action` must be "create" or "update" — other actions marked REJECTED
+     with error "Action not supported: [action]"
+   - For action "update": `id` or `key` must be present — if absent, mark
+     REJECTED with error "update action requires id or key"
+   - Content must be non-empty — if empty, mark REJECTED with error
+     "Block has no content"
+
+4. Check prohibited values in content:
+   - Normalise content: lowercase, collapse whitespace
+   - Check for: "22p", "7.8x", "78x", "asa", "safe", "series a",
+     "£99/month", "£249/month", "advanced subscription agreement"
+   - If any prohibited value found: mark block REJECTED with error
+     "Prohibited value detected: [value]"
+   - Prohibited blocks cannot be overridden — they are always REJECTED
+
+5. Return:
+   ```typescript
+   interface ParsedImportFile {
+     fileHeader: { title?: string; author?: string; date?: string; description?: string } | null;
+     blocks: ParsedBlock[];
+     totalBlocks: number;
+     validBlocks: number;
+     rejectedBlocks: number;
+   }
+
+   interface ParsedBlock {
+     index: number;
+     destination: string;
+     action: "create" | "update";
+     id?: string;          // for update by ID
+     key?: string;         // for update by file_code or title match
+     title?: string;
+     output_type?: string;
+     tier?: number;
+     category?: string;
+     lifecycle_status?: string;
+     send_status?: string;
+     propagate?: boolean;
+     content: string;
+     status: "VALID" | "REJECTED";
+     error?: string;
+   }
+   ```
+
+**`computeFileHash(content: string): string`**
+
+Returns a SHA-256 hex hash of the file content string.
+Use Node.js built-in `crypto.createHash('sha256').update(content).digest('hex')`.
+
+### 5.3 API routes
+
+Create `artifacts/api-server/src/routes/import/index.ts`.
+
+Mount in `artifacts/api-server/src/routes/index.ts` as `/import`.
+
+**Static routes first, then parameterized:**
+
+`POST /import/parse`
+- Accepts multipart/form-data with field name `file`
+- Multer config: memoryStorage, 10MB limit, accept files with `.md` extension
+  only. The file extension is the authoritative check — accept any MIME type
+  (text/markdown, text/plain, application/octet-stream) as long as the
+  original filename ends with `.md`. Reject any file whose name does not
+  end in `.md` with error "Only .md files are accepted".
+- Computes file hash. Checks import_sessions for existing session with same
+  hash and status not "FAILED" — if found, returns 409 with existing session id
+- Calls parseImportFile() on file buffer converted to UTF-8 string
+- Creates import_sessions record with status="PARSED", block_results populated
+- Returns: `{ session_id, file_name, file_hash, total_blocks, valid_blocks,
+  rejected_blocks, blocks: ParsedBlock[] }`
+
+`POST /import/:session_id/execute`
+- Accepts: `{ confirmed: true }` in body — must be explicitly confirmed
+- Looks up import session by id — if not found: 404
+- If session status is not "PARSED": returns 409 with current status
+- Sets session status to "EXECUTING"
+- For each VALID block in session, in sequence:
+  - **action: create** — calls `POST /documents` equivalent logic directly
+    (not via HTTP — call the same DB insert used by the documents route):
+    - id: randomUUID()
+    - title: block.title || "Untitled Import"
+    - content: block.content
+    - output_type: block.output_type || null
+    - tier: block.tier || null
+    - category: block.category || null
+    - lifecycle_status: block.lifecycle_status || "DRAFT"
+    - send_status: block.send_status || "INTERNAL_ONLY"
+    - is_generated: false
+    - source_pdf_imported_at: null (not a PDF import)
+    - All other document fields: null/default
+    - On success: mark block result as EXECUTED, append changelog entry:
+      `{ action: "DOCUMENT_IMPORTED", document_id: newId, details: JSON.stringify({ title, source: "import", session_id }), triggered_by: "import" }`
+    - On failure: mark block result as FAILED with error message, continue to next block
+  - **action: update** — find existing document by id (if provided) or by
+    file_code/title match (if key provided):
+    - If not found: mark block FAILED with "Document not found: [id or key]"
+    - If found: update content field only (do not overwrite metadata fields
+      not present in the import block)
+    - On success: mark block result as EXECUTED, append changelog entry:
+      `{ action: "DOCUMENT_UPDATED_VIA_IMPORT", document_id: existingId, details: JSON.stringify({ title, session_id }), triggered_by: "import" }`
+    - On failure: mark block result as FAILED with error message, continue
+- After all blocks processed:
+  - Count executed, failed
+  - Set session status: "COMPLETE" if failed=0, "PARTIAL" if failed>0 and
+    executed>0, "FAILED" if executed=0
+  - Set completed_at = now()
+  - Update block_results in import_sessions record
+- Returns: `{ session_id, status, executed_blocks, failed_blocks,
+  block_results: BlockResult[] }`
+
+`GET /import/:session_id`
+- Returns full import session record by id
+- Used by UI to check session status and results
+
+`GET /import`
+- Returns list of import sessions ordered by created_at desc, limit 20
+- Static route — declared before /:session_id
+
+### 5.4 Sidebar and routing
+
+**Add to sidebar:**
+In `artifacts/unlock-intel/src/components/layout.tsx`:
+- Add "Import Content" to the Content group
+- Route: `/import`
+- Icon: Upload (Lucide)
+- Position: after Document Registry, before Feature Updates
+
+**Add route:**
+In frontend router (App.tsx or equivalent):
+- Add route for `/import` pointing to the Import page component
+
+### 5.5 Admin UI — new page
+
+Create `artifacts/unlock-intel/src/pages/import.tsx`.
+
+**Step 1 — Upload view (default):**
+- Page title: "Import Content"
+- File drop zone or file input: accepts .md files only
+- "Parse File" button — disabled until file selected
+- Recent imports table below: session id (truncated), file name, date,
+  status badge, block counts (valid/rejected/total), link to results
+- On parse: calls POST /import/parse, transitions to Step 2
+
+**Step 2 — Parse preview:**
+- Summary bar: "N blocks found — N valid, N rejected"
+- File header details if present (title, author, date, description)
+- Table of blocks:
+  - Index, Title (from block title field or first line of content truncated
+    to 60 chars), Action badge (create/update), Status badge (VALID green /
+    REJECTED red), Error (if rejected)
+- Rejected blocks shown with red row highlight and error message
+- If all blocks rejected: show warning "No valid blocks to execute" —
+  disable Execute button
+- "Execute N blocks" button (only enabled if valid_blocks > 0) — requires
+  confirmation dialog before calling POST /import/:session_id/execute
+- Confirmation dialog: "This will create/update N documents. Continue?"
+  with Cancel and Confirm buttons
+- "Upload a different file" link returns to Step 1
+
+**Step 3 — Execution summary:**
+- Shows on completion of execute call
+- Summary: "N documents created/updated. N blocks failed."
+- Results table: Index, Title, Action, Status (EXECUTED green / FAILED red),
+  Error (if failed)
+- "View Document Registry" link
+- "Import another file" link returns to Step 1
+
+**Error states:**
+- File too large (>10MB): "File exceeds 10MB limit"
+- Wrong file type: "Only .md files are accepted"
+- Duplicate file (409): "This file has already been imported. View previous
+  import session." with link to existing session
+- Parse error (500): "Failed to parse file. Check file format and try again."
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `POST /import/parse` with a valid MD file containing 3 IMPORT_BLOCK
+     sections (all destination: document, action: create) returns HTTP 200
+     with `{ session_id, total_blocks: 3, valid_blocks: 3, rejected_blocks: 0 }`
+     and creates one import_sessions record with status="PARSED".
+
+AC2. `POST /import/parse` with a file containing a block whose content
+     includes the string "22p" returns a block result with status="REJECTED"
+     and error containing "Prohibited value detected".
+
+AC3. `POST /import/parse` with a file containing a block with
+     `destination: lead` returns that block with status="REJECTED" and error
+     containing "Destination not supported".
+
+AC4. `POST /import/parse` with the same file uploaded twice (identical
+     content) returns HTTP 409 on the second call with the existing session_id.
+
+AC5. `POST /import/:session_id/execute` with `{ confirmed: true }` on a
+     PARSED session creates one document record per VALID block, each with
+     the block's title and content. Verify via `GET /documents` that the
+     new records exist.
+
+AC6. After AC5 completes, the import session status is "COMPLETE" and
+     executed_blocks equals the number of VALID blocks from the parse result.
+
+AC7. After AC5 completes, one changelog entry with action="DOCUMENT_IMPORTED"
+     exists for each successfully created document. Verify via direct DB query:
+     `SELECT * FROM changelog WHERE action = 'DOCUMENT_IMPORTED' AND triggered_by = 'import'`
+     — confirm one row per created document.
+
+AC8. `POST /import/:session_id/execute` on a session with status="COMPLETE"
+     returns HTTP 409. The session is not re-executed.
+
+AC9. A block with action="update" and a valid existing document id updates
+     only the content field of that document — the document's lifecycle_status,
+     tier, category, and output_type are unchanged.
+     Manual test required: create a document first, then import an update
+     block targeting its id, verify metadata fields are preserved.
+
+AC10. A block with action="update" and an id that does not exist in the
+      documents table results in that block having status="FAILED" in the
+      block_results, and the session completing as "PARTIAL" (not "FAILED")
+      if other blocks succeeded.
+
+AC11. The Import Content page is reachable at `/import` in the frontend
+      and appears in the sidebar Content group.
+      Manual test required: navigate to the page in browser.
+
+AC12. After uploading a valid MD file, the parse preview shows a table of
+      blocks with correct status badges (VALID green / REJECTED red).
+      Manual test required: upload a test MD file with mixed valid and
+      rejected blocks, verify UI display.
+
+AC13. Clicking "Execute N blocks" shows a confirmation dialog before
+      executing. Clicking Cancel does not trigger execution.
+      Manual test required: verify in browser.
+
+AC14. The execution summary screen shows correct counts of executed and
+      failed blocks after execute completes.
+      Manual test required: verify in browser after executing a session.
+
+AC15. `POST /import/parse` with a file larger than 10MB returns HTTP 400
+      or 413. The file is not stored and no session is created.
+      Manual test required: upload a file larger than 10MB.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/lib/generationEngine.ts`: must not be modified.
+- `artifacts/api-server/src/lib/propagation.ts`: must not be modified —
+  document imports do not trigger propagation (new documents have no
+  upstream ACU dependencies to cascade).
+- `artifacts/api-server/src/routes/documents/index.ts`: do not modify
+  existing document routes — the import route must implement its own
+  insert logic using `db.insert(documentsTable).values({...})` from
+  `@workspace/db` directly, not by calling existing route handlers internally.
+- `lib/db/src/schema/index.ts`: add new export only — do not remove or
+  reorder existing exports.
+- `artifacts/api-server/src/routes/index.ts`: additive mount only — do
+  not modify existing route mounts.
+- `artifacts/unlock-intel/src/components/layout.tsx`: add sidebar entry
+  to Content group only — do not restructure existing groups.
+- Backward compatibility: all existing document records must be unaffected.
+  Import creates new records or updates content field only — no bulk
+  updates to existing metadata.
+- All IDs: `randomUUID()` from crypto — no nanoid anywhere in new code.
+- Route ordering: in import/index.ts, `GET /import` must be declared
+  before `GET /import/:session_id`, and `POST /import/parse` before
+  `POST /import/:session_id/execute`.
+- File hash check: duplicate uploads (same hash, non-FAILED session) must
+  return 409 — do not silently re-execute.
+- Prohibited value check is permanent — no override path exists for
+  prohibited content in this build.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not support destinations other than document —
+  compliance_constant, acu, template, lead, persona, campaign, and
+  system_prompt are deferred to Phase C.
+- This build does not implement override confirmation flow — documents
+  do not have LOCKED/ACTIVE lifecycle states.
+- This build does not trigger propagation on imported documents — new
+  documents have no existing ACU dependencies.
+- This build does not support bulk delete via import file.
+- This build does not support async execution with polling — synchronous
+  execution within the Express request is sufficient given no LLM calls
+  and no timeout configuration.
+- This build does not add a diff view between existing and imported
+  document content.
+- This build does not validate that imported document content passes QC —
+  documents are created as DRAFT and can be QC'd separately.
+
+---
+
+## Section 9 — Assumptions
+
+- The documents table minimal required fields for a create are: id, title,
+  content. All other fields are nullable or have defaults. If this is wrong
+  and additional fields are NOT NULL, the build agent must identify them
+  and report before executing inserts.
+- The frontend router file is App.tsx — if named differently, agent must
+  identify and report before adding the route.
+- "Content group" in layout.tsx is identifiable by its existing Document
+  Registry entry — if the group label differs in code, agent must match
+  by content not label name.
+- MD files uploaded with mimetype text/plain (which some operating systems
+  assign to .md files) should be accepted — the file extension is the
+  authoritative check, not the MIME type.
+- Block title extraction: if the block header does not include a `title:`
+  field, the parser falls back to the first non-empty line of the block
+  content, truncated to 80 characters.
+- The `key` field in an update block is matched against the document's
+  `file_code` column first, then against `title` if no file_code match
+  is found. If multiple documents match by title, the update block is
+  marked FAILED with error "Ambiguous key match — use id instead".
+- Import sessions with status="FAILED" are excluded from the duplicate
+  hash check — a failed import can be retried with the same file.
+
+---
+
+## Section 10 — Rollback
+
+Risk is MEDIUM.
+
+1. **Schema rollback**: import_sessions table can be dropped without
+   affecting any other table. Run: `DROP TABLE import_sessions;`
+2. **Document rollback**: documents created via import have
+   `is_generated: false` and no special marker. They cannot be
+   automatically identified and removed post-import. The operator must
+   manually delete unwanted documents via the Document Registry UI.
+   This is acceptable — imported documents are DRAFT by default and
+   do not affect generated content or QC until promoted.
+3. **File rollback**: revert changes to routes/index.ts, layout.tsx,
+   App.tsx. The import route file and parser service can be deleted.
+   generationEngine.ts is unchanged.
+
+---
+
+## Section 11 — What comes next
+
+Phase C will add additional destinations to the import pipeline
+(compliance_constant, acu, and eventually template, lead, persona,
+campaign). Before Phase C can be specced, a fresh Step 1 scan is
+required scoped to the new import route and parser service to confirm
+Phase B shipped cleanly. Phase C will reuse the import_sessions table
+and add an import_blocks table for per-block audit on override flows.
+
+After this build ships, `CTX_architecture.md` must be updated to record:
+the new `import_sessions` table, the `importParser.ts` service, the new
+`/import` route, and the constraint that document imports do not trigger
+propagation. FEATURE STATUS cannot be marked COMPLETE until CTX is updated.
+
+---
+
+## POST-PRODUCTION REPORT
+
+**Inferences made (also in Section 9):**
+- Documents table minimal required fields assumed to be id, title, content
+- Frontend router assumed to be App.tsx
+- Content group in layout.tsx identified by Document Registry entry
+- MD files with text/plain MIME type accepted based on file extension
+
+**Compliance/architecture conflicts:** None identified. generationEngine.ts
+untouched. propagation.ts untouched.
+
+**Acceptance criteria that were hard to make testable:**
+- AC9 (update preserves metadata) — requires manual setup; noted as manual test
+- AC12, AC13, AC14 — UI verification; noted as manual tests
+
+**CTX files:** Present and applied. No contradictions identified.
+
+**Complexity result:** 4 layers (Data, API, Domain, UI). Single pass. Coherent
+for one Replit AI build.
+
+**Deviations from Step 2 reconciled scope:**
+- content_bank destination removed (no DB table exists — static MD file)
+- compliance_constant and acu destinations deferred to Phase C
+- Scope reduced to document destination only — operator confirmed
