@@ -20,20 +20,40 @@ import {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
-  const navItems = [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
-    { href: "/call-prep", label: "Call Prep", icon: Phone },
-    { href: "/leads", label: "Lead Management", icon: Users },
-    { href: "/registry", label: "Document Registry", icon: FileText },
-    { href: "/content-bank", label: "Content Bank", icon: Library },
-    { href: "/changelog", label: "Changelog", icon: History },
-    { href: "/generate", label: "Content Generation", icon: FileText },
-    { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
-    { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
-    { href: "/analytics/personas", label: "Persona Analytics", icon: BarChart3 },
-    { href: "/acu", label: "Content Units", icon: Shield },
-    { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+  const navGroups = [
+    {
+      label: "Operations",
+      items: [
+        { href: "/", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
+        { href: "/call-prep", label: "Call Prep", icon: Phone },
+        { href: "/leads", label: "Lead Management", icon: Users },
+      ],
+    },
+    {
+      label: "Content",
+      items: [
+        { href: "/content-bank", label: "Content Bank", icon: Library },
+        { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
+        { href: "/generate", label: "Content Generation", icon: FileText },
+        { href: "/registry", label: "Document Registry", icon: FileText },
+        { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
+      ],
+    },
+    {
+      label: "Governance",
+      items: [
+        { href: "/acu", label: "Content Units", icon: Shield },
+        { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+        { href: "/analytics/personas", label: "Persona Analytics", icon: BarChart3 },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { href: "/changelog", label: "Changelog", icon: History },
+      ],
+    },
   ];
 
   return (
@@ -49,22 +69,30 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex-1 py-6 px-3 space-y-1">
-          {navItems.map((item) => {
-            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-            const Icon = item.icon;
-            
-            return (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                  isActive 
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground" 
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                }`}>
-                  <Icon className="w-4 h-4" />
-                  {item.label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 py-4 px-3 space-y-4 overflow-y-auto">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.href} href={item.href} className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                        isActive
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                        {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 border-t border-sidebar-border">

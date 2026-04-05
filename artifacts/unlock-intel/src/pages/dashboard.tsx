@@ -129,7 +129,7 @@ export default function Dashboard() {
                   <span className="font-medium">Start Recommendation</span>
                   <ArrowRight className="w-4 h-4" />
               </Link>
-              <Link href="/leads/new" className="w-full flex items-center justify-between p-3 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
+              <Link href="/leads" className="w-full flex items-center justify-between p-3 rounded-md bg-white/10 hover:bg-white/20 transition-colors">
                   <span className="font-medium">Add New Lead</span>
                   <Users className="w-4 h-4" />
               </Link>
