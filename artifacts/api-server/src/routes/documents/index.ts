@@ -3,6 +3,7 @@ import { db, documentsTable, changelogTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { propagateFromDocument } from "../../lib/propagation";
+import { createReviewTasksForPropagation } from "../../lib/taskHelpers";
 import { getTemplate, type DocumentTemplate } from "../../lib/templates/index";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import multer from "multer";
@@ -585,6 +586,8 @@ router.post("/documents/:id/propagate", async (req, res): Promise<void> => {
   }
 
   const result = await propagateFromDocument(params.data.id, params.data.id);
+
+  await createReviewTasksForPropagation(result.targets);
 
   await db.insert(changelogTable).values({
     id: randomUUID(),
