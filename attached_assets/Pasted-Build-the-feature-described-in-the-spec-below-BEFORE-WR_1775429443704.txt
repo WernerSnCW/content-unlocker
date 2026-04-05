@@ -1,0 +1,394 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- Cache anything the spec says to cache — never compute on every render
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+GATE RULE:
+If the spec contains a section marked as a GATE: stop at that point, return
+the required output to the user exactly as specified, and wait for explicit
+confirmation before continuing. Do not proceed past a gate autonomously under
+any circumstances.
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+# PHASE DOC — Task Manager (Phase A)
+Version: v1.1
+Date: 2026-04-06
+Build ID: RR-2026-04-06-008a
+Effort: 1 day
+Dependencies: RR-2026-04-06-007b (document import pipeline — must be complete)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds a task manager to Unlock Intel. A new tasks table stores tasks with a title, status, type, and optional link to a document. Tasks can be created manually via a Task Board page. The Dashboard gains a summary panel showing the operator's open task count and the three oldest outstanding tasks.
+
+---
+
+## Section 2 — Why this is necessary
+
+The 31-document library import has created a large number of documents with REQUIRES_REVIEW status. Currently there is no mechanism to track, queue, or mark complete any review work. The operator has no visibility into what needs attention or how to work through it systematically. Without this feature, review debt is invisible and unmanageable.
+
+---
+
+## Section 3 — Current state
+
+From the Step 1 scan:
+
+- `lib/db/src/schema/` — 16 tables defined. No tasks table exists. The barrel `index.ts` exports all current tables.
+- `artifacts/api-server/src/routes/index.ts` — mounts 17 domain routers. No tasks router exists.
+- `artifacts/api-server/src/lib/propagation.ts` — `propagateFromDocument(sourceDocId, triggeredBy)` flags downstream documents as REQUIRES_REVIEW and writes FLAGGED_FOR_REVIEW changelog entries. Its signatures must not be modified.
+- `artifacts/api-server/src/routes/documents/index.ts` — calls `propagateFromDocument()` at `POST /documents/:id/propagate`. This is the call site where the Phase B wrapper will eventually be added.
+- `artifacts/api-server/src/app.ts` — mounts all routes at `/api` prefix.
+- `artifacts/unlock-intel/src/App.tsx` — 17 routes registered. No `/tasks` route exists.
+- `artifacts/unlock-intel/src/pages/dashboard.tsx` — uses Orval-generated `useGetDashboardSummary()` hook. Task panel must use manual `fetch()` — not Orval hooks — to keep concerns separate.
+- `artifacts/unlock-intel/src/components/layout.tsx` — sidebar has four nav groups. Task Board must be added to the Operations group below Lead Management.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data model / type definitions — new tasks table in Drizzle schema
+- [ ] API contract changes (OpenAPI, generated client) — manual fetch only, no Orval codegen
+- [x] New UI components — Task Board page, Dashboard panel
+- [x] Additive edits to existing files — barrel export, routes index, App.tsx, layout.tsx, dashboard.tsx
+- [x] Database schema — new table, drizzle-kit push required
+
+Layer count: 4 (Data, Domain/API, UI, Additive edits)
+Split required: YES — this is Phase A of 2. Phase B covers propagation-triggered auto-task creation via a wrapper function at the call site in `documents/index.ts`. Phase A delivers all CRUD, UI, and the Dashboard panel without touching propagation.ts or its call sites.
+Split rationale: The propagation integration crosses a shared workflow boundary and is the highest-risk component for an autonomous agent. Separating it ensures Phase A is stable before the shared function's call site is modified.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Schema: new tasks table
+
+File: `lib/db/src/schema/tasks.ts` (create new file)
+
+Define `tasksTable` using Drizzle with the following columns:
+- `id` — text, primary key, default `randomUUID()` from crypto
+- `title` — text, not null
+- `status` — text, not null, default `'Open'` — allowed values: `'Open'`, `'In Progress'`, `'Done'`
+- `type` — text, not null, default `'General'` — allowed values: `'Review'`, `'Build'`, `'Import'`, `'General'`
+- `linked_document_id` — text, nullable, no FK constraint
+- `created_at` — timestamp, not null, defaultNow()
+- `updated_at` — timestamp, not null, defaultNow(), with `$onUpdate(() => new Date())`
+
+Export: `tasksTable`, `insertTaskSchema` (Zod insert schema omitting `id`, `created_at`, `updated_at`), `InsertTask`, `Task` TypeScript types.
+
+File: `lib/db/src/schema/index.ts` (additive edit)
+
+Add export: `export * from './tasks';`
+
+Run `drizzle-kit push` after schema is defined to create the table in the database.
+
+---
+
+### 5.2 — API: tasks router
+
+File: `artifacts/api-server/src/routes/tasks/index.ts` (create new file)
+
+Create an Express Router. Declare routes in this exact order (static before parameterised):
+
+**GET /tasks**
+- Query params: none — return all tasks
+- Query all rows from `tasksTable` ordered by `created_at` ascending
+- For `linked_document_name`: use a Drizzle left join on `documentsTable` where `documentsTable.id = tasksTable.linked_document_id`, selecting `documentsTable.name` as `linked_document_name`. Alternatively, a secondary `db.select().from(documentsTable).where(eq(documentsTable.id, task.linked_document_id))` lookup per task is also acceptable. Either approach is valid.
+- Return: `{ tasks: Task[] }` where each task includes `id`, `title`, `status`, `type`, `linked_document_id`, `linked_document_name` (string or null), `created_at`, `updated_at`
+- Error: 500 with `{ error: 'Failed to fetch tasks' }` on DB failure
+
+**POST /tasks**
+- Body: `{ title: string, type?: string, linked_document_id?: string }`
+- Validate: `title` must be non-empty string. If missing or empty: return 400 `{ error: 'title is required' }`
+- `type` defaults to `'General'` if not provided. If provided, must be one of `'Review'`, `'Build'`, `'Import'`, `'General'` — else 400 `{ error: 'Invalid type' }`
+- `status` always set to `'Open'` on creation — not accepted from body
+- Generate `id` via `randomUUID()` from `crypto`
+- Insert into `tasksTable`
+- Write changelog entry inline: `db.insert(changelogTable).values({ id: randomUUID(), action: 'TASK_CREATED', details: 'Task created: [title]', triggered_by: 'operator' })`
+- Return: 201 with the created task object
+- Error: 500 with `{ error: 'Failed to create task' }` on DB failure
+
+**GET /tasks/summary**
+- Must be declared BEFORE `GET /tasks/:id` in the file
+- Query `tasksTable` for all tasks where `status != 'Done'`
+- Return:
+  - `open_count`: total count of non-Done tasks
+  - `top_tasks`: the 3 oldest non-Done tasks ordered by `created_at` ascending, each including `id`, `title`, `status`, `type`, `linked_document_id`, `linked_document_name`
+- Return: `{ open_count: number, top_tasks: Task[] }`
+- Error: 500 with `{ error: 'Failed to fetch task summary' }` on DB failure
+
+**PATCH /tasks/:id**
+- Body: `{ status?: string, title?: string, type?: string }`
+- If `status` provided: must be one of `'Open'`, `'In Progress'`, `'Done'` — else 400 `{ error: 'Invalid status' }`
+- If `type` provided: must be one of `'Review'`, `'Build'`, `'Import'`, `'General'` — else 400 `{ error: 'Invalid type' }`
+- Free status transitions — no sequence enforcement
+- If task not found: 404 `{ error: 'Task not found' }`
+- Update the task, return the updated task object
+- Write changelog entry inline: `db.insert(changelogTable).values({ id: randomUUID(), action: 'TASK_UPDATED', details: 'Task updated: [title]', triggered_by: 'operator' })`
+- Return: 200 with updated task object
+- Error: 500 with `{ error: 'Failed to update task' }` on DB failure
+
+**DELETE /tasks/:id**
+- If task not found: 404 `{ error: 'Task not found' }`
+- Delete the task
+- Write changelog entry inline: `db.insert(changelogTable).values({ id: randomUUID(), action: 'TASK_DELETED', details: 'Task deleted: [title]', triggered_by: 'operator' })`
+- Return: 200 `{ success: true }`
+- Error: 500 with `{ error: 'Failed to delete task' }` on DB failure
+
+File: `artifacts/api-server/src/routes/index.ts` (additive edit)
+
+Import the tasks router and mount it: `router.use('/tasks', tasksRouter)` — add after the existing import route mount.
+
+---
+
+### 5.3 — Frontend: Task Board page
+
+File: `artifacts/unlock-intel/src/pages/tasks.tsx` (create new file)
+
+Use manual `fetch()` with `API_BASE` prefix throughout — do not use Orval-generated hooks on this page.
+
+**Data fetching:**
+- On mount, fetch `GET /api/tasks` and store result in local state via `useState`
+- Show a Shadcn `Skeleton` component while fetching
+- Show "Failed to load tasks" in muted text if fetch fails — do not throw
+
+**Filters (client-side):**
+- Two filter controls rendered above the task list:
+  - Status filter: a `<select>` element with options `All`, `Open`, `In Progress`, `Done` — default `All`
+  - Type filter: a `<select>` element with options `All`, `Review`, `Build`, `Import`, `General` — default `All`
+- Filters apply to the fetched list in browser memory — no additional API calls on filter change
+- Filtered list updates immediately when filter value changes
+
+**Task list:**
+- Render filtered tasks as a vertical list, ordered by `created_at` ascending (oldest first)
+- Each task row shows:
+  - Title (text)
+  - Type badge (text label)
+  - Status — a `<select>` element with options `Open`, `In Progress`, `Done` showing the current value
+  - Linked document name (if present) — plain text display only, no navigation
+  - Delete button using the `Trash2` icon from lucide-react
+- Status changes: on `<select>` onChange, call `PATCH /api/tasks/:id` with `{ status: newStatus }`, then refetch `GET /api/tasks` on success and update local state
+- Delete: on button click, call `DELETE /api/tasks/:id`, then refetch `GET /api/tasks` on success and update local state
+- Empty state: if no tasks match the current filters, show "No tasks found" in muted text
+
+**Create task form:**
+- A form at the top of the page (above filters) with:
+  - Title: text input, required
+  - Type: a `<select>` element with options `Review`, `Build`, `Import`, `General` — default `General`
+  - Linked document ID: a text input, optional, placeholder "Document ID (optional)"
+  - Submit button labelled "Add Task"
+- On submit: validate title non-empty client-side — if empty, show inline text "Title is required" and do not submit
+- On valid submit: call `POST /api/tasks`, then refetch `GET /api/tasks` on success and clear form fields
+- No autocomplete on the linked document ID field
+
+**Styling:**
+- Page background: `#0F1629`, card/panel backgrounds: `#2D2D3F`
+- Active filter state and submit button: `#00C853`
+- Font: Inter
+- Shadcn UI components and Lucide icons only — no additional libraries
+
+---
+
+### 5.4 — Frontend: register route and sidebar entry
+
+File: `artifacts/unlock-intel/src/App.tsx` (additive edit)
+
+Import the Tasks page component and add a route: `<Route path="/tasks" component={TasksPage} />`
+
+File: `artifacts/unlock-intel/src/components/layout.tsx` (additive edit)
+
+Add to the Operations nav group, after the Lead Management entry:
+```
+{ label: 'Task Board', href: '/tasks', icon: CheckSquare }
+```
+Import `CheckSquare` from `lucide-react`. If `CheckSquare` is not available in the installed version, use `ClipboardList` instead.
+
+---
+
+### 5.5 — Frontend: Dashboard summary panel
+
+File: `artifacts/unlock-intel/src/pages/dashboard.tsx` (additive edit)
+
+Add a task summary panel using manual `fetch()` with its own `useState` — completely separate from the existing `useGetDashboardSummary()` and `useGetRecentActivity()` hooks. Do not modify those hooks or their query keys.
+
+- On mount, fetch `GET /api/tasks/summary` and store in dedicated local state (e.g. `taskSummary`)
+- Render a new card labelled "Tasks" containing:
+  - `open_count` displayed as a prominent number
+  - A list of up to 3 task titles from `top_tasks`, each showing title and status
+  - A link "View all tasks" navigating to `/tasks` via wouter `Link`
+- If `open_count === 0`: render "All clear — no open tasks" in the card body instead of the list
+- Loading state: render a Shadcn `Skeleton` while fetching
+- Error state: render "Could not load tasks" in muted text — do not crash or throw
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `GET /api/tasks` returns 200 with a `tasks` array. Each task object includes `id`, `title`, `status`, `type`, `linked_document_id`, `linked_document_name`, `created_at`, `updated_at`.
+
+AC2. `POST /api/tasks` with body `{ "title": "Test task" }` returns 201. The returned task has `status: "Open"`, `type: "General"`, `linked_document_id: null`. A row exists in the changelog table with `action = 'TASK_CREATED'`.
+
+AC3. `POST /api/tasks` with body `{ "title": "" }` returns 400 with `{ "error": "title is required" }`.
+
+AC4. `POST /api/tasks` with body `{ "title": "Test", "type": "InvalidType" }` returns 400 with `{ "error": "Invalid type" }`.
+
+AC5. `PATCH /api/tasks/:id` with body `{ "status": "Done" }` on an existing task with `status: "Open"` returns 200 with `status: "Done"`. A row exists in the changelog table with `action = 'TASK_UPDATED'`.
+
+AC6. `PATCH /api/tasks/:id` with body `{ "status": "InvalidStatus" }` returns 400 with `{ "error": "Invalid status" }`.
+
+AC7. `PATCH /api/tasks/:id` using a non-existent id returns 404 with `{ "error": "Task not found" }`.
+
+AC8. `DELETE /api/tasks/:id` on an existing task returns 200 `{ "success": true }`. No row with that id exists in the tasks table. A row exists in the changelog table with `action = 'TASK_DELETED'`.
+
+AC9. `GET /api/tasks/summary` returns `{ open_count: N, top_tasks: [...] }` where `open_count` equals the number of tasks in the database with `status != 'Done'`, and `top_tasks` contains at most 3 tasks ordered by `created_at` ascending.
+
+AC10. `GET /api/tasks/summary` returns the summary object and not a 404 or task-by-id response. Manual test required: start the server, call `GET /api/tasks/summary` directly (e.g. via curl or browser), confirm the response is `{ open_count, top_tasks }`.
+
+AC11. The Task Board page at `/tasks` renders without error. Manual test required: navigate to `/tasks` in the browser, confirm the page loads showing the create form, two filter selects, and a task list area.
+
+AC12. Creating a task via the Task Board form with a valid title results in the task appearing in the list without a full page reload. Manual test required: fill in a title, click Add Task, confirm the new task appears in the list and the form clears.
+
+AC13. Submitting the Task Board create form with an empty title shows the inline error "Title is required" and does not call `POST /api/tasks`. Manual test required: leave title blank, click Add Task, confirm the error text appears and no network request is made.
+
+AC14. Changing the status `<select>` on a task row updates the task status and the list reflects the new value after the API call completes. Manual test required: change a task from Open to Done using the row select, confirm the displayed status updates.
+
+AC15. The status filter `<select>` filters the task list client-side without an additional API call. Manual test required: with tasks of at least two different statuses present, select "Done" — confirm only Done tasks are shown.
+
+AC16. The Dashboard at `/` shows a Tasks card with the correct open task count and up to 3 task titles. Manual test required: create 4 tasks with status Open, navigate to `/`, confirm the count displays 4 and exactly 3 task titles are listed (the 3 oldest by created_at).
+
+AC17. Task Board appears in the sidebar Operations group below Lead Management and navigates to `/tasks` when clicked. Manual test required: confirm the link is visible in the sidebar and clicking it loads the Task Board page.
+
+AC18. All task ids stored in the database are UUIDs in the format `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (36 characters). Manual test required: create a task and inspect the `id` field in the database.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/lib/propagation.ts`: `detectPropagationTargets()` and `propagateFromDocument()` signatures must not be modified. Internal logic must not change in this build.
+- `artifacts/api-server/src/routes/documents/index.ts`: no changes to any existing endpoint in this build.
+- `lib/db/src/schema/index.ts`: additive export only — no existing exports may be removed or modified.
+- `artifacts/unlock-intel/src/pages/dashboard.tsx`: the existing `useGetDashboardSummary()` and `useGetRecentActivity()` hooks must not be modified. The task panel uses a separate `useState` + manual `fetch()` — no shared state with the existing dashboard data.
+- `artifacts/api-server/src/routes/tasks/index.ts`: `GET /tasks/summary` must be declared before `GET /tasks/:id` in the file.
+- Backward compatibility: all 16 existing tables and their data are unaffected. The new `tasks` table is purely additive.
+- All task IDs must be generated server-side via `randomUUID()` from `crypto` — never on the client or by the database.
+- Frontend task concerns (Task Board page and Dashboard task panel) must use manual `fetch()` with `API_BASE` throughout — do not run Orval codegen and do not use generated hooks for task endpoints.
+- Changelog entries written inline with direct `db.insert(changelogTable)` — no shared helper function.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not implement propagation-triggered auto-task creation — that is Phase B (RR-2026-04-06-008b), specced after Phase A ships and a Step 1 rescan of `documents/index.ts` and `propagation.ts` call sites is completed.
+- This build does not add assignees, due dates, priorities, comments, or task history.
+- This build does not implement a Kanban board, drag-and-drop, or any layout other than a vertical filterable list.
+- This build does not add navigation from a task row to its linked document — the linked document name is display only.
+- This build does not add bulk actions (bulk complete, bulk delete).
+- This build does not add server-side filtering or pagination — all filtering is client-side on the fetched list.
+
+---
+
+## Section 9 — Assumptions
+
+- `linked_document_id` stores the document's `id` field (UUID text) — confirmed from the documents schema.
+- No FK constraint is defined on `linked_document_id` to avoid cascade complications. If a linked document is deleted, the task retains the stale ID — acceptable for this build.
+- The `$onUpdate` Drizzle helper is available in this codebase — confirmed from the leads schema which uses the same pattern.
+- `API_BASE` environment variable is available in the frontend for manual fetch calls — consistent with CTX architecture notes.
+- The Drizzle `db` instance is importable in the new tasks route via `@workspace/db` — consistent with all existing routes.
+- `CheckSquare` is assumed available in the installed version of lucide-react. If not, `ClipboardList` is the fallback — stated explicitly in Section 5.4.
+- The dashboard page can accommodate an additional independent fetch call — task list is expected to be small (under 100 items) and does not require caching.
+
+---
+
+## Section 10 — Rollback
+
+Risk is MEDIUM. Rollback procedure:
+
+1. Delete `lib/db/src/schema/tasks.ts`
+2. Remove the `export * from './tasks'` line from `lib/db/src/schema/index.ts`
+3. Delete `artifacts/api-server/src/routes/tasks/index.ts`
+4. Remove the tasks router mount from `artifacts/api-server/src/routes/index.ts`
+5. Delete `artifacts/unlock-intel/src/pages/tasks.tsx`
+6. Remove the `/tasks` route from `artifacts/unlock-intel/src/App.tsx`
+7. Remove the Task Board nav entry from `artifacts/unlock-intel/src/components/layout.tsx`
+8. Remove the task summary panel from `artifacts/unlock-intel/src/pages/dashboard.tsx`
+9. Drop the tasks table from the database: `DROP TABLE tasks;`
+
+No existing tables are modified. Changelog entries with TASK_CREATED/TASK_UPDATED/TASK_DELETED actions will remain — these are inert once the tasks table is dropped.
+
+---
+
+## Section 11 — What comes next
+
+Phase B (RR-2026-04-06-008b) adds propagation-triggered auto-task creation. When `propagateFromDocument()` is called at `POST /documents/:id/propagate`, a wrapper function will create "Review: [document name]" tasks for each flagged document, skipping any document that already has an Open or In Progress review task. Before Phase B can be specced, Step 1 must rescan `artifacts/api-server/src/routes/documents/index.ts` (specifically the propagate endpoint and its full handler) and `artifacts/api-server/src/lib/propagation.ts` (return shape, side effects, and all call sites) to confirm the exact insertion point for the wrapper.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST → exact manual test steps]
+  [COULD NOT SATISFY → why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]
+
+PHASE DOC FINAL:
+[paste here]
