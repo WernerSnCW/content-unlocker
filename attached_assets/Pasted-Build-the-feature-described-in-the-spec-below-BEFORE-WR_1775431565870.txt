@@ -1,0 +1,276 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+# PHASE DOC — Task Manager (Phase B): Propagation-Triggered Auto-Task Creation
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-008b
+Effort: 2–3 hours
+Dependencies: RR-2026-04-06-008a (Task Manager Phase A — must be complete and tasks table must exist)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+When a document propagation event flags downstream documents as REQUIRES_REVIEW, a new helper function automatically creates "Review: [document name]" tasks for each flagged document, skipping any document that already has an Open or In Progress review task. This connects the existing propagation workflow to the task manager built in Phase A, so document review work surfaces automatically in the Task Board without manual entry.
+
+---
+
+## Section 2 — Why this is necessary
+
+Phase A built the task manager infrastructure but tasks must currently be created manually. The primary use case for the task manager is document review — specifically documents flagged REQUIRES_REVIEW by the propagation engine. Without Phase B, operators must manually create review tasks after every propagation event. This build closes the gap.
+
+---
+
+## Section 3 — Current state
+
+From the Phase B Step 1 scan:
+
+- `artifacts/api-server/src/routes/documents/index.ts` line ~587: `propagateFromDocument(params.data.id, params.data.id)` is the exact call site. The function returns a `PropagationResult` containing `targets: PropagationTarget[]`. Each `PropagationTarget` has `document_id`, `title`, `tier`, `cascade_level`, and `pre_flag_review_state`. The `targets` array is currently unused after the call — only `flagged_document_ids` and `changelog_entry_ids` are used in the response.
+- `artifacts/api-server/src/lib/propagation.ts`: `propagateFromDocument()` signature is `(sourceDocId: string, triggeredBy: string): Promise<PropagationResult>`. Must not be modified. `PropagationTarget` and `PropagationResult` are defined as interfaces in this file.
+- `artifacts/api-server/src/routes/tasks/index.ts`: `tasksTable` established from Phase A. No helper functions exported.
+- No `taskHelpers.ts` file exists yet.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Domain — new helper file `taskHelpers.ts`
+- [x] Additive edit to one existing file — `documents/index.ts` (one import + one call added)
+
+Layer count: 2 (Domain, Additive edit)
+Split required: NO — coherent for a single Replit AI pass.
+Split rationale: Two files touched, no new schema, no UI changes, no shared function signatures modified.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — New helper file
+
+File: `artifacts/api-server/src/lib/taskHelpers.ts` (create new file)
+
+Define and export one function:
+
+```typescript
+export async function createReviewTasksForPropagation(targets: PropagationTarget[]): Promise<void>
+```
+
+Import requirements:
+- `PropagationTarget` type from `'./propagation'` — if `PropagationTarget` is not currently exported from `propagation.ts`, add the `export` keyword to the interface definition in `propagation.ts`. This is the only permitted change to `propagation.ts` in this build — no logic changes.
+- `db` from `@workspace/db`
+- `tasksTable`, `changelogTable` from `@workspace/db`
+- `eq`, `and`, `ne` from `drizzle-orm`
+- `randomUUID` from `crypto`
+
+**Function behaviour — for each target in `targets` (iterate in order):**
+
+Step 1: Query `tasksTable` for any existing task matching ALL of:
+- `linked_document_id = target.document_id`
+- `type = 'Review'`
+- `status != 'Done'`
+
+Step 2: If a matching task exists — skip this target entirely. No insert, no changelog.
+
+Step 3: If no matching task exists — insert a new task:
+```
+id: randomUUID()
+title: 'Review: ' + target.title
+status: 'Open'
+type: 'Review'
+linked_document_id: target.document_id
+```
+
+Step 4: Write changelog entry inline immediately after the insert:
+```typescript
+await db.insert(changelogTable).values({
+  id: randomUUID(),
+  action: 'TASK_CREATED',
+  document_id: target.document_id,
+  details: 'Review task auto-created: ' + target.title,
+  triggered_by: 'propagation'
+})
+```
+
+Step 5: Error handling — wrap each target's steps 1–4 in try/catch:
+```typescript
+try {
+  // steps 1–4 for this target
+} catch (err) {
+  console.error('taskHelpers: failed to create review task for document', target.document_id, err);
+  // continue to next target
+}
+```
+
+The function returns `Promise<void>`. Errors for individual targets are isolated — one failure does not abort processing of remaining targets.
+
+---
+
+### 5.2 — Additive edit to documents route
+
+File: `artifacts/api-server/src/routes/documents/index.ts` (additive edit — two lines only)
+
+**Addition 1 — import** (at the top of the file with other imports):
+```typescript
+import { createReviewTasksForPropagation } from '../lib/taskHelpers';
+```
+
+**Addition 2 — call** (inside the `POST /documents/:id/propagate` handler, immediately after the `propagateFromDocument` call and before the DOCUMENT_UPDATED changelog write):
+```typescript
+await createReviewTasksForPropagation(result.targets);
+```
+
+The handler currently reads approximately:
+```typescript
+const result = await propagateFromDocument(params.data.id, params.data.id);
+// <-- insert here
+// ... existing DOCUMENT_UPDATED changelog write ...
+// ... existing response ...
+```
+
+No other lines in `documents/index.ts` may be modified.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. After calling `POST /documents/:id/propagate` on a document that has at least one downstream dependent with no existing Open or In Progress review task, the tasks table contains one new task per such dependent with: `title = 'Review: [document name]'`, `type = 'Review'`, `status = 'Open'`, `linked_document_id = [dependent document id]`. Manual test required: use a document known to have downstream dependents, call `POST /documents/:id/propagate`, then call `GET /api/tasks` and confirm new Review tasks appear.
+
+AC2. After calling `POST /documents/:id/propagate` on a document where one downstream dependent already has an Open review task linked to it, no duplicate task is created for that dependent. Manual test required: create a Review task with `status: 'Open'` and `linked_document_id` set to a downstream document's id, trigger propagation, confirm the task count for that document remains 1.
+
+AC3. After calling `POST /documents/:id/propagate` on a document where one downstream dependent has an In Progress review task linked to it, no duplicate task is created for that dependent. Manual test required: create a Review task with `status: 'In Progress'` and `linked_document_id` set to a downstream document's id, trigger propagation, confirm no new task is created.
+
+AC4. After calling `POST /documents/:id/propagate` on a document where one downstream dependent has a Done review task linked to it, a new Open review task IS created for that dependent. Manual test required: create a Review task with `status: 'Done'` and `linked_document_id` set to a downstream document's id, trigger propagation, confirm a new Open Review task is created.
+
+AC5. The `POST /documents/:id/propagate` response shape is unchanged: returns 200 with `{ flagged_document_ids: string[], changelog_entry_ids: string[] }`. Manual test required: call `POST /documents/:id/propagate` and confirm the response contains exactly these two fields.
+
+AC6. For each auto-created task, a row exists in the changelog table with `action = 'TASK_CREATED'`, `document_id` equal to the linked document's id, `details` starting with `'Review task auto-created: '`, and `triggered_by = 'propagation'`.
+
+AC7. If `propagateFromDocument()` returns an empty `targets` array, `createReviewTasksForPropagation([])` completes without error and creates no tasks. Manual test required: trigger propagation on a document with no downstream dependents, confirm task count is unchanged.
+
+AC8. The `propagation.ts` file contains no logic changes — only the `export` keyword may have been added to the `PropagationTarget` interface if it was not already exported. Manual test required: inspect `artifacts/api-server/src/lib/propagation.ts` and confirm `detectPropagationTargets` and `propagateFromDocument` function bodies are unchanged.
+
+AC9. `GET /api/tasks` returns the auto-created review tasks with `linked_document_name` correctly populated (not null), matching the flagged document's name field.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/lib/propagation.ts`: function bodies and signatures must not be modified. The only permitted change is adding `export` to the `PropagationTarget` interface if not already exported.
+- `artifacts/api-server/src/routes/documents/index.ts`: exactly two lines added — the import and the `await createReviewTasksForPropagation(result.targets)` call. No other lines may be modified.
+- `artifacts/api-server/src/routes/tasks/index.ts`: no changes in this build.
+- Backward compatibility: all existing tasks, documents, propagation behaviour, and changelog entries are unaffected.
+- Task IDs generated via `randomUUID()` from `crypto`.
+- Changelog entries written inline with `db.insert(changelogTable)`.
+- `triggered_by` for auto-created tasks must be exactly `'propagation'`.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not modify `propagation.ts` logic.
+- This build does not auto-create tasks for documents flagged REQUIRES_REVIEW by any mechanism other than `POST /documents/:id/propagate`.
+- This build does not add any UI changes.
+- This build does not make task creation transactional with propagation.
+- This build does not return created task IDs in the propagate response.
+
+---
+
+## Section 9 — Assumptions
+
+- `PropagationTarget` is defined as an interface in `propagation.ts` — confirmed from scan. If it lacks `export`, adding it is the only permitted change to that file.
+- `result.targets` is always an array (never undefined) — confirmed from `PropagationResult` interface.
+- The `ne` operator from `drizzle-orm` is available — consistent with `eq` used throughout.
+- Per-target error isolation is acceptable — a failed task insert should not roll back a completed propagation event.
+- The `document_id` field in `changelogTable` accepts nullable text — confirmed from changelog schema.
+
+---
+
+## Section 10 — Rollback
+
+1. Delete `artifacts/api-server/src/lib/taskHelpers.ts`
+2. Remove the import line from `artifacts/api-server/src/routes/documents/index.ts`
+3. Remove the `await createReviewTasksForPropagation(result.targets)` line from `documents/index.ts`
+4. If `export` was added to `PropagationTarget` in `propagation.ts`, remove it
+5. Restart the API server
+
+No schema changes — no database rollback required.
+
+---
+
+## Section 11 — What comes next
+
+Phase B completes the task manager feature. After Phase B ships, update `CTX_architecture.md` to document `taskHelpers.ts` and the auto-task creation behaviour as a constraint for future builds.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST → exact manual test steps]
+  [COULD NOT SATISFY → why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]
+
+PHASE DOC FINAL:
+[paste here]
