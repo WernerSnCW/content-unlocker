@@ -8,12 +8,25 @@ import leadsData from "../data/leads.json" with { type: "json" };
 import complianceData from "../data/compliance_constants.json" with { type: "json" };
 import acuSeedData from "../data/acu-seed.json" with { type: "json" };
 import channelSeedData from "../data/channels.json" with { type: "json" };
+import { seedACURefactor } from "../data/seed-acu-refactor";
+import { seedTemplates } from "../data/seed-templates";
+import { seedPrompts } from "../data/seed-prompts";
 import { logger } from "./logger";
 
 export async function seedDatabase() {
   const existingLeads = await db.select({ id: leadsTable.id }).from(leadsTable).limit(1);
   if (existingLeads.length > 0) {
-    logger.info("Database already seeded, skipping");
+    logger.info("Database already seeded, running incremental seeds only");
+    try {
+      const acuResult = await seedACURefactor();
+      logger.info({ ...acuResult }, "ACU refactor seed complete");
+      const tmplResult = await seedTemplates();
+      logger.info({ ...tmplResult }, "Template seed complete");
+      const promptResult = await seedPrompts();
+      logger.info({ ...promptResult }, "Prompt seed complete");
+    } catch (err) {
+      logger.error({ err }, "Incremental seed error (non-fatal)");
+    }
     return;
   }
 
@@ -149,6 +162,17 @@ export async function seedDatabase() {
     details: "Platform initialized with seed data",
     triggered_by: "system",
   });
+
+  try {
+    const acuResult = await seedACURefactor();
+    logger.info({ ...acuResult }, "ACU refactor seed complete");
+    const tmplResult = await seedTemplates();
+    logger.info({ ...tmplResult }, "Template seed complete");
+    const promptResult = await seedPrompts();
+    logger.info({ ...promptResult }, "Prompt seed complete");
+  } catch (err) {
+    logger.error({ err }, "Post-seed incremental seed error (non-fatal)");
+  }
 
   logger.info("Database seeded successfully");
 }

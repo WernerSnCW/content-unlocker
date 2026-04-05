@@ -29,9 +29,30 @@ import {
   Copy,
   ThumbsUp,
   ThumbsDown,
+  FileText,
+  BookOpen,
+  Star,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
+async function fetchTemplates() {
+  const res = await fetch(`${API_BASE}api/templates`);
+  if (!res.ok) throw new Error("Failed to fetch templates");
+  return res.json();
+}
+
+async function fetchTemplate(id: string) {
+  const res = await fetch(`${API_BASE}api/templates/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch template");
+  return res.json();
+}
+
+async function fetchPrompts() {
+  const res = await fetch(`${API_BASE}api/prompts`);
+  if (!res.ok) throw new Error("Failed to fetch prompts");
+  return res.json();
+}
 
 async function fetchACUs(status?: string, type?: string) {
   const params = new URLSearchParams();
@@ -228,7 +249,7 @@ function getCoverageStatusDot(status: string) {
 }
 
 export default function ACUPage() {
-  const [activeTab, setActiveTab] = useState<"units" | "intelligence">("units");
+  const [activeTab, setActiveTab] = useState<"units" | "intelligence" | "templates" | "prompts">("units");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -239,6 +260,8 @@ export default function ACUPage() {
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveText, setResolveText] = useState("");
+  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
+  const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -266,6 +289,24 @@ export default function ACUPage() {
     queryKey: ["acu-coverage"],
     queryFn: fetchCoverage,
     enabled: activeTab === "intelligence",
+  });
+
+  const { data: templatesData, isLoading: templatesLoading } = useQuery({
+    queryKey: ["templates"],
+    queryFn: fetchTemplates,
+    enabled: activeTab === "templates",
+  });
+
+  const { data: templateDetail } = useQuery({
+    queryKey: ["template-detail", expandedTemplate],
+    queryFn: () => fetchTemplate(expandedTemplate!),
+    enabled: !!expandedTemplate,
+  });
+
+  const { data: promptsData, isLoading: promptsLoading } = useQuery({
+    queryKey: ["prompts"],
+    queryFn: fetchPrompts,
+    enabled: activeTab === "prompts",
   });
 
   const approveMutation = useMutation({
@@ -401,6 +442,31 @@ export default function ACUPage() {
             {contradictionData?.unresolved > 0 && (
               <Badge className="ml-2 bg-red-600 text-white text-xs px-1.5 py-0">{contradictionData.unresolved}</Badge>
             )}
+          </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "templates"
+                ? "border-green-600 text-green-600"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("templates")}
+          >
+            <FileText className="w-4 h-4 inline mr-1.5" />
+            Templates
+            {templatesData && (
+              <Badge className="ml-2 bg-slate-600 text-white text-xs px-1.5 py-0">{templatesData.length}</Badge>
+            )}
+          </button>
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "prompts"
+                ? "border-green-600 text-green-600"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("prompts")}
+          >
+            <BookOpen className="w-4 h-4 inline mr-1.5" />
+            Prompts
           </button>
         </div>
 
@@ -994,6 +1060,229 @@ export default function ACUPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {activeTab === "templates" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="text-2xl font-bold text-green-600">{templatesData?.length || 0}</div>
+                  <div className="text-xs text-muted-foreground">Total Templates</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="text-2xl font-bold text-blue-600">{templatesData?.filter((t: any) => t.output_type === "email").length || 0}</div>
+                  <div className="text-xs text-muted-foreground">Email</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="text-2xl font-bold text-purple-600">{templatesData?.filter((t: any) => t.parent_template_id).length || 0}</div>
+                  <div className="text-xs text-muted-foreground">With Compliance Parent</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="text-2xl font-bold text-amber-600">{templatesData?.filter((t: any) => t.output_type === "base").length || 0}</div>
+                  <div className="text-xs text-muted-foreground">Base Templates</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {templatesLoading ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Loading templates...
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>Template ID</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Channel</TableHead>
+                        <TableHead>Sections</TableHead>
+                        <TableHead>Parent</TableHead>
+                        <TableHead>Required ACUs</TableHead>
+                        <TableHead>Prohibited</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(templatesData || []).map((tmpl: any) => (
+                        <Fragment key={tmpl.id}>
+                          <TableRow
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => setExpandedTemplate(expandedTemplate === tmpl.id ? null : tmpl.id)}
+                          >
+                            <TableCell>
+                              {expandedTemplate === tmpl.id ? (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{tmpl.id}</TableCell>
+                            <TableCell className="font-medium text-sm">{tmpl.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">{tmpl.output_type}</Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{tmpl.channel || "—"}</TableCell>
+                            <TableCell className="text-xs">{(tmpl.sections as any[])?.length || 0}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {tmpl.parent_template_id ? (
+                                <Badge className="bg-purple-100 text-purple-800 text-xs">{tmpl.parent_template_id.replace("tmpl_", "")}</Badge>
+                              ) : "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">{(tmpl.required_acus as any[])?.length || 0}</TableCell>
+                            <TableCell className="text-xs">
+                              {(tmpl.prohibited_acus as any[])?.length > 0 && (
+                                <Badge className="bg-red-100 text-red-800 text-xs">{(tmpl.prohibited_acus as any[]).length}</Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {expandedTemplate === tmpl.id && templateDetail && (
+                            <TableRow>
+                              <TableCell colSpan={9} className="bg-muted/30 p-4">
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <div className="text-xs font-semibold text-muted-foreground mb-2">SECTIONS ({templateDetail.composed_sections?.length || 0} composed)</div>
+                                      <div className="space-y-2">
+                                        {(templateDetail.composed_sections || templateDetail.sections || []).map((s: any, i: number) => (
+                                          <div key={i} className="bg-background border rounded p-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-mono text-xs font-semibold">{s.id}</span>
+                                              {s.required && <Badge className="bg-green-100 text-green-800 text-[10px]">required</Badge>}
+                                              {s.max_words && <span className="text-[10px] text-muted-foreground">{s.max_words}w max</span>}
+                                              {s.injection_mode && <Badge variant="outline" className="text-[10px]">{s.injection_mode}</Badge>}
+                                            </div>
+                                            {s.label && <div className="text-xs mt-1">{s.label}</div>}
+                                            {s.narrative_guidance && <div className="text-[10px] text-muted-foreground mt-1 italic">{s.narrative_guidance}</div>}
+                                            {s.required_acu_ids && (
+                                              <div className="flex gap-1 mt-1 flex-wrap">
+                                                {s.required_acu_ids.map((id: string) => (
+                                                  <Badge key={id} className="bg-green-100 text-green-800 text-[10px]">{id}</Badge>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {s.accepted_topics && (
+                                              <div className="flex gap-1 mt-1 flex-wrap">
+                                                {s.accepted_topics.map((t: string) => (
+                                                  <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    <div className="space-y-4">
+                                      <div>
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">FORMATTING RULES</div>
+                                        <pre className="bg-background border rounded p-2 text-[10px] overflow-auto max-h-40">
+                                          {JSON.stringify(templateDetail.formatting_rules, null, 2)}
+                                        </pre>
+                                      </div>
+                                      {(templateDetail.required_acus as any[])?.length > 0 && (
+                                        <div>
+                                          <div className="text-xs font-semibold text-muted-foreground mb-2">REQUIRED ACUs</div>
+                                          <div className="flex gap-1 flex-wrap">
+                                            {(templateDetail.required_acus as string[]).map((id: string) => (
+                                              <Badge key={id} className="bg-green-100 text-green-800 text-xs">{id}</Badge>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {(templateDetail.prohibited_acus as any[])?.length > 0 && (
+                                        <div>
+                                          <div className="text-xs font-semibold text-muted-foreground mb-2">PROHIBITED ACUs</div>
+                                          <div className="flex gap-1 flex-wrap">
+                                            {(templateDetail.prohibited_acus as string[]).map((id: string) => (
+                                              <Badge key={id} className="bg-red-100 text-red-800 text-xs">{id}</Badge>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {templateDetail.generation_prompt_prefix && (
+                                        <div>
+                                          <div className="text-xs font-semibold text-muted-foreground mb-2">GENERATION PROMPT PREFIX</div>
+                                          <div className="bg-background border rounded p-2 text-[10px] text-muted-foreground italic">
+                                            {templateDetail.generation_prompt_prefix}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {activeTab === "prompts" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 gap-4">
+              {(promptsData || []).map((p: any) => (
+                <Card key={p.id} className="cursor-pointer hover:border-green-600/50 transition-colors" onClick={() => setExpandedPrompt(expandedPrompt === p.id ? null : p.id)}>
+                  <CardContent className="pt-4 pb-3 px-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="outline" className="font-mono text-xs">{p.id}</Badge>
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-2.5 h-2.5 ${i < (p.rubric_score || 0) ? "text-amber-400 fill-amber-400" : "text-gray-200"}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-sm font-medium">{p.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{p.location}</div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge className={`text-[10px] ${p.status === "ACTIVE" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}`}>
+                        {p.status}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">v{p.version}</span>
+                      <span className="text-[10px] text-muted-foreground">Score: {p.rubric_score}/12</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {expandedPrompt && promptsData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <BookOpen className="w-4 h-4 text-green-600" />
+                    {promptsData.find((p: any) => p.id === expandedPrompt)?.name} — Full Prompt Text
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <pre className="bg-muted rounded p-4 text-xs overflow-auto max-h-[500px] whitespace-pre-wrap font-mono">
+                    {promptsData.find((p: any) => p.id === expandedPrompt)?.prompt_text}
+                  </pre>
+                  <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+                    <span>Last reviewed: {promptsData.find((p: any) => p.id === expandedPrompt)?.last_reviewed || "Never"}</span>
+                    <span>Reviewed by: {promptsData.find((p: any) => p.id === expandedPrompt)?.reviewed_by || "—"}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

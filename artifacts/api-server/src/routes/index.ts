@@ -12,6 +12,8 @@ import analyticsRouter from "./analytics";
 import videosRouter from "./videos";
 import acuRouter from "./acu";
 import campaignsRouter from "./campaigns";
+import templatesRouter from "./templates";
+import promptsRouter from "./prompts";
 
 const router: IRouter = Router();
 
@@ -28,5 +30,7 @@ router.use(analyticsRouter);
 router.use(videosRouter);
 router.use(acuRouter);
 router.use(campaignsRouter);
+router.use(templatesRouter);
+router.use(promptsRouter);
 
 export default router;

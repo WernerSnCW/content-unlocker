@@ -15,6 +15,13 @@ export const acuTable = pgTable("approved_content_units", {
   documents_referencing: jsonb("documents_referencing").notNull().default([]),
   cascade_on_change: boolean("cascade_on_change").notNull().default(true),
   notes: text("notes"),
+  topics: jsonb("topics").notNull().default([]),
+  requires_qualifier: text("requires_qualifier"),
+  parent_concept_id: text("parent_concept_id"),
+  is_expression_variant: boolean("is_expression_variant").default(false),
+  variant_audience: text("variant_audience"),
+  supersedes: text("supersedes"),
+  policy_status: text("policy_status"),
 });
 
 export const insertAcuSchema = createInsertSchema(acuTable);

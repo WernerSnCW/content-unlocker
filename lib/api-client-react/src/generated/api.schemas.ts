@@ -1102,6 +1102,70 @@ export interface CoverageResponse {
   coverage?: CoverageResponseCoverageItem[];
 }
 
+export type OutputTemplateSectionsItem = { [key: string]: unknown };
+
+export type OutputTemplateFormattingRules = { [key: string]: unknown };
+
+export interface OutputTemplate {
+  id?: string;
+  name?: string;
+  output_type?: string;
+  channel?: string | null;
+  parent_template_id?: string | null;
+  sections?: OutputTemplateSectionsItem[];
+  formatting_rules?: OutputTemplateFormattingRules;
+  required_acus?: string[];
+  prohibited_acus?: string[];
+  generation_prompt_prefix?: string | null;
+  export_formats?: string[];
+  version?: number;
+}
+
+export interface SystemPrompt {
+  id?: string;
+  name?: string;
+  location?: string;
+  prompt_text?: string;
+  rubric_score?: number | null;
+  version?: number;
+  status?: string;
+  last_reviewed?: string | null;
+  reviewed_by?: string | null;
+}
+
+export type TemplateGenerationRequestContext = { [key: string]: unknown };
+
+export type TemplateGenerationRequestChannelTemperature =
+  (typeof TemplateGenerationRequestChannelTemperature)[keyof typeof TemplateGenerationRequestChannelTemperature];
+
+export const TemplateGenerationRequestChannelTemperature = {
+  cold: "cold",
+  warm: "warm",
+  hot: "hot",
+} as const;
+
+export interface TemplateGenerationRequest {
+  template_id: string;
+  context?: TemplateGenerationRequestContext;
+  channel_temperature?: TemplateGenerationRequestChannelTemperature;
+}
+
+export type TemplateGenerationResponseOutput = { [key: string]: unknown };
+
+export type TemplateGenerationResponseComplianceCheck = {
+  pass?: boolean;
+  issues?: string[];
+};
+
+export type TemplateGenerationResponseMetadata = { [key: string]: unknown };
+
+export interface TemplateGenerationResponse {
+  template_id?: string;
+  output?: TemplateGenerationResponseOutput;
+  compliance_check?: TemplateGenerationResponseComplianceCheck;
+  metadata?: TemplateGenerationResponseMetadata;
+}
+
 export type ListLeadsParams = {
   search?: string;
   stage?: string;
@@ -1214,3 +1278,9 @@ export type ResolveContradictionBody = {
 export type GetCampaignACBuild200 = { [key: string]: unknown };
 
 export type GetCampaignTagTable200 = { [key: string]: unknown };
+
+export type GetTemplate200ComposedSectionsItem = { [key: string]: unknown };
+
+export type GetTemplate200 = OutputTemplate & {
+  composed_sections?: GetTemplate200ComposedSectionsItem[];
+};

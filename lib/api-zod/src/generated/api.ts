@@ -2069,3 +2069,106 @@ export const GetChannelResponse = zod.object({
   max_objection_responses: zod.number().nullish(),
   notes: zod.string().nullish(),
 });
+
+/**
+ * @summary List all output templates
+ */
+export const ListTemplatesResponseItem = zod.object({
+  id: zod.string().optional(),
+  name: zod.string().optional(),
+  output_type: zod.string().optional(),
+  channel: zod.string().nullish(),
+  parent_template_id: zod.string().nullish(),
+  sections: zod.array(zod.object({}).passthrough()).optional(),
+  formatting_rules: zod.object({}).passthrough().optional(),
+  required_acus: zod.array(zod.string()).optional(),
+  prohibited_acus: zod.array(zod.string()).optional(),
+  generation_prompt_prefix: zod.string().nullish(),
+  export_formats: zod.array(zod.string()).optional(),
+  version: zod.number().optional(),
+});
+export const ListTemplatesResponse = zod.array(ListTemplatesResponseItem);
+
+/**
+ * @summary Get template by ID with composed sections
+ */
+export const GetTemplateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetTemplateResponse = zod
+  .object({
+    id: zod.string().optional(),
+    name: zod.string().optional(),
+    output_type: zod.string().optional(),
+    channel: zod.string().nullish(),
+    parent_template_id: zod.string().nullish(),
+    sections: zod.array(zod.object({}).passthrough()).optional(),
+    formatting_rules: zod.object({}).passthrough().optional(),
+    required_acus: zod.array(zod.string()).optional(),
+    prohibited_acus: zod.array(zod.string()).optional(),
+    generation_prompt_prefix: zod.string().nullish(),
+    export_formats: zod.array(zod.string()).optional(),
+    version: zod.number().optional(),
+  })
+  .and(
+    zod.object({
+      composed_sections: zod.array(zod.object({}).passthrough()).optional(),
+    }),
+  );
+
+/**
+ * @summary List all system prompts with scores
+ */
+export const ListPromptsResponseItem = zod.object({
+  id: zod.string().optional(),
+  name: zod.string().optional(),
+  location: zod.string().optional(),
+  prompt_text: zod.string().optional(),
+  rubric_score: zod.number().nullish(),
+  version: zod.number().optional(),
+  status: zod.string().optional(),
+  last_reviewed: zod.string().nullish(),
+  reviewed_by: zod.string().nullish(),
+});
+export const ListPromptsResponse = zod.array(ListPromptsResponseItem);
+
+/**
+ * @summary Get prompt by ID with full text and score
+ */
+export const GetPromptParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetPromptResponse = zod.object({
+  id: zod.string().optional(),
+  name: zod.string().optional(),
+  location: zod.string().optional(),
+  prompt_text: zod.string().optional(),
+  rubric_score: zod.number().nullish(),
+  version: zod.number().optional(),
+  status: zod.string().optional(),
+  last_reviewed: zod.string().nullish(),
+  reviewed_by: zod.string().nullish(),
+});
+
+/**
+ * @summary Generate content using a template
+ */
+export const GenerateFromTemplateBody = zod.object({
+  template_id: zod.string(),
+  context: zod.object({}).passthrough().optional(),
+  channel_temperature: zod.enum(["cold", "warm", "hot"]).optional(),
+});
+
+export const GenerateFromTemplateResponse = zod.object({
+  template_id: zod.string().optional(),
+  output: zod.object({}).passthrough().optional(),
+  compliance_check: zod
+    .object({
+      pass: zod.boolean().optional(),
+      issues: zod.array(zod.string()).optional(),
+    })
+    .optional(),
+  metadata: zod.object({}).passthrough().optional(),
+});

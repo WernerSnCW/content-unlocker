@@ -329,6 +329,23 @@ Return ONLY the JSON.`,
   }
 });
 
+router.post("/generation/from-template", async (req, res): Promise<void> => {
+  const { template_id, context, channel_temperature } = req.body;
+  if (!template_id) {
+    res.status(400).json({ error: "template_id is required" });
+    return;
+  }
+
+  try {
+    const { generateFromTemplate } = await import("../../lib/generationEngine");
+    const result = await generateFromTemplate({ template_id, context, channel_temperature });
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Template generation failed");
+    res.status(500).json({ error: err.message || "Template generation failed" });
+  }
+});
+
 router.post("/generation/:id/qc-rerun", async (req, res): Promise<void> => {
   const params = PromoteDocumentParams.safeParse(req.params);
   if (!params.success) {

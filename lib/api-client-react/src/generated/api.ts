@@ -65,6 +65,7 @@ import type {
   GetCampaignTagTable200,
   GetContentBankParams,
   GetRecentActivityParams,
+  GetTemplate200,
   HealthStatus,
   ImportFromGoogleDocsBody,
   Lead,
@@ -75,6 +76,7 @@ import type {
   ListLeadsParams,
   MarkBacklogDuplicateBody,
   NextAction,
+  OutputTemplate,
   Persona,
   PropagationResult,
   QcRerunDocument200,
@@ -86,6 +88,9 @@ import type {
   ScanLogEntry,
   SeedValidation,
   SendLogEntry,
+  SystemPrompt,
+  TemplateGenerationRequest,
+  TemplateGenerationResponse,
   TranscriptAnalysis,
   UpdateDocumentBody,
   UpdateLeadBody,
@@ -5672,3 +5677,412 @@ export function useGetChannel<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List all output templates
+ */
+export const getListTemplatesUrl = () => {
+  return `/api/templates`;
+};
+
+export const listTemplates = async (
+  options?: RequestInit,
+): Promise<OutputTemplate[]> => {
+  return customFetch<OutputTemplate[]>(getListTemplatesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTemplatesQueryKey = () => {
+  return [`/api/templates`] as const;
+};
+
+export const getListTemplatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTemplates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTemplates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTemplatesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTemplates>>> = ({
+    signal,
+  }) => listTemplates({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTemplates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTemplatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTemplates>>
+>;
+export type ListTemplatesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all output templates
+ */
+
+export function useListTemplates<
+  TData = Awaited<ReturnType<typeof listTemplates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTemplates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTemplatesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get template by ID with composed sections
+ */
+export const getGetTemplateUrl = (id: string) => {
+  return `/api/templates/${id}`;
+};
+
+export const getTemplate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GetTemplate200> => {
+  return customFetch<GetTemplate200>(getGetTemplateUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTemplateQueryKey = (id: string) => {
+  return [`/api/templates/${id}`] as const;
+};
+
+export const getGetTemplateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTemplate>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemplate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTemplateQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTemplate>>> = ({
+    signal,
+  }) => getTemplate(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTemplate>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTemplateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTemplate>>
+>;
+export type GetTemplateQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get template by ID with composed sections
+ */
+
+export function useGetTemplate<
+  TData = Awaited<ReturnType<typeof getTemplate>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTemplate>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTemplateQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all system prompts with scores
+ */
+export const getListPromptsUrl = () => {
+  return `/api/prompts`;
+};
+
+export const listPrompts = async (
+  options?: RequestInit,
+): Promise<SystemPrompt[]> => {
+  return customFetch<SystemPrompt[]>(getListPromptsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPromptsQueryKey = () => {
+  return [`/api/prompts`] as const;
+};
+
+export const getListPromptsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPrompts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPrompts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPromptsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPrompts>>> = ({
+    signal,
+  }) => listPrompts({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPrompts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPromptsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPrompts>>
+>;
+export type ListPromptsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all system prompts with scores
+ */
+
+export function useListPrompts<
+  TData = Awaited<ReturnType<typeof listPrompts>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPrompts>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPromptsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get prompt by ID with full text and score
+ */
+export const getGetPromptUrl = (id: string) => {
+  return `/api/prompts/${id}`;
+};
+
+export const getPrompt = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SystemPrompt> => {
+  return customFetch<SystemPrompt>(getGetPromptUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPromptQueryKey = (id: string) => {
+  return [`/api/prompts/${id}`] as const;
+};
+
+export const getGetPromptQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPrompt>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPrompt>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPromptQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPrompt>>> = ({
+    signal,
+  }) => getPrompt(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getPrompt>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetPromptQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPrompt>>
+>;
+export type GetPromptQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get prompt by ID with full text and score
+ */
+
+export function useGetPrompt<
+  TData = Awaited<ReturnType<typeof getPrompt>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPrompt>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPromptQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate content using a template
+ */
+export const getGenerateFromTemplateUrl = () => {
+  return `/api/generation/from-template`;
+};
+
+export const generateFromTemplate = async (
+  templateGenerationRequest: TemplateGenerationRequest,
+  options?: RequestInit,
+): Promise<TemplateGenerationResponse> => {
+  return customFetch<TemplateGenerationResponse>(getGenerateFromTemplateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(templateGenerationRequest),
+  });
+};
+
+export const getGenerateFromTemplateMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromTemplate>>,
+    TError,
+    { data: BodyType<TemplateGenerationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateFromTemplate>>,
+  TError,
+  { data: BodyType<TemplateGenerationRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateFromTemplate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateFromTemplate>>,
+    { data: BodyType<TemplateGenerationRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateFromTemplate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateFromTemplateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateFromTemplate>>
+>;
+export type GenerateFromTemplateMutationBody =
+  BodyType<TemplateGenerationRequest>;
+export type GenerateFromTemplateMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate content using a template
+ */
+export const useGenerateFromTemplate = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateFromTemplate>>,
+    TError,
+    { data: BodyType<TemplateGenerationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateFromTemplate>>,
+  TError,
+  { data: BodyType<TemplateGenerationRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateFromTemplateMutationOptions(options));
+};

@@ -37,6 +37,10 @@ tags:
     description: Channel configuration and constraints
   - name: acu-intelligence
     description: ACU Intelligence — scanner, contradiction detector, review backlog, coverage map
+  - name: templates
+    description: Output Template Registry
+  - name: prompts
+    description: System Prompt Registry
 
 paths:
   /healthz:
@@ -1441,6 +1445,118 @@ paths:
                 $ref: "#/components/schemas/Channel"
         "404":
           description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /templates:
+    get:
+      operationId: listTemplates
+      tags: [templates]
+      summary: List all output templates
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OutputTemplate"
+
+  /templates/{id}:
+    get:
+      operationId: getTemplate
+      tags: [templates]
+      summary: Get template by ID with composed sections
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template with composed sections
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/OutputTemplate"
+                  - type: object
+                    properties:
+                      composed_sections:
+                        type: array
+                        items:
+                          type: object
+        "404":
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /prompts:
+    get:
+      operationId: listPrompts
+      tags: [prompts]
+      summary: List all system prompts with scores
+      responses:
+        "200":
+          description: List of system prompts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SystemPrompt"
+
+  /prompts/{id}:
+    get:
+      operationId: getPrompt
+      tags: [prompts]
+      summary: Get prompt by ID with full text and score
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full prompt details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemPrompt"
+        "404":
+          description: Prompt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /generation/from-template:
+    post:
+      operationId: generateFromTemplate
+      tags: [generation]
+      summary: Generate content using a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateGenerationRequest"
+      responses:
+        "200":
+          description: Generated content with compliance check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateGenerationResponse"
+        "400":
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -3363,3 +3479,99 @@ components:
                 type: array
                 items:
                   type: string
+
+    OutputTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        output_type:
+          type: string
+        channel:
+          type: string
+          nullable: true
+        parent_template_id:
+          type: string
+          nullable: true
+        sections:
+          type: array
+          items:
+            type: object
+        formatting_rules:
+          type: object
+        required_acus:
+          type: array
+          items:
+            type: string
+        prohibited_acus:
+          type: array
+          items:
+            type: string
+        generation_prompt_prefix:
+          type: string
+          nullable: true
+        export_formats:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+
+    SystemPrompt:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+        prompt_text:
+          type: string
+        rubric_score:
+          type: integer
+          nullable: true
+        version:
+          type: integer
+        status:
+          type: string
+        last_reviewed:
+          type: string
+          nullable: true
+        reviewed_by:
+          type: string
+          nullable: true
+
+    TemplateGenerationRequest:
+      type: object
+      required:
+        - template_id
+      properties:
+        template_id:
+          type: string
+        context:
+          type: object
+        channel_temperature:
+          type: string
+          enum: [cold, warm, hot]
+
+    TemplateGenerationResponse:
+      type: object
+      properties:
+        template_id:
+          type: string
+        output:
+          type: object
+        compliance_check:
+          type: object
+          properties:
+            pass:
+              type: boolean
+            issues:
+              type: array
+              items:
+                type: string
+        metadata:
+          type: object
