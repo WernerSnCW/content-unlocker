@@ -1,0 +1,129 @@
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+---
+
+CRITICAL INSTRUCTION: Your only output must be the completed template below.
+Do not write any prose before or after it. Do not describe what you are doing.
+Do not say "Let me scan" or "I'll read" or "Good" or anything else.
+Start your response with "## CURRENT STATE OUTPUT" and end it with the last
+line of Section 8. Nothing else.
+
+SCOPE: Scan the following areas only:
+- All Drizzle schema files: lib/db/src/schema/*.ts and lib/db/src/schema/index.ts
+- All route files: artifacts/api-server/src/routes/**/*.ts
+- artifacts/api-server/src/lib/propagation.ts
+- artifacts/api-server/src/lib/dataManager.ts
+- artifacts/api-server/src/lib/generationEngine.ts
+- Any file containing: multer, formData, upload, or file import handling
+- All page files: artifacts/unlock-intel/src/pages/*.tsx (summarise at file level only)
+
+Read every file in scope before completing the template.
+Do not fill in any placeholder until you have read all files.
+Do not write "Purpose unclear from scan" unless you have actually read the file
+and cannot determine its purpose from the code.
+
+---
+
+SIGNIFICANCE RULE:
+A file is significant if it defines business logic, routing, persistence,
+validation, shared types, UI composition, tests, configuration, migrations,
+or integration code. When uncertain: include it.
+
+ANTI-INFERENCE RULE:
+Describe only what actually exists in the code. Do not infer from filenames.
+Do not describe functions that are not in the file.
+
+SCAN COVERAGE RULE:
+If you cannot reach a file, say so explicitly under "Could not reach."
+Do not produce a scan that appears complete but is not.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to: lib/db/src/schema/, artifacts/api-server/src/routes/, artifacts/api-server/src/lib/propagation.ts, artifacts/api-server/src/lib/dataManager.ts, artifacts/api-server/src/lib/generationEngine.ts, any upload/import handling, artifacts/unlock-intel/src/pages/
+**Fully scanned:** [list every file you read]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list any files you could not open, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+For every file you read, complete one block exactly as shown:
+
+#### `[exact file path]`
+**What it does:** [one sentence from code inspection — not from the filename]
+**Key functions, variables, data structures:** [list specific named functions, exported constants, table definitions, route handlers — with one-line descriptions of what each does]
+
+Do not skip any file you read. Do not merge multiple files into one block.
+
+---
+
+### 2. Data model
+
+For every Drizzle table found in lib/db/src/schema/:
+
+- **[table name]:** columns: [name: type, name: type, ...] | enums/status values: [list if any] | foreign keys: [list if any]
+
+One bullet per table. Do not omit any table.
+
+---
+
+### 3. Data flow
+
+Describe how data moves through the system for each of these flows:
+- Document creation and storage
+- ACU creation, approval, and locking
+- Template generation
+- Propagation (what triggers it, what it does, what it writes)
+- Any existing file upload flow (if one exists)
+
+Format:
+- **[Flow name]:** [step by step — which function, which endpoint, what it writes]
+
+---
+
+### 4. Dependencies between files
+
+- **[file or function]:** depends on [what] for [reason]
+
+One bullet per significant dependency. Include every import relationship
+between the route files, lib files, and schema files you scanned.
+
+---
+
+### 5. Test coverage
+
+- **[Test file or suite]:** [what it covers]
+
+If no tests exist: "No tests currently exist."
+
+---
+
+### 6. External services
+
+- **[Service or library]:** [how it is used]
+
+If none: "No external services."
+
+---
+
+### 7. Patterns and conventions
+
+- [pattern — where it is established and what it governs]
+
+Include: route structure pattern, schema definition pattern, LLM call pattern,
+error handling pattern, any upload/multipart handling pattern if found.
+
+---
+
+### 8. Inconsistencies and flags
+
+- [flag, or "None identified"]
+
+Include any tables, routes, or patterns that appear incomplete, inconsistent,
+or likely to create conflicts with a new import pipeline feature.
