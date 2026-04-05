@@ -1,0 +1,121 @@
+CRITICAL INSTRUCTION — READ THIS BEFORE DOING ANYTHING ELSE:
+
+Your only job is to fill in the template below exactly as written.
+Do not summarise. Do not write prose. Do not say "what would you like
+to work on next." Output the completed template and nothing else.
+Every bracketed placeholder must be replaced with real content from
+code inspection. Stop when the template is complete.
+
+---
+
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+Give me a complete overview of this codebase. Complete the template below
+exactly. Do not add prose before or after it. Replace every placeholder
+in square brackets.
+
+SCOPE: Scope this scan to the following files only:
+- artifacts/api-server/src/lib/generationEngine.ts
+- artifacts/api-server/src/data/seed-templates.ts (first 100 lines only —
+  enough to see 2-3 template section definitions in full)
+
+---
+
+SIGNIFICANCE RULE:
+Describe every function, interface, and constant in these files.
+Do not omit anything because it seems minor.
+
+ANTI-INFERENCE RULE:
+Describe only what actually exists in the code. Quote exact field names,
+parameter names, and prompt strings where relevant. Do not paraphrase
+prompt text — quote it verbatim if it fits, truncate with "..." if long.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to: artifacts/api-server/src/lib/generationEngine.ts,
+artifacts/api-server/src/data/seed-templates.ts (first 100 lines)
+**Fully scanned:** [list files actually read]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+#### `artifacts/api-server/src/lib/generationEngine.ts`
+**What it does:** [one sentence from code inspection]
+**Key functions, variables, data structures:**
+
+List every exported function with:
+- Full parameter types
+- Full return type
+- Every step it performs (numbered)
+- The exact prompt string sent to Claude (quote verbatim or truncate with ...)
+- How it parses the Claude response (exact regex or parsing logic)
+- How it handles non-string values in the output
+
+List every interface with all fields and types.
+List every constant with its value.
+
+#### `artifacts/api-server/src/data/seed-templates.ts` (first 100 lines)
+**What it does:** [one sentence from code inspection]
+**Key functions, variables, data structures:**
+
+Show the section definitions for the first 2-3 templates in full — specifically:
+- The sections array structure (field names and types)
+- The narrative_guidance field content (quote verbatim)
+- The injection_mode field values
+- Any field that instructs Claude on what format to return
+
+---
+
+### 2. Data model
+
+- **[Interface or type name]:** [its fields and types]
+
+---
+
+### 3. Data flow
+
+How a template generation request flows through generationEngine.ts:
+
+- **[Step]:** [what happens, what is passed to Claude, what is expected back]
+
+---
+
+### 4. Dependencies between files
+
+- **[File or function]:** depends on [what] for [reason]
+
+---
+
+### 5. Test coverage
+
+If no tests exist: "No tests currently exist."
+
+---
+
+### 6. External services
+
+- **[Service]:** [how it is used — model, max_tokens, prompt structure]
+
+---
+
+### 7. Patterns and conventions
+
+- [pattern relevant to prompt construction or response parsing]
+
+---
+
+### 8. Inconsistencies and flags
+
+Specifically flag:
+- Any place where the prompt instructs Claude to return JSON vs plain text
+- Any place where section content format is defined or left undefined
+- The exact string coercion logic and when it triggers
+- Whether the prompt tells Claude what format each section's content should be in
