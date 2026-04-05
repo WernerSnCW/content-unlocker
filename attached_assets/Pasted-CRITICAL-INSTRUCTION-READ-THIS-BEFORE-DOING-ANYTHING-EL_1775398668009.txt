@@ -1,0 +1,129 @@
+CRITICAL INSTRUCTION — READ THIS BEFORE DOING ANYTHING ELSE:
+
+You have been given this prompt three times. Each time, you read the files
+correctly but then produced a conversational summary instead of completing
+the template. This is wrong. Do not do that again.
+
+Your previous responses ended with lines like:
+- "I'm fully caught up on the project state..."
+- "What would you like to work on next?"
+- "Everything looks to be in good shape..."
+
+This is not what was asked. Those responses are useless. They will be rejected.
+
+YOUR ONLY JOB IS THIS: Fill in every bracketed placeholder in the template
+below. Output the completed template and nothing else. No prose before it.
+No prose after it. No summary. No "what would you like to work on next."
+Just the completed template, start to finish.
+
+If you find yourself writing a sentence that is not inside the template
+structure, stop and delete it.
+
+---
+
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+Give me a complete overview of this codebase. Complete the template below
+exactly. Do not add prose before or after it. Replace every placeholder
+in square brackets.
+
+SCOPE: Scope this scan to artifacts/unlock-intel/src/ only — all files in
+pages/, components/, App.tsx, and any layout, hook, or utility files.
+
+---
+
+SIGNIFICANCE RULE:
+A file is significant if it defines business logic, routing, persistence,
+validation, shared types, UI composition, tests, configuration, migrations,
+or integration code. When uncertain: include it. Do not omit a significant
+file because it seems repetitive or similar to another.
+
+ANTI-INFERENCE RULE:
+Describe only files and structures that actually exist in this codebase.
+If a file's purpose is unclear from code inspection, write: "Purpose unclear
+from scan." Do not infer intent from filenames or directory structure. Do not
+describe functions that cannot be found in the file.
+
+SCAN COVERAGE RULE:
+If the codebase is too large to describe every significant file in full, state
+this explicitly. List which directories were fully scanned, which were
+summarised at directory level, and which were not reached. Do not produce a
+scan that appears complete but is not.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to: artifacts/unlock-intel/src/
+**Fully scanned:** [directories or files]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+#### `[path/to/file.tsx]`
+**What it does:** [one sentence — from code inspection, not filename]
+**Key functions, variables, data structures:** [specific names and what they do]
+
+[repeat for every significant file in scope]
+
+---
+
+### 2. Data model
+
+- **[Type or interface name]:** [its fields and types]
+
+[one bullet per type or interface defined in this scope]
+
+---
+
+### 3. Data flow
+
+How data moves through the UI from user action to API call to display:
+
+- **[Step in the flow]:** [what happens, which component or hook handles it]
+
+---
+
+### 4. Dependencies between files
+
+Which files and functions depend on each other:
+
+- **[File or function]:** depends on [what] for [reason]
+
+---
+
+### 5. Test coverage
+
+- **[Test file or suite]:** [what it covers]
+
+If no tests exist: "No tests currently exist."
+
+---
+
+### 6. External services
+
+APIs consumed by the frontend:
+
+- **[Endpoint or service]:** [how it is used]
+
+---
+
+### 7. Patterns and conventions
+
+How this frontend is structured — conventions any new code must follow:
+
+- [pattern or convention]
+
+---
+
+### 8. Inconsistencies and flags
+
+Patterns or naming conventions that appear inconsistent across files:
+
+- [flag, or "None identified"]
