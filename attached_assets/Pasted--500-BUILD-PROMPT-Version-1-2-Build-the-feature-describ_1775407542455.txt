@@ -1,0 +1,210 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+3. List the files you plan to change and why
+4. List any questions
+5. Wait for my confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Do not implement anything not in the spec
+- Do not modify any file not listed in your change plan
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan.
+If deletion of existing code outside the change plan is required: stop and report.
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate a stated constraint: stop immediately
+and report before attempting a workaround.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Template Picker UX Fix
+
+Version: v1.0
+Date: 2026-04-05
+Build ID: RR-2026-04-05-005
+Effort: 30 minutes
+Dependencies: RR-2026-04-05-001 (complete)
+Risk: LOW
+
+---
+
+## Section 1 — Feature
+
+Replaces the non-scrollable, non-searchable template dropdown on the Content
+Generation page with a searchable, scrollable template picker. Users can type
+to filter templates by name and scroll through results grouped by output type.
+
+---
+
+## Section 2 — Why this is necessary
+
+The current template picker uses a Shadcn Select component with 22 options.
+On mobile and tablet viewports the dropdown does not scroll, making most
+templates unreachable. There is no search or filter capability. The picker
+is the entry point to the entire template generation workflow — if it is
+unusable, the workflow is unusable.
+
+---
+
+## Section 3 — Current state
+
+- artifacts/unlock-intel/src/pages/generate.tsx: From Template tab contains
+  a Shadcn Select component loading templates from GET /templates, grouped
+  by output_type. The Select does not scroll or support search on mobile.
+  handleTemplateChange(templateId) is called when a template is selected —
+  this must continue to be called with the selected template's id.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- Additive edits to existing files — YES (generate.tsx only)
+
+Layer count: 1
+Split required: NO
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Replace template Select with searchable scrollable picker
+
+File: artifacts/unlock-intel/src/pages/generate.tsx
+
+Replace the existing template Select component with the following UI:
+
+**Search input:**
+- Text input, placeholder "Search templates..."
+- Filters the template list in real time as the user types
+- Matches against template name (case-insensitive substring match)
+- Clears to show all templates when empty
+- Styled consistently with other inputs on the page (Shadcn Input component)
+
+**Template list:**
+- Scrollable container, max height 300px, overflow-y: auto
+- Shows all templates (filtered by search input) grouped by output_type
+- Each group has a label (the output_type value) rendered as a small muted
+  uppercase header — same visual style as sidebar group labels
+- Each template item shows: template name (primary), output_type and channel
+  (secondary, smaller muted text)
+- The currently selected template is visually highlighted (e.g. background
+  colour or checkmark indicator) using existing Tailwind/Shadcn patterns
+- Clicking a template item calls handleTemplateChange(template.id) — exactly
+  as the existing Select's onValueChange does
+- List is always visible (not a dropdown) — it sits inline in the form panel
+  below the search input
+- If search returns no results: show "No templates found." in muted text
+
+**Loading and error states:**
+- While GET /templates is loading: show "Loading templates..." in the list area
+- If GET /templates errors: show "Could not load templates. Please try again."
+
+### 5.2 — Preserve all existing behaviour
+
+The following must remain completely unchanged:
+- handleTemplateChange(templateId) function and its effects (fetching template
+  detail, updating selectedTemplateId, clearing prior results)
+- The template detail panel that appears after selection
+- The document name field, context field, and generate button
+- The From Template result panel
+- The Custom tab and all its contents
+- All From Template state variables except those directly related to the
+  picker UI (search input state may be added as new From Template state)
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. The template picker on the From Template tab shows a text search input
+and a scrollable list of templates — not a Select dropdown. Manual test
+required: visual inspection on mobile/tablet viewport.
+
+AC2. Typing in the search input filters the template list in real time,
+showing only templates whose name contains the search string
+(case-insensitive). Clearing the input shows all templates. Manual test
+required: type "email" and verify only email templates appear.
+
+AC3. Templates are grouped by output_type with a visible group label.
+Manual test required: visual inspection.
+
+AC4. Clicking a template item selects it — the detail panel updates with
+the selected template's sections and ACU information, and the generate
+button becomes active. Manual test required: click a template and verify
+detail panel updates.
+
+AC5. The selected template is visually distinguished from unselected
+templates in the list. Manual test required: visual inspection.
+
+AC6. Selecting a template and generating produces the same result as
+before this build — the generation flow is unchanged. Manual test required:
+generate from one template and verify result panel appears correctly.
+
+AC7. On mobile/tablet viewport, the template list is scrollable and all
+22 templates are reachable. Manual test required: scroll through the list
+on a mobile or tablet device.
+
+AC8. No changes to Custom mode, the result panel, or any backend files.
+Manual test required: git diff shows only generate.tsx changed.
+
+---
+
+## Section 7 — Constraints
+
+- artifacts/unlock-intel/src/pages/generate.tsx: only the template picker
+  UI is changed. handleTemplateChange(), the detail panel, the result panel,
+  the generate button, and the Custom tab must remain unchanged.
+- No backend files may be modified.
+- No new routes added.
+- Do not run or modify Orval codegen.
+- All new UI must use Shadcn UI components and Tailwind utility classes.
+  Do not introduce new UI libraries.
+- From Template state and Custom mode state must remain independent.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add pagination to the template list.
+- This build does not add sorting beyond the existing output_type grouping.
+- This build does not add template preview on hover.
+- This build does not change the template data model or API.
+
+---
+
+## Section 9 — Assumptions
+
+- The templates array loaded from GET /templates contains a name field and
+  an output_type field on each template — confirmed from prior scans.
+- The list-always-visible pattern (not a dropdown) is appropriate for this
+  use case — avoids the mobile scroll issue entirely.
+- Adding a search state variable to the From Template state block is within
+  scope as it is a new UI-only state addition.
+
+---
+
+## Section 10 — Rollback
+
+Revert artifacts/unlock-intel/src/pages/generate.tsx. No other changes.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]

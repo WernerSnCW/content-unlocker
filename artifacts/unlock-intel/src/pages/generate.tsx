@@ -5,10 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useGenerateDocument, useRegenerateDocument, usePromoteDocument, useListTemplates, useGetTemplate, useGenerateFromTemplate } from "@workspace/api-client-react";
-import { Loader2, Wand2, CheckCircle2, XCircle, AlertCircle, RefreshCw, ArrowUpCircle, ShieldAlert, FileText, Lock, Ban, ChevronDown } from "lucide-react";
+import { Loader2, Wand2, CheckCircle2, XCircle, AlertCircle, RefreshCw, ArrowUpCircle, ShieldAlert, FileText, Lock, Ban, ChevronDown, CheckCircle as CheckCircleIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -26,6 +25,7 @@ function TemplateTab() {
   const [tmplDocName, setTmplDocName] = useState("");
   const [tmplContext, setTmplContext] = useState("");
   const [tmplNameError, setTmplNameError] = useState(false);
+  const [tmplSearch, setTmplSearch] = useState("");
   const [tmplResult, setTmplResult] = useState<any>(null);
   const [tmplError, setTmplError] = useState<string | null>(null);
   const [tmplPromoting, setTmplPromoting] = useState(false);
@@ -47,10 +47,13 @@ function TemplateTab() {
 
   const generateFromTemplateMutation = useGenerateFromTemplate();
 
-  const groupedTemplates = (() => {
+  const filteredGroupedTemplates = (() => {
     if (!templates || !Array.isArray(templates)) return {};
+    const filtered = tmplSearch.trim()
+      ? templates.filter((t: any) => t.name?.toLowerCase().includes(tmplSearch.trim().toLowerCase()))
+      : templates;
     const groups: Record<string, any[]> = {};
-    for (const t of templates) {
+    for (const t of filtered) {
       const group = t.output_type || "other";
       if (!groups[group]) groups[group] = [];
       groups[group].push(t);
@@ -140,48 +143,46 @@ function TemplateTab() {
             <CardDescription>Choose from the 22 registered output templates.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {templatesLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : templatesError ? (
-              <div className="text-sm text-destructive p-3 bg-destructive/10 rounded-md">
-                Could not load templates. Please try again.
-              </div>
-            ) : !templates || (Array.isArray(templates) && templates.length === 0) ? (
-              <div className="text-sm text-muted-foreground p-3 border border-dashed rounded-md text-center">
-                No templates available.
-              </div>
-            ) : (
-              <Select
-                value={selectedTemplateId || ""}
-                onValueChange={handleTemplateChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a template..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(groupedTemplates).map(([group, items]) => (
-                    <div key={group}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        {group}
-                      </div>
-                      {items.map((t: any) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          <div className="flex items-center gap-2">
-                            <span>{t.name}</span>
-                            {t.channel && (
-                              <span className="text-xs text-muted-foreground">({t.channel})</span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
+            <Input
+              placeholder="Search templates..."
+              value={tmplSearch}
+              onChange={(e) => setTmplSearch(e.target.value)}
+            />
+            <div className="max-h-[300px] overflow-y-auto border rounded-md">
+              {templatesLoading ? (
+                <div className="p-3 text-sm text-muted-foreground">Loading templates...</div>
+              ) : templatesError ? (
+                <div className="p-3 text-sm text-destructive">Could not load templates. Please try again.</div>
+              ) : Object.keys(filteredGroupedTemplates).length === 0 ? (
+                <div className="p-3 text-sm text-muted-foreground text-center">No templates found.</div>
+              ) : (
+                Object.entries(filteredGroupedTemplates).map(([group, items]) => (
+                  <div key={group}>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 sticky top-0">
+                      {group}
                     </div>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+                    {items.map((t: any) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center justify-between gap-2 ${selectedTemplateId === t.id ? "bg-accent" : ""}`}
+                        onClick={() => handleTemplateChange(t.id)}
+                      >
+                        <div>
+                          <span className="font-medium">{t.name}</span>
+                          {t.channel && (
+                            <span className="ml-2 text-xs text-muted-foreground">({t.channel})</span>
+                          )}
+                        </div>
+                        {selectedTemplateId === t.id && (
+                          <CheckCircleIcon className="w-4 h-4 text-primary flex-shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
 
             {selectedTemplateId && (
               <div className="border rounded-lg p-4 space-y-4 bg-muted/20">
