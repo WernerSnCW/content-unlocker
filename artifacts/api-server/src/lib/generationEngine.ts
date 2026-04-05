@@ -195,7 +195,7 @@ export async function generateFromTemplate(request: GenerationRequest): Promise<
     promptParts.push(`\nADDITIONAL CONTEXT:\n${JSON.stringify(request.context, null, 2)}`);
   }
 
-  promptParts.push(`\nReturn a JSON object with each section ID as a key and the generated content as the value. Include a _metadata key with template_id, word_counts, acus_used, and compliance_check status.`);
+  promptParts.push(`\nReturn a JSON object with each section ID as a key and the generated content as the value. Each section value must be a plain text or markdown prose string — never a JSON object, array, or structured data type. Include a _metadata key with template_id, word_counts, acus_used, and compliance_check status.`);
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
