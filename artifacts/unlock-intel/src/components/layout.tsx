@@ -17,6 +17,7 @@ import {
   Megaphone,
   ShieldCheck,
   Upload,
+  CheckSquare,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
         { href: "/call-prep", label: "Call Prep", icon: Phone },
         { href: "/leads", label: "Lead Management", icon: Users },
+        { href: "/tasks", label: "Task Board", icon: CheckSquare },
       ],
     },
     {

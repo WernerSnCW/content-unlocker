@@ -1,14 +1,37 @@
+import { useState, useEffect } from "react";
 import { useGetDashboardSummary, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Link } from "wouter";
-import { ArrowRight, FileText, Users, AlertCircle, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowRight, FileText, Users, AlertCircle, Clock, CheckCircle2, AlertTriangle, ClipboardList } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 
+const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
+interface TaskSummary {
+  open_count: number;
+  top_tasks: Array<{ id: string; title: string; status: string; type: string; linked_document_id: string | null; linked_document_name: string | null }>;
+}
+
 export default function Dashboard() {
   const { data: summary, isLoading: isSummaryLoading } = useGetDashboardSummary();
   const { data: recentActivity, isLoading: isActivityLoading } = useGetRecentActivity({ limit: 10 });
+
+  const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
+  const [taskLoading, setTaskLoading] = useState(true);
+  const [taskError, setTaskError] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}api/tasks/summary`)
+      .then((r) => {
+        if (!r.ok) throw new Error();
+        return r.json();
+      })
+      .then((data) => { setTaskSummary(data); setTaskError(false); })
+      .catch(() => setTaskError(true))
+      .finally(() => setTaskLoading(false));
+  }, []);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -161,6 +184,43 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5" />
+                Tasks
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {taskLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ) : taskError ? (
+                <p className="text-sm text-muted-foreground">Could not load tasks</p>
+              ) : taskSummary?.open_count === 0 ? (
+                <p className="text-sm text-muted-foreground">All clear — no open tasks</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-3xl font-bold">{taskSummary?.open_count}</div>
+                  <p className="text-sm text-muted-foreground">open tasks</p>
+                  <div className="space-y-2 pt-2">
+                    {taskSummary?.top_tasks.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{t.title}</span>
+                        <Badge variant="outline" className="text-xs ml-2 flex-shrink-0">{t.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Link href="/tasks" className="text-sm text-primary hover:underline flex items-center gap-1 pt-3">
+                View all tasks <ArrowRight className="w-3 h-3" />
+              </Link>
             </CardContent>
           </Card>
 

@@ -16,6 +16,7 @@ import templatesRouter from "./templates";
 import promptsRouter from "./prompts";
 import complianceConstantsRouter from "./compliance-constants";
 import importRouter from "./import";
+import tasksRouter from "./tasks";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(templatesRouter);
 router.use(promptsRouter);
 router.use(complianceConstantsRouter);
 router.use(importRouter);
+router.use(tasksRouter);
 
 export default router;
