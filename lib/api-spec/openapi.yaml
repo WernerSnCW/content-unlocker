@@ -35,6 +35,8 @@ tags:
     description: Campaign intelligence and multi-channel sequences
   - name: channels
     description: Channel configuration and constraints
+  - name: acu-intelligence
+    description: ACU Intelligence — scanner, contradiction detector, review backlog, coverage map
 
 paths:
   /healthz:
@@ -956,6 +958,243 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/scan:
+    post:
+      operationId: scanAllDocuments
+      tags: [acu-intelligence]
+      summary: Run intelligence scan on all CURRENT documents, extract candidates, detect contradictions
+      responses:
+        "200":
+          description: Scan results with candidates and contradiction counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanAllResult"
+        "500":
+          description: Scan error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/scan/{document_id}:
+    post:
+      operationId: scanSingleDocument
+      tags: [acu-intelligence]
+      summary: Scan a single document for candidate content units
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Single document scan result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentScanResult"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acu/backlog:
+    get:
+      operationId: getACUBacklog
+      tags: [acu-intelligence]
+      summary: Get candidate content units pending review, priority-ordered
+      parameters:
+        - name: importance
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backlog with summary and candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklogResponse"
+
+  /acu/backlog/contradictions:
+    get:
+      operationId: getACUContradictions
+      tags: [acu-intelligence]
+      summary: Get all contradictions sorted by severity
+      responses:
+        "200":
+          description: Contradictions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContradictionsResponse"
+
+  /acu/backlog/{id}/approve:
+    patch:
+      operationId: approveBacklogCandidate
+      tags: [acu-intelligence]
+      summary: Approve a candidate, creating a new ACU
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lock_immediately:
+                  type: boolean
+                approved_by:
+                  type: string
+      responses:
+        "200":
+          description: Approved candidate with new ACU
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate_id:
+                    type: string
+                  acu_id:
+                    type: string
+                  acu:
+                    type: object
+        "404":
+          description: Candidate not found
+
+  /acu/backlog/{id}/reject:
+    patch:
+      operationId: rejectBacklogCandidate
+      tags: [acu-intelligence]
+      summary: Reject a candidate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rejected_by:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Candidate rejected
+
+  /acu/backlog/{id}/defer:
+    patch:
+      operationId: deferBacklogCandidate
+      tags: [acu-intelligence]
+      summary: Defer a candidate for later review
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Candidate deferred
+
+  /acu/backlog/{id}/duplicate:
+    patch:
+      operationId: markBacklogDuplicate
+      tags: [acu-intelligence]
+      summary: Mark a candidate as duplicate of existing ACU
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                existing_acu_id:
+                  type: string
+      responses:
+        "200":
+          description: Candidate marked as duplicate
+
+  /acu/contradictions/{id}/resolve:
+    patch:
+      operationId: resolveContradiction
+      tags: [acu-intelligence]
+      summary: Resolve a contradiction with notes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolution:
+                  type: string
+                resolved_by:
+                  type: string
+      responses:
+        "200":
+          description: Contradiction resolved
+
+  /acu/coverage:
+    get:
+      operationId: getACUCoverage
+      tags: [acu-intelligence]
+      summary: Get belief coverage map showing ACU coverage per investor belief
+      responses:
+        "200":
+          description: Coverage map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoverageResponse"
+
+  /acu/scan-log:
+    get:
+      operationId: getACUScanLog
+      tags: [acu-intelligence]
+      summary: Get scan history
+      responses:
+        "200":
+          description: Scan log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScanLogEntry"
 
   /campaigns:
     get:
@@ -2896,3 +3135,231 @@ components:
         notes:
           type: ["string", "null"]
       required: [id, name, format]
+
+    ACUCandidate:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        content:
+          type: string
+        importance_level:
+          type: integer
+        importance_label:
+          type: string
+        importance_rationale:
+          type: string
+        source_document_id:
+          type: string
+        source_context:
+          type: string
+        appears_in_documents:
+          type: array
+          items:
+            type: string
+        existing_acu_id:
+          type: ["string", "null"]
+        status:
+          type: string
+        scan_date:
+          type: string
+        reviewed_by:
+          type: ["string", "null"]
+        review_date:
+          type: ["string", "null"]
+        review_action:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ACUContradiction:
+      type: object
+      properties:
+        id:
+          type: string
+        unit_a_id:
+          type: string
+        unit_b_id:
+          type: string
+        unit_a_content:
+          type: string
+        unit_b_content:
+          type: string
+        conflict_description:
+          type: string
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        status:
+          type: string
+          enum: [UNRESOLVED, RESOLVED]
+        resolution:
+          type: ["string", "null"]
+        resolved_by:
+          type: ["string", "null"]
+        resolved_date:
+          type: ["string", "null"]
+
+    ScanLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        scan_date:
+          type: string
+        documents_scanned:
+          type: integer
+        candidates_found:
+          type: integer
+        new_candidates:
+          type: integer
+        duplicates_found:
+          type: integer
+        contradictions_found:
+          type: integer
+        scan_duration_ms:
+          type: integer
+
+    DocumentScanResult:
+      type: object
+      properties:
+        document_id:
+          type: string
+        document_title:
+          type: string
+        scan_date:
+          type: string
+        candidates_found:
+          type: integer
+        candidates:
+          type: array
+          items:
+            type: object
+            properties:
+              candidate_id:
+                type: string
+              type:
+                type: string
+              content:
+                type: string
+              importance_level:
+                type: integer
+              importance_label:
+                type: string
+              importance_rationale:
+                type: string
+              source_context:
+                type: string
+              already_locked_as:
+                type: ["string", "null"]
+              status:
+                type: string
+
+    ScanAllResult:
+      type: object
+      properties:
+        scan_id:
+          type: string
+        documents_scanned:
+          type: integer
+        candidates_found:
+          type: integer
+        new_candidates:
+          type: integer
+        duplicates_found:
+          type: integer
+        scan_duration_ms:
+          type: integer
+        contradictions_found:
+          type: integer
+        new_contradictions:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentScanResult"
+
+    BacklogResponse:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            by_importance:
+              type: object
+              properties:
+                foundational:
+                  type: integer
+                structural:
+                  type: integer
+                supporting:
+                  type: integer
+                contextual:
+                  type: integer
+            by_type:
+              type: object
+              properties:
+                fact:
+                  type: integer
+                framing:
+                  type: integer
+                reference:
+                  type: integer
+                qualifier:
+                  type: integer
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ACUCandidate"
+
+    ContradictionsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        unresolved:
+          type: integer
+        resolved:
+          type: integer
+        contradictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ACUContradiction"
+
+    CoverageResponse:
+      type: object
+      properties:
+        total_beliefs:
+          type: integer
+        covered:
+          type: integer
+        gaps:
+          type: integer
+        conflicts:
+          type: integer
+        with_candidates:
+          type: integer
+        coverage:
+          type: array
+          items:
+            type: object
+            properties:
+              belief:
+                type: string
+              status:
+                type: string
+                enum: [COVERED, CANDIDATE, CONFLICT, GAP]
+              locked_acus:
+                type: integer
+              candidates:
+                type: integer
+              contradictions:
+                type: integer
+              acu_ids:
+                type: array
+                items:
+                  type: string

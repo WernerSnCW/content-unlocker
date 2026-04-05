@@ -22,6 +22,9 @@ import type {
   Acu,
   AnalyzeTranscriptBody,
   ApproveACUBody,
+  ApproveBacklogCandidate200,
+  ApproveBacklogCandidateBody,
+  BacklogResponse,
   Campaign,
   CampaignAsset,
   CampaignBriefInput,
@@ -35,10 +38,13 @@ import type {
   ComplianceConstants,
   ConfirmSendBody,
   ContentBank,
+  ContradictionsResponse,
+  CoverageResponse,
   CreateACUInput,
   CreateLeadBody,
   DashboardSummary,
   Document,
+  DocumentScanResult,
   EmailDraft,
   EmailDraftBody,
   ErrorResponse,
@@ -54,6 +60,7 @@ import type {
   GenerateFromBriefRequest,
   GenerationBrief,
   GenerationResult,
+  GetACUBacklogParams,
   GetCampaignACBuild200,
   GetCampaignTagTable200,
   GetContentBankParams,
@@ -66,12 +73,17 @@ import type {
   ListChangelogParams,
   ListDocumentsParams,
   ListLeadsParams,
+  MarkBacklogDuplicateBody,
   NextAction,
   Persona,
   PropagationResult,
   QcRerunDocument200,
   RankDocumentsBody,
   RecommendationResult,
+  RejectBacklogCandidateBody,
+  ResolveContradictionBody,
+  ScanAllResult,
+  ScanLogEntry,
   SeedValidation,
   SendLogEntry,
   TranscriptAnalysis,
@@ -3724,6 +3736,929 @@ export const useCascadeACU = <
 > => {
   return useMutation(getCascadeACUMutationOptions(options));
 };
+
+/**
+ * @summary Run intelligence scan on all CURRENT documents, extract candidates, detect contradictions
+ */
+export const getScanAllDocumentsUrl = () => {
+  return `/api/acu/scan`;
+};
+
+export const scanAllDocuments = async (
+  options?: RequestInit,
+): Promise<ScanAllResult> => {
+  return customFetch<ScanAllResult>(getScanAllDocumentsUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getScanAllDocumentsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scanAllDocuments>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scanAllDocuments>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["scanAllDocuments"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scanAllDocuments>>,
+    void
+  > = () => {
+    return scanAllDocuments(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScanAllDocumentsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof scanAllDocuments>>
+>;
+
+export type ScanAllDocumentsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Run intelligence scan on all CURRENT documents, extract candidates, detect contradictions
+ */
+export const useScanAllDocuments = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scanAllDocuments>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scanAllDocuments>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getScanAllDocumentsMutationOptions(options));
+};
+
+/**
+ * @summary Scan a single document for candidate content units
+ */
+export const getScanSingleDocumentUrl = (documentId: string) => {
+  return `/api/acu/scan/${documentId}`;
+};
+
+export const scanSingleDocument = async (
+  documentId: string,
+  options?: RequestInit,
+): Promise<DocumentScanResult> => {
+  return customFetch<DocumentScanResult>(getScanSingleDocumentUrl(documentId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getScanSingleDocumentMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scanSingleDocument>>,
+    TError,
+    { documentId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scanSingleDocument>>,
+  TError,
+  { documentId: string },
+  TContext
+> => {
+  const mutationKey = ["scanSingleDocument"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scanSingleDocument>>,
+    { documentId: string }
+  > = (props) => {
+    const { documentId } = props ?? {};
+
+    return scanSingleDocument(documentId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScanSingleDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof scanSingleDocument>>
+>;
+
+export type ScanSingleDocumentMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Scan a single document for candidate content units
+ */
+export const useScanSingleDocument = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scanSingleDocument>>,
+    TError,
+    { documentId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scanSingleDocument>>,
+  TError,
+  { documentId: string },
+  TContext
+> => {
+  return useMutation(getScanSingleDocumentMutationOptions(options));
+};
+
+/**
+ * @summary Get candidate content units pending review, priority-ordered
+ */
+export const getGetACUBacklogUrl = (params?: GetACUBacklogParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/acu/backlog?${stringifiedParams}`
+    : `/api/acu/backlog`;
+};
+
+export const getACUBacklog = async (
+  params?: GetACUBacklogParams,
+  options?: RequestInit,
+): Promise<BacklogResponse> => {
+  return customFetch<BacklogResponse>(getGetACUBacklogUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetACUBacklogQueryKey = (params?: GetACUBacklogParams) => {
+  return [`/api/acu/backlog`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetACUBacklogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getACUBacklog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetACUBacklogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getACUBacklog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetACUBacklogQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getACUBacklog>>> = ({
+    signal,
+  }) => getACUBacklog(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getACUBacklog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetACUBacklogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getACUBacklog>>
+>;
+export type GetACUBacklogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get candidate content units pending review, priority-ordered
+ */
+
+export function useGetACUBacklog<
+  TData = Awaited<ReturnType<typeof getACUBacklog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetACUBacklogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getACUBacklog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetACUBacklogQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get all contradictions sorted by severity
+ */
+export const getGetACUContradictionsUrl = () => {
+  return `/api/acu/backlog/contradictions`;
+};
+
+export const getACUContradictions = async (
+  options?: RequestInit,
+): Promise<ContradictionsResponse> => {
+  return customFetch<ContradictionsResponse>(getGetACUContradictionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetACUContradictionsQueryKey = () => {
+  return [`/api/acu/backlog/contradictions`] as const;
+};
+
+export const getGetACUContradictionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getACUContradictions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUContradictions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetACUContradictionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getACUContradictions>>
+  > = ({ signal }) => getACUContradictions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getACUContradictions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetACUContradictionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getACUContradictions>>
+>;
+export type GetACUContradictionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get all contradictions sorted by severity
+ */
+
+export function useGetACUContradictions<
+  TData = Awaited<ReturnType<typeof getACUContradictions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUContradictions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetACUContradictionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Approve a candidate, creating a new ACU
+ */
+export const getApproveBacklogCandidateUrl = (id: string) => {
+  return `/api/acu/backlog/${id}/approve`;
+};
+
+export const approveBacklogCandidate = async (
+  id: string,
+  approveBacklogCandidateBody: ApproveBacklogCandidateBody,
+  options?: RequestInit,
+): Promise<ApproveBacklogCandidate200> => {
+  return customFetch<ApproveBacklogCandidate200>(
+    getApproveBacklogCandidateUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(approveBacklogCandidateBody),
+    },
+  );
+};
+
+export const getApproveBacklogCandidateMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveBacklogCandidate>>,
+    TError,
+    { id: string; data: BodyType<ApproveBacklogCandidateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveBacklogCandidate>>,
+  TError,
+  { id: string; data: BodyType<ApproveBacklogCandidateBody> },
+  TContext
+> => {
+  const mutationKey = ["approveBacklogCandidate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveBacklogCandidate>>,
+    { id: string; data: BodyType<ApproveBacklogCandidateBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return approveBacklogCandidate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveBacklogCandidateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveBacklogCandidate>>
+>;
+export type ApproveBacklogCandidateMutationBody =
+  BodyType<ApproveBacklogCandidateBody>;
+export type ApproveBacklogCandidateMutationError = ErrorType<void>;
+
+/**
+ * @summary Approve a candidate, creating a new ACU
+ */
+export const useApproveBacklogCandidate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveBacklogCandidate>>,
+    TError,
+    { id: string; data: BodyType<ApproveBacklogCandidateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveBacklogCandidate>>,
+  TError,
+  { id: string; data: BodyType<ApproveBacklogCandidateBody> },
+  TContext
+> => {
+  return useMutation(getApproveBacklogCandidateMutationOptions(options));
+};
+
+/**
+ * @summary Reject a candidate
+ */
+export const getRejectBacklogCandidateUrl = (id: string) => {
+  return `/api/acu/backlog/${id}/reject`;
+};
+
+export const rejectBacklogCandidate = async (
+  id: string,
+  rejectBacklogCandidateBody: RejectBacklogCandidateBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getRejectBacklogCandidateUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(rejectBacklogCandidateBody),
+  });
+};
+
+export const getRejectBacklogCandidateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectBacklogCandidate>>,
+    TError,
+    { id: string; data: BodyType<RejectBacklogCandidateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rejectBacklogCandidate>>,
+  TError,
+  { id: string; data: BodyType<RejectBacklogCandidateBody> },
+  TContext
+> => {
+  const mutationKey = ["rejectBacklogCandidate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rejectBacklogCandidate>>,
+    { id: string; data: BodyType<RejectBacklogCandidateBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return rejectBacklogCandidate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RejectBacklogCandidateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rejectBacklogCandidate>>
+>;
+export type RejectBacklogCandidateMutationBody =
+  BodyType<RejectBacklogCandidateBody>;
+export type RejectBacklogCandidateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Reject a candidate
+ */
+export const useRejectBacklogCandidate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectBacklogCandidate>>,
+    TError,
+    { id: string; data: BodyType<RejectBacklogCandidateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rejectBacklogCandidate>>,
+  TError,
+  { id: string; data: BodyType<RejectBacklogCandidateBody> },
+  TContext
+> => {
+  return useMutation(getRejectBacklogCandidateMutationOptions(options));
+};
+
+/**
+ * @summary Defer a candidate for later review
+ */
+export const getDeferBacklogCandidateUrl = (id: string) => {
+  return `/api/acu/backlog/${id}/defer`;
+};
+
+export const deferBacklogCandidate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeferBacklogCandidateUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getDeferBacklogCandidateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deferBacklogCandidate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deferBacklogCandidate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deferBacklogCandidate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deferBacklogCandidate>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deferBacklogCandidate(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeferBacklogCandidateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deferBacklogCandidate>>
+>;
+
+export type DeferBacklogCandidateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Defer a candidate for later review
+ */
+export const useDeferBacklogCandidate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deferBacklogCandidate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deferBacklogCandidate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeferBacklogCandidateMutationOptions(options));
+};
+
+/**
+ * @summary Mark a candidate as duplicate of existing ACU
+ */
+export const getMarkBacklogDuplicateUrl = (id: string) => {
+  return `/api/acu/backlog/${id}/duplicate`;
+};
+
+export const markBacklogDuplicate = async (
+  id: string,
+  markBacklogDuplicateBody: MarkBacklogDuplicateBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getMarkBacklogDuplicateUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(markBacklogDuplicateBody),
+  });
+};
+
+export const getMarkBacklogDuplicateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markBacklogDuplicate>>,
+    TError,
+    { id: string; data: BodyType<MarkBacklogDuplicateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markBacklogDuplicate>>,
+  TError,
+  { id: string; data: BodyType<MarkBacklogDuplicateBody> },
+  TContext
+> => {
+  const mutationKey = ["markBacklogDuplicate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markBacklogDuplicate>>,
+    { id: string; data: BodyType<MarkBacklogDuplicateBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return markBacklogDuplicate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkBacklogDuplicateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markBacklogDuplicate>>
+>;
+export type MarkBacklogDuplicateMutationBody =
+  BodyType<MarkBacklogDuplicateBody>;
+export type MarkBacklogDuplicateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark a candidate as duplicate of existing ACU
+ */
+export const useMarkBacklogDuplicate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markBacklogDuplicate>>,
+    TError,
+    { id: string; data: BodyType<MarkBacklogDuplicateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof markBacklogDuplicate>>,
+  TError,
+  { id: string; data: BodyType<MarkBacklogDuplicateBody> },
+  TContext
+> => {
+  return useMutation(getMarkBacklogDuplicateMutationOptions(options));
+};
+
+/**
+ * @summary Resolve a contradiction with notes
+ */
+export const getResolveContradictionUrl = (id: string) => {
+  return `/api/acu/contradictions/${id}/resolve`;
+};
+
+export const resolveContradiction = async (
+  id: string,
+  resolveContradictionBody: ResolveContradictionBody,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getResolveContradictionUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(resolveContradictionBody),
+  });
+};
+
+export const getResolveContradictionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveContradiction>>,
+    TError,
+    { id: string; data: BodyType<ResolveContradictionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof resolveContradiction>>,
+  TError,
+  { id: string; data: BodyType<ResolveContradictionBody> },
+  TContext
+> => {
+  const mutationKey = ["resolveContradiction"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof resolveContradiction>>,
+    { id: string; data: BodyType<ResolveContradictionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return resolveContradiction(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResolveContradictionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof resolveContradiction>>
+>;
+export type ResolveContradictionMutationBody =
+  BodyType<ResolveContradictionBody>;
+export type ResolveContradictionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Resolve a contradiction with notes
+ */
+export const useResolveContradiction = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof resolveContradiction>>,
+    TError,
+    { id: string; data: BodyType<ResolveContradictionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof resolveContradiction>>,
+  TError,
+  { id: string; data: BodyType<ResolveContradictionBody> },
+  TContext
+> => {
+  return useMutation(getResolveContradictionMutationOptions(options));
+};
+
+/**
+ * @summary Get belief coverage map showing ACU coverage per investor belief
+ */
+export const getGetACUCoverageUrl = () => {
+  return `/api/acu/coverage`;
+};
+
+export const getACUCoverage = async (
+  options?: RequestInit,
+): Promise<CoverageResponse> => {
+  return customFetch<CoverageResponse>(getGetACUCoverageUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetACUCoverageQueryKey = () => {
+  return [`/api/acu/coverage`] as const;
+};
+
+export const getGetACUCoverageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getACUCoverage>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUCoverage>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetACUCoverageQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getACUCoverage>>> = ({
+    signal,
+  }) => getACUCoverage({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getACUCoverage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetACUCoverageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getACUCoverage>>
+>;
+export type GetACUCoverageQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get belief coverage map showing ACU coverage per investor belief
+ */
+
+export function useGetACUCoverage<
+  TData = Awaited<ReturnType<typeof getACUCoverage>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUCoverage>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetACUCoverageQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get scan history
+ */
+export const getGetACUScanLogUrl = () => {
+  return `/api/acu/scan-log`;
+};
+
+export const getACUScanLog = async (
+  options?: RequestInit,
+): Promise<ScanLogEntry[]> => {
+  return customFetch<ScanLogEntry[]>(getGetACUScanLogUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetACUScanLogQueryKey = () => {
+  return [`/api/acu/scan-log`] as const;
+};
+
+export const getGetACUScanLogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getACUScanLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUScanLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetACUScanLogQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getACUScanLog>>> = ({
+    signal,
+  }) => getACUScanLog({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getACUScanLog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetACUScanLogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getACUScanLog>>
+>;
+export type GetACUScanLogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get scan history
+ */
+
+export function useGetACUScanLog<
+  TData = Awaited<ReturnType<typeof getACUScanLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getACUScanLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetACUScanLogQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List all campaigns

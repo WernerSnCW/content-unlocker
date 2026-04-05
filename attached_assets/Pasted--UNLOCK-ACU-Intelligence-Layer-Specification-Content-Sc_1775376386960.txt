@@ -1,0 +1,394 @@
+# UNLOCK — ACU Intelligence Layer
+## Specification: Content Scanning, Importance Ranking, Review Backlog, Contradiction Detection
+## Date: 4 April 2026
+
+---
+
+## What This Adds to the ACU Framework
+
+Current state: Tom manually identifies and creates ACUs. The system stores and enforces them.
+
+Target state: The system scans all available content, extracts candidate content units, categorises and ranks them by importance, queues them for Tom's review, detects contradictions between units, and flags tensions before they reach investor-facing documents.
+
+Tom's role shifts from content unit author to content unit reviewer and approver.
+
+---
+
+## The Four Capabilities
+
+### 1. Content Scanner
+Reads all documents in the registry and extracts candidate content units.
+
+### 2. Importance Ranker
+Classifies each candidate unit by type and importance level.
+
+### 3. Review Backlog
+Queues discovered units for Tom's review — approve, modify, reject, or lock.
+
+### 4. Contradiction Detector
+Compares all units (locked and candidate) to identify tensions, conflicts, and inconsistencies.
+
+---
+
+## Capability 1 — Content Scanner
+
+### What it scans
+Every document in the registry with status CURRENT or DRAFT:
+- Investor-facing whitepapers (100, 110, 120, 130, 150, 160, 170, 180, 190, 320, 330, 340, 350)
+- Generated documents (gen_ca705607, gen_bea526c5, gen_07d5ec98)
+- Internal documents (500 call script, 510 agent training, 530 quick reference)
+- Content Bank (700)
+- Campaign assets once generated
+
+### What it extracts
+The scanner uses Claude to identify five types of content unit within each document:
+
+| What to look for | How to identify it |
+|---|---|
+| **Facts** | Specific claims with numbers, dates, or named sources. "EIS income tax relief is 30%." "56% of exits fail to return capital." |
+| **Framings** | Strategic positioning statements. "Co-creation, not speculation." "Structural independence is not the end state — it is the condition." |
+| **References** | Named sources, studies, acquisitions. "NESTA/Wiltbank 2009." "PitchBook sold to Morningstar for $225M in 2016." |
+| **Qualifiers** | Mandatory disclaimers. "Subject to individual tax circumstances." "Capital is at risk." |
+| **Potential contradictions** | A claim in one document that conflicts with a claim in another. Flag immediately — do not extract as a unit. |
+
+### Scanner output per document
+```json
+{
+  "document_id": "150",
+  "document_title": "EIS: Investor's Secret Weapon",
+  "scan_date": "2026-04-04",
+  "candidates_found": 12,
+  "candidates": [
+    {
+      "candidate_id": "cand_150_001",
+      "type": "fact",
+      "content": "For an additional rate taxpayer, the maximum effective loss on a total EIS failure — after income tax relief and loss relief — is approximately 38.5p per pound.",
+      "source_document": "150",
+      "source_context": "Section 2, paragraph 3",
+      "already_locked_as": "acu_eis_loss_relief",
+      "status": "DUPLICATE — already locked"
+    },
+    {
+      "candidate_id": "cand_150_002",
+      "type": "framing",
+      "content": "EIS is not about avoiding risk — it is about making sure you are assessing the right number.",
+      "source_document": "150",
+      "source_context": "Section 3, paragraph 1",
+      "already_locked_as": null,
+      "status": "NEW — add to review backlog"
+    }
+  ],
+  "contradictions_found": 1,
+  "contradictions": [
+    {
+      "contradiction_id": "contra_150_001",
+      "content_a": "Document 150: 'SEIS maximum effective loss is 27.5p per pound'",
+      "content_b": "Content Bank 700: 'SEIS maximum effective loss is approximately 22p in the pound'",
+      "severity": "CRITICAL",
+      "status": "UNRESOLVED"
+    }
+  ]
+}
+```
+
+---
+
+## Capability 2 — Importance Ranker
+
+Every candidate content unit is classified on two axes: **type** and **importance level**.
+
+### Importance levels
+
+| Level | Name | Definition | Examples |
+|---|---|---|---|
+| 1 | Foundational | If this is wrong, the entire investment case or compliance position is compromised. | EIS income tax relief rate, loss relief figures, prohibited figures (22p, 7.8x) |
+| 2 | Structural | Core to a specific belief or argument. Wrong version would materially weaken the case. | 5-6x return framing, advice gap explanation, exit thesis comparables |
+| 3 | Supporting | Strengthens a belief or argument but does not carry it alone. | SFC Capital distribution model, NESTA mean return figure, specific objection responses |
+| 4 | Contextual | Useful background or colour. Would not be missed if absent. | EIS market size figures, historical fundraising volumes, sector commentary |
+
+### Importance signals the scanner looks for
+
+**Foundational signals:**
+- Contains a percentage, pence figure, or regulatory reference
+- Contains a qualifier ("subject to individual tax circumstances")
+- Contains a prohibited figure (22p, 7.8x)
+- Appears in more than 5 documents
+- Referenced in QC checks
+
+**Structural signals:**
+- Contains a named exit comparable
+- Contains a framing used across multiple persona clusters
+- Appears in investor-facing Pack 1 or Pack 2
+
+**Supporting signals:**
+- Contains a published study reference
+- Contains an anonymised example
+- Appears in 2-4 documents
+
+**Contextual signals:**
+- Contains background market data
+- Appears in 1 document only
+- Not referenced in any QC check or matrix rule
+
+### Importance output per candidate
+```json
+{
+  "candidate_id": "cand_150_002",
+  "type": "framing",
+  "importance": 2,
+  "importance_label": "Structural",
+  "importance_rationale": "This framing is used to reframe the risk conversation. It is the bridge between U4 (EIS risk is manageable) and the risk-appetite question. Removing it weakens the belief sequence.",
+  "appears_in_documents": ["150", "gen_07d5ec98", "500"],
+  "referenced_in_qc": false,
+  "referenced_in_matrix": false
+}
+```
+
+---
+
+## Capability 3 — Review Backlog
+
+All new candidate units (not already locked) go into the review backlog. Tom reviews them in importance order.
+
+### Backlog UI
+
+**Summary panel:**
+- Total candidates awaiting review
+- Breakdown by importance level (Foundational / Structural / Supporting / Contextual)
+- Breakdown by type (fact / framing / reference / qualifier)
+- Contradictions requiring resolution (always shown first, separate from backlog)
+
+**Backlog table:**
+Each row shows:
+- Candidate ID
+- Type pill
+- Importance level (colour-coded: red = Foundational, amber = Structural, blue = Supporting, gray = Contextual)
+- Content preview (first 80 chars)
+- Source document(s)
+- Whether it is already covered by an existing locked ACU (DUPLICATE / NEW)
+- Action buttons: Approve → Lock / Modify / Reject / Defer
+
+**Expanded view (click to open):**
+- Full content text
+- Source document with context (paragraph shown)
+- Suggested ACU ID (auto-generated from content)
+- Suggested source field (auto-populated from document metadata)
+- All documents where this content appears
+- Any detected contradictions with existing locked ACUs
+
+### Review actions
+
+| Action | Outcome |
+|---|---|
+| **Approve → Lock** | Creates locked ACU immediately. Moves to ACU registry. |
+| **Approve → Review** | Creates ACU with status APPROVED (not yet locked). Tom can lock later. |
+| **Modify** | Open edit view. Tom edits content, source, or type. Then approve. |
+| **Reject** | Removes from backlog. Content can still exist in documents but will not be managed as an ACU. |
+| **Defer** | Moves to bottom of backlog. Review later. |
+| **Mark as Duplicate** | Links to existing locked ACU. Backlog item is resolved. |
+
+### Priority ordering in backlog
+
+1. Contradictions (always first — must resolve before approving either conflicting unit)
+2. Foundational importance (level 1)
+3. Structural importance (level 2)
+4. Supporting importance (level 3)
+5. Contextual importance (level 4)
+6. Within each level: most frequently appearing document first
+
+---
+
+## Capability 4 — Contradiction Detector
+
+The most important capability. Runs automatically after every scan and after every ACU is locked or modified.
+
+### What it detects
+
+**Direct contradiction:** Two units state opposite things about the same fact.
+- "SEIS loss relief is 27.5p per pound" vs "SEIS loss relief is approximately 22p in the pound"
+- "VCT income tax relief is 30%" vs "VCT income tax relief is 20%"
+
+**Logical tension:** Two units are not directly contradictory but create a tension that a sophisticated investor could exploit.
+- "EIS is not low risk" (qualifier) vs any framing that minimises the risk without the qualifier
+- "5-6x return on effective cost" (canonical) vs any document showing a different return figure
+
+**Scope inconsistency:** A unit is correctly stated in one document but missing a required qualifier in another.
+- Loss relief figure stated correctly in one document but without "subject to individual tax circumstances" in another
+
+**Version conflict:** A newer unit supersedes an older one but the older version still appears in documents.
+- Old 22p figure still in Content Bank after 27.5p update
+
+### Contradiction severity levels
+
+| Severity | Definition | Required action |
+|---|---|---|
+| CRITICAL | Direct factual contradiction. Compliance risk. | Must resolve before any document generation or campaign activation. |
+| HIGH | Logical tension that an investor would notice. | Must resolve before the conflicting documents are sent to prospects. |
+| MEDIUM | Inconsistent framing that weakens the argument. | Should resolve within the current sprint. |
+| LOW | Minor inconsistency in emphasis or tone. | Note and monitor. No urgent action required. |
+
+### Contradiction detection logic
+
+The system runs Claude with this prompt against all locked ACUs plus all candidate units:
+
+```
+You are reviewing a set of content units from an investor communication platform.
+Your job is to identify contradictions, tensions, and inconsistencies.
+
+For each pair of units that address the same topic, determine:
+1. Direct contradiction: Do they state opposite things about the same fact?
+2. Logical tension: Are they individually correct but in tension when read together?
+3. Qualifier inconsistency: Does one have a required qualifier that the other is missing?
+4. Version conflict: Does one appear to supersede the other?
+
+For each issue found:
+- State which units are in conflict (by ID)
+- Quote the conflicting text from each
+- State the severity (CRITICAL / HIGH / MEDIUM / LOW)
+- State which unit is correct (if determinable)
+- State what resolution is required
+
+Do not flag stylistic differences as contradictions.
+Do not flag units that cover different aspects of the same topic.
+Only flag genuine conflicts where an investor reading both units would notice the inconsistency.
+```
+
+### Contradiction display in UI
+
+Contradictions appear in a dedicated panel above the main backlog. They cannot be dismissed without resolution.
+
+Each contradiction shows:
+- Severity pill (red CRITICAL, amber HIGH, blue MEDIUM, gray LOW)
+- Unit A: content preview + source document
+- Unit B: content preview + source document
+- Conflict description (plain English explanation of what conflicts)
+- Resolution options:
+  - Keep A, deprecate B
+  - Keep B, deprecate A
+  - Edit A to resolve
+  - Edit B to resolve
+  - Create a new unit that supersedes both
+  - Mark as intentional (different contexts, not a genuine conflict)
+
+---
+
+## New API Endpoints
+
+```
+POST /api/acu/scan                    — trigger scan of all CURRENT documents
+POST /api/acu/scan/:document_id       — scan a single document
+GET  /api/acu/backlog                 — list all candidates awaiting review (ordered by priority)
+GET  /api/acu/backlog?importance=1    — filter backlog by importance level
+GET  /api/acu/backlog/contradictions  — list all unresolved contradictions
+PATCH /api/acu/backlog/:id/approve    — approve a candidate (creates ACU)
+PATCH /api/acu/backlog/:id/reject     — reject a candidate
+PATCH /api/acu/backlog/:id/defer      — defer to bottom of backlog
+PATCH /api/acu/backlog/:id/duplicate  — mark as duplicate of existing ACU
+PATCH /api/acu/contradictions/:id/resolve — resolve a contradiction with chosen action
+GET  /api/acu/coverage                — which topics have locked ACUs, which are uncovered
+```
+
+---
+
+## New Database Tables
+
+```sql
+CREATE TABLE acu_candidates (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  importance_level INTEGER,
+  importance_label TEXT,
+  importance_rationale TEXT,
+  source_document_id TEXT,
+  source_context TEXT,
+  appears_in_documents JSONB,
+  existing_acu_id TEXT,
+  status TEXT DEFAULT 'PENDING_REVIEW',
+  scan_date TEXT,
+  reviewed_by TEXT,
+  review_date TEXT,
+  review_action TEXT,
+  notes TEXT
+);
+
+CREATE TABLE acu_contradictions (
+  id TEXT PRIMARY KEY,
+  unit_a_id TEXT,
+  unit_b_id TEXT,
+  unit_a_content TEXT,
+  unit_b_content TEXT,
+  conflict_description TEXT,
+  severity TEXT,
+  status TEXT DEFAULT 'UNRESOLVED',
+  resolution TEXT,
+  resolved_by TEXT,
+  resolved_date TEXT
+);
+
+CREATE TABLE acu_scan_log (
+  id TEXT PRIMARY KEY,
+  scan_date TEXT,
+  documents_scanned INTEGER,
+  candidates_found INTEGER,
+  new_candidates INTEGER,
+  duplicates_found INTEGER,
+  contradictions_found INTEGER,
+  scan_duration_ms INTEGER
+);
+```
+
+---
+
+## UI — ACU Intelligence Page
+
+Add a new tab to the existing /acu page: **Intelligence**
+
+**Tab: Intelligence**
+
+Three panels:
+
+**Panel 1 — Contradictions (always first)**
+- Count badge on tab if unresolved contradictions exist
+- Each contradiction as a card with severity pill, both units quoted, resolution buttons
+- Cannot dismiss without taking action
+
+**Panel 2 — Review Backlog**
+- Summary counts by importance level
+- Filter bar: importance level / type / document source / status
+- Table: importance pill / type pill / content preview / source / action buttons
+- Click to expand: full content, all source documents, suggested ACU ID, approve/modify/reject
+
+**Panel 3 — Coverage Map**
+- Which beliefs (U1-U4, G1-G3, P1-P3, L1-L3, F0-F3) have locked ACUs covering them?
+- Which have gaps?
+- Which have multiple ACUs that might conflict?
+- Displayed as a grid with status dots
+
+---
+
+## Trigger Points for Scanning
+
+The scanner runs automatically when:
+1. A new document is promoted to CURRENT
+2. A cascade updates one or more documents
+3. Tom manually triggers a scan from the Intelligence tab
+4. A new ACU is locked (to check for new contradictions with existing units)
+
+It does not run on ARCHIVED documents.
+
+---
+
+## Build Priority
+
+| Priority | Item |
+|---|---|
+| 🔴 Critical | Contradiction detector — run against all existing locked ACUs immediately |
+| 🔴 Critical | Backlog table with approve/reject/defer actions |
+| 🟡 High | Content scanner — scan all CURRENT documents |
+| 🟡 High | Importance ranker |
+| 🟡 High | Coverage map (belief → ACU coverage) |
+| 🟠 Medium | Scan trigger automation (on document promotion) |
+| 🟠 Medium | Scan log and history |
+
+Run the contradiction detector first — against the existing 22 locked ACUs and all CURRENT documents. This will surface any inconsistencies introduced during the rapid build phase before they reach prospects.

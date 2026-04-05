@@ -6,3 +6,4 @@ export * from "./videos";
 export * from "./acu";
 export * from "./campaigns";
 export * from "./channels";
+export * from "./acu-intelligence";

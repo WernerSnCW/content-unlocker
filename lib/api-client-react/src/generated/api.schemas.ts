@@ -939,6 +939,169 @@ export interface Channel {
   notes?: string | null;
 }
 
+export interface ACUCandidate {
+  id?: string;
+  type?: string;
+  content?: string;
+  importance_level?: number;
+  importance_label?: string;
+  importance_rationale?: string;
+  source_document_id?: string;
+  source_context?: string;
+  appears_in_documents?: string[];
+  /** @nullable */
+  existing_acu_id?: string | null;
+  status?: string;
+  scan_date?: string;
+  /** @nullable */
+  reviewed_by?: string | null;
+  /** @nullable */
+  review_date?: string | null;
+  /** @nullable */
+  review_action?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type ACUContradictionSeverity =
+  (typeof ACUContradictionSeverity)[keyof typeof ACUContradictionSeverity];
+
+export const ACUContradictionSeverity = {
+  CRITICAL: "CRITICAL",
+  HIGH: "HIGH",
+  MEDIUM: "MEDIUM",
+  LOW: "LOW",
+} as const;
+
+export type ACUContradictionStatus =
+  (typeof ACUContradictionStatus)[keyof typeof ACUContradictionStatus];
+
+export const ACUContradictionStatus = {
+  UNRESOLVED: "UNRESOLVED",
+  RESOLVED: "RESOLVED",
+} as const;
+
+export interface ACUContradiction {
+  id?: string;
+  unit_a_id?: string;
+  unit_b_id?: string;
+  unit_a_content?: string;
+  unit_b_content?: string;
+  conflict_description?: string;
+  severity?: ACUContradictionSeverity;
+  status?: ACUContradictionStatus;
+  /** @nullable */
+  resolution?: string | null;
+  /** @nullable */
+  resolved_by?: string | null;
+  /** @nullable */
+  resolved_date?: string | null;
+}
+
+export interface ScanLogEntry {
+  id?: string;
+  scan_date?: string;
+  documents_scanned?: number;
+  candidates_found?: number;
+  new_candidates?: number;
+  duplicates_found?: number;
+  contradictions_found?: number;
+  scan_duration_ms?: number;
+}
+
+export type DocumentScanResultCandidatesItem = {
+  candidate_id?: string;
+  type?: string;
+  content?: string;
+  importance_level?: number;
+  importance_label?: string;
+  importance_rationale?: string;
+  source_context?: string;
+  /** @nullable */
+  already_locked_as?: string | null;
+  status?: string;
+};
+
+export interface DocumentScanResult {
+  document_id?: string;
+  document_title?: string;
+  scan_date?: string;
+  candidates_found?: number;
+  candidates?: DocumentScanResultCandidatesItem[];
+}
+
+export interface ScanAllResult {
+  scan_id?: string;
+  documents_scanned?: number;
+  candidates_found?: number;
+  new_candidates?: number;
+  duplicates_found?: number;
+  scan_duration_ms?: number;
+  contradictions_found?: number;
+  new_contradictions?: number;
+  results?: DocumentScanResult[];
+}
+
+export type BacklogResponseSummaryByImportance = {
+  foundational?: number;
+  structural?: number;
+  supporting?: number;
+  contextual?: number;
+};
+
+export type BacklogResponseSummaryByType = {
+  fact?: number;
+  framing?: number;
+  reference?: number;
+  qualifier?: number;
+};
+
+export type BacklogResponseSummary = {
+  total?: number;
+  by_importance?: BacklogResponseSummaryByImportance;
+  by_type?: BacklogResponseSummaryByType;
+};
+
+export interface BacklogResponse {
+  summary?: BacklogResponseSummary;
+  candidates?: ACUCandidate[];
+}
+
+export interface ContradictionsResponse {
+  total?: number;
+  unresolved?: number;
+  resolved?: number;
+  contradictions?: ACUContradiction[];
+}
+
+export type CoverageResponseCoverageItemStatus =
+  (typeof CoverageResponseCoverageItemStatus)[keyof typeof CoverageResponseCoverageItemStatus];
+
+export const CoverageResponseCoverageItemStatus = {
+  COVERED: "COVERED",
+  CANDIDATE: "CANDIDATE",
+  CONFLICT: "CONFLICT",
+  GAP: "GAP",
+} as const;
+
+export type CoverageResponseCoverageItem = {
+  belief?: string;
+  status?: CoverageResponseCoverageItemStatus;
+  locked_acus?: number;
+  candidates?: number;
+  contradictions?: number;
+  acu_ids?: string[];
+};
+
+export interface CoverageResponse {
+  total_beliefs?: number;
+  covered?: number;
+  gaps?: number;
+  conflicts?: number;
+  with_candidates?: number;
+  coverage?: CoverageResponseCoverageItem[];
+}
+
 export type ListLeadsParams = {
   search?: string;
   stage?: string;
@@ -1013,6 +1176,39 @@ export type VersionACUBody = {
   content?: string;
   source?: string;
   notes?: string;
+};
+
+export type GetACUBacklogParams = {
+  importance?: string;
+  type?: string;
+  status?: string;
+};
+
+export type ApproveBacklogCandidateBody = {
+  lock_immediately?: boolean;
+  approved_by?: string;
+};
+
+export type ApproveBacklogCandidate200Acu = { [key: string]: unknown };
+
+export type ApproveBacklogCandidate200 = {
+  candidate_id?: string;
+  acu_id?: string;
+  acu?: ApproveBacklogCandidate200Acu;
+};
+
+export type RejectBacklogCandidateBody = {
+  rejected_by?: string;
+  reason?: string;
+};
+
+export type MarkBacklogDuplicateBody = {
+  existing_acu_id?: string;
+};
+
+export type ResolveContradictionBody = {
+  resolution?: string;
+  resolved_by?: string;
 };
 
 export type GetCampaignACBuild200 = { [key: string]: unknown };

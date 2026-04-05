@@ -1501,6 +1501,255 @@ export const CascadeACUResponse = zod.object({
 });
 
 /**
+ * @summary Run intelligence scan on all CURRENT documents, extract candidates, detect contradictions
+ */
+export const ScanAllDocumentsResponse = zod.object({
+  scan_id: zod.string().optional(),
+  documents_scanned: zod.number().optional(),
+  candidates_found: zod.number().optional(),
+  new_candidates: zod.number().optional(),
+  duplicates_found: zod.number().optional(),
+  scan_duration_ms: zod.number().optional(),
+  contradictions_found: zod.number().optional(),
+  new_contradictions: zod.number().optional(),
+  results: zod
+    .array(
+      zod.object({
+        document_id: zod.string().optional(),
+        document_title: zod.string().optional(),
+        scan_date: zod.string().optional(),
+        candidates_found: zod.number().optional(),
+        candidates: zod
+          .array(
+            zod.object({
+              candidate_id: zod.string().optional(),
+              type: zod.string().optional(),
+              content: zod.string().optional(),
+              importance_level: zod.number().optional(),
+              importance_label: zod.string().optional(),
+              importance_rationale: zod.string().optional(),
+              source_context: zod.string().optional(),
+              already_locked_as: zod.string().nullish(),
+              status: zod.string().optional(),
+            }),
+          )
+          .optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Scan a single document for candidate content units
+ */
+export const ScanSingleDocumentParams = zod.object({
+  document_id: zod.coerce.string(),
+});
+
+export const ScanSingleDocumentResponse = zod.object({
+  document_id: zod.string().optional(),
+  document_title: zod.string().optional(),
+  scan_date: zod.string().optional(),
+  candidates_found: zod.number().optional(),
+  candidates: zod
+    .array(
+      zod.object({
+        candidate_id: zod.string().optional(),
+        type: zod.string().optional(),
+        content: zod.string().optional(),
+        importance_level: zod.number().optional(),
+        importance_label: zod.string().optional(),
+        importance_rationale: zod.string().optional(),
+        source_context: zod.string().optional(),
+        already_locked_as: zod.string().nullish(),
+        status: zod.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get candidate content units pending review, priority-ordered
+ */
+export const GetACUBacklogQueryParams = zod.object({
+  importance: zod.coerce.string().optional(),
+  type: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+});
+
+export const GetACUBacklogResponse = zod.object({
+  summary: zod
+    .object({
+      total: zod.number().optional(),
+      by_importance: zod
+        .object({
+          foundational: zod.number().optional(),
+          structural: zod.number().optional(),
+          supporting: zod.number().optional(),
+          contextual: zod.number().optional(),
+        })
+        .optional(),
+      by_type: zod
+        .object({
+          fact: zod.number().optional(),
+          framing: zod.number().optional(),
+          reference: zod.number().optional(),
+          qualifier: zod.number().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  candidates: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        type: zod.string().optional(),
+        content: zod.string().optional(),
+        importance_level: zod.number().optional(),
+        importance_label: zod.string().optional(),
+        importance_rationale: zod.string().optional(),
+        source_document_id: zod.string().optional(),
+        source_context: zod.string().optional(),
+        appears_in_documents: zod.array(zod.string()).optional(),
+        existing_acu_id: zod.string().nullish(),
+        status: zod.string().optional(),
+        scan_date: zod.string().optional(),
+        reviewed_by: zod.string().nullish(),
+        review_date: zod.string().nullish(),
+        review_action: zod.string().nullish(),
+        notes: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get all contradictions sorted by severity
+ */
+export const GetACUContradictionsResponse = zod.object({
+  total: zod.number().optional(),
+  unresolved: zod.number().optional(),
+  resolved: zod.number().optional(),
+  contradictions: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        unit_a_id: zod.string().optional(),
+        unit_b_id: zod.string().optional(),
+        unit_a_content: zod.string().optional(),
+        unit_b_content: zod.string().optional(),
+        conflict_description: zod.string().optional(),
+        severity: zod.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]).optional(),
+        status: zod.enum(["UNRESOLVED", "RESOLVED"]).optional(),
+        resolution: zod.string().nullish(),
+        resolved_by: zod.string().nullish(),
+        resolved_date: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Approve a candidate, creating a new ACU
+ */
+export const ApproveBacklogCandidateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ApproveBacklogCandidateBody = zod.object({
+  lock_immediately: zod.boolean().optional(),
+  approved_by: zod.string().optional(),
+});
+
+export const ApproveBacklogCandidateResponse = zod.object({
+  candidate_id: zod.string().optional(),
+  acu_id: zod.string().optional(),
+  acu: zod.object({}).passthrough().optional(),
+});
+
+/**
+ * @summary Reject a candidate
+ */
+export const RejectBacklogCandidateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const RejectBacklogCandidateBody = zod.object({
+  rejected_by: zod.string().optional(),
+  reason: zod.string().optional(),
+});
+
+/**
+ * @summary Defer a candidate for later review
+ */
+export const DeferBacklogCandidateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * @summary Mark a candidate as duplicate of existing ACU
+ */
+export const MarkBacklogDuplicateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const MarkBacklogDuplicateBody = zod.object({
+  existing_acu_id: zod.string().optional(),
+});
+
+/**
+ * @summary Resolve a contradiction with notes
+ */
+export const ResolveContradictionParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ResolveContradictionBody = zod.object({
+  resolution: zod.string().optional(),
+  resolved_by: zod.string().optional(),
+});
+
+/**
+ * @summary Get belief coverage map showing ACU coverage per investor belief
+ */
+export const GetACUCoverageResponse = zod.object({
+  total_beliefs: zod.number().optional(),
+  covered: zod.number().optional(),
+  gaps: zod.number().optional(),
+  conflicts: zod.number().optional(),
+  with_candidates: zod.number().optional(),
+  coverage: zod
+    .array(
+      zod.object({
+        belief: zod.string().optional(),
+        status: zod
+          .enum(["COVERED", "CANDIDATE", "CONFLICT", "GAP"])
+          .optional(),
+        locked_acus: zod.number().optional(),
+        candidates: zod.number().optional(),
+        contradictions: zod.number().optional(),
+        acu_ids: zod.array(zod.string()).optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Get scan history
+ */
+export const GetACUScanLogResponseItem = zod.object({
+  id: zod.string().optional(),
+  scan_date: zod.string().optional(),
+  documents_scanned: zod.number().optional(),
+  candidates_found: zod.number().optional(),
+  new_candidates: zod.number().optional(),
+  duplicates_found: zod.number().optional(),
+  contradictions_found: zod.number().optional(),
+  scan_duration_ms: zod.number().optional(),
+});
+export const GetACUScanLogResponse = zod.array(GetACUScanLogResponseItem);
+
+/**
  * @summary List all campaigns
  */
 export const ListCampaignsResponseItem = zod.object({
