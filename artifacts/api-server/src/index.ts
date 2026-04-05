@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./lib/dataManager";
+import { loadConstants } from "./lib/complianceConstantsService";
 
 const rawPort = process.env["PORT"];
 
@@ -17,7 +18,13 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 seedDatabase()
-  .then(() => {
+  .then(async () => {
+    const constants = await loadConstants();
+    if (constants.length === 0) {
+      logger.error("FATAL: compliance_constants table is empty after seed. Halting startup.");
+      process.exit(1);
+    }
+    logger.info({ count: constants.length }, "Compliance constants loaded into cache");
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");

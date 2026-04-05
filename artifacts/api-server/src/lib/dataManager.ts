@@ -1,4 +1,4 @@
-import { db, leadsTable, documentsTable, changelogTable, acuTable, channelsTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, acuTable, channelsTable, complianceConstantsTable } from "@workspace/db";
 import { eq, ilike, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { readFileSync, readdirSync } from "fs";
@@ -24,6 +24,8 @@ export async function seedDatabase() {
       logger.info({ ...tmplResult }, "Template seed complete");
       const promptResult = await seedPrompts();
       logger.info({ ...promptResult }, "Prompt seed complete");
+      const ccResult = await seedComplianceConstants();
+      logger.info({ ...ccResult }, "Compliance constants seed complete");
     } catch (err) {
       logger.error({ err }, "Incremental seed error (non-fatal)");
     }
@@ -170,6 +172,8 @@ export async function seedDatabase() {
     logger.info({ ...tmplResult }, "Template seed complete");
     const promptResult = await seedPrompts();
     logger.info({ ...promptResult }, "Prompt seed complete");
+    const ccResult = await seedComplianceConstants();
+    logger.info({ ...ccResult }, "Compliance constants seed complete");
   } catch (err) {
     logger.error({ err }, "Post-seed incremental seed error (non-fatal)");
   }
@@ -182,6 +186,77 @@ export function getComplianceConstants() {
     version: (complianceData as any).version,
     constants: (complianceData as any).constants,
   };
+}
+
+const COMPLIANCE_SEED_MAP: Record<string, { value_type: string; is_prohibited: boolean; subject_to_qualifier: boolean; category: string }> = {
+  eis_income_tax_relief: { value_type: "percentage", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  seis_income_tax_relief: { value_type: "percentage", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  vct_relief_rate: { value_type: "percentage", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  eis_cgt_deferral: { value_type: "percentage", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  bpr_cap: { value_type: "currency", is_prohibited: false, subject_to_qualifier: false, category: "limits" },
+  pension_iht_change: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "tax_relief" },
+  eis_loss_relief_per_pound: { value_type: "text", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  seis_loss_relief_per_pound: { value_type: "text", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  seis_loss_relief_prohibited: { value_type: "text", is_prohibited: true, subject_to_qualifier: false, category: "prohibited" },
+  founding_investor_minimum: { value_type: "currency", is_prohibited: false, subject_to_qualifier: false, category: "limits" },
+  founding_investor_maximum: { value_type: "currency", is_prohibited: false, subject_to_qualifier: false, category: "limits" },
+  pre_money_valuation: { value_type: "currency", is_prohibited: false, subject_to_qualifier: false, category: "limits" },
+  instrument: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "instrument" },
+  platform_pricing_prohibition: { value_type: "text", is_prohibited: true, subject_to_qualifier: false, category: "prohibited" },
+  decumulation_planner_status: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "messaging" },
+  product_tagline: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "messaging" },
+  target_portfolio_range: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "limits" },
+  annual_eis_limit: { value_type: "text", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  annual_seis_limit: { value_type: "currency", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  bpr_effective_date: { value_type: "text", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+  access_framework_framing: { value_type: "text", is_prohibited: false, subject_to_qualifier: false, category: "messaging" },
+  loss_relief_rate: { value_type: "text", is_prohibited: false, subject_to_qualifier: true, category: "tax_relief" },
+};
+
+export async function seedComplianceConstants(): Promise<{ created: number; skipped: number; total: number }> {
+  let created = 0;
+  let skipped = 0;
+  const constants = (complianceData as any).constants as Array<{ key: string; label: string; value: string; note?: string; applies_to?: string[] }>;
+
+  for (const c of constants) {
+    const mapping = COMPLIANCE_SEED_MAP[c.key];
+    if (!mapping) {
+      logger.warn(`No mapping found for compliance constant key '${c.key}' — skipping`);
+      skipped++;
+      continue;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(complianceConstantsTable)
+      .where(eq(complianceConstantsTable.key, c.key))
+      .limit(1);
+
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    await db.insert(complianceConstantsTable).values({
+      id: randomUUID(),
+      key: c.key,
+      label: c.label,
+      value: c.value,
+      value_type: mapping.value_type,
+      status: "ACTIVE",
+      is_prohibited: mapping.is_prohibited,
+      prohibited_reason: mapping.is_prohibited ? (c.note || null) : null,
+      subject_to_qualifier: mapping.subject_to_qualifier,
+      qualifier_text: mapping.subject_to_qualifier ? "subject to individual tax circumstances" : null,
+      category: mapping.category,
+      notes: c.note || null,
+      source: "manual_ui",
+      activated_at: new Date(),
+    });
+    created++;
+  }
+
+  return { created, skipped, total: constants.length };
 }
 
 export function validateSeedData(): { valid: boolean; errors: string[]; warnings: string[] } {

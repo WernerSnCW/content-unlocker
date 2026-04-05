@@ -8,7 +8,7 @@ import {
   RegenerateDocumentParams,
   PromoteDocumentParams,
 } from "@workspace/api-zod";
-import { getComplianceConstants } from "../../lib/dataManager";
+import { getConstants } from "../../lib/complianceConstantsService";
 
 const MAX_REGEN_ATTEMPTS = 2;
 
@@ -50,7 +50,7 @@ router.post("/generation/generate", async (req, res): Promise<void> => {
 
   const { document_type, target_personas, pipeline_stage_relevance, requirements, document_name } = parsed.data;
 
-  const compliance = getComplianceConstants();
+  const compliance = getConstants();
   const complianceText = compliance.constants
     .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
     .join("\n");
@@ -232,7 +232,7 @@ router.post("/generation/:id/regenerate", async (req, res): Promise<void> => {
     return;
   }
 
-  const compliance = getComplianceConstants();
+  const compliance = getConstants();
   const complianceText = compliance.constants
     .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
     .join("\n");
@@ -345,7 +345,7 @@ router.post("/generation/from-template", async (req, res): Promise<void> => {
       .map(([key, value]) => `## ${key}\n\n${value}`)
       .join("\n\n");
 
-    const compliance = getComplianceConstants();
+    const compliance = getConstants();
     const complianceText = compliance.constants
       .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
       .join("\n");
@@ -423,7 +423,7 @@ router.post("/generation/:id/qc-rerun", async (req, res): Promise<void> => {
     return;
   }
 
-  const compliance = getComplianceConstants();
+  const compliance = getConstants();
   const complianceText = compliance.constants
     .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
     .join("\n");

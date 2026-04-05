@@ -15,6 +15,7 @@ import {
   BarChart3,
   Shield,
   Megaphone,
+  ShieldCheck,
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -52,6 +53,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       label: "System",
       items: [
         { href: "/changelog", label: "Changelog", icon: History },
+        { href: "/compliance-constants", label: "Compliance Constants", icon: ShieldCheck },
       ],
     },
   ];

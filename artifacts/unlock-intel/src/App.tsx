@@ -21,6 +21,7 @@ import PersonaAnalytics from "./pages/persona-analytics";
 import ACUPage from "./pages/acu";
 import CampaignsPage from "./pages/campaigns";
 import CampaignDetailPage from "./pages/campaign-detail";
+import ComplianceConstants from "./pages/compliance-constants";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +52,7 @@ function Router() {
         <Route path="/acu" component={ACUPage} />
         <Route path="/campaigns" component={CampaignsPage} />
         <Route path="/campaigns/:id" component={CampaignDetailPage} />
+        <Route path="/compliance-constants" component={ComplianceConstants} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

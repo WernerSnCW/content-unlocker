@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, leadsTable, documentsTable, changelogTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { GetRecentActivityQueryParams, ListChangelogQueryParams } from "@workspace/api-zod";
-import { getComplianceConstants, validateSeedData } from "../../lib/dataManager";
+import { validateSeedData } from "../../lib/dataManager";
 import { VALID_ARCHETYPES } from "../../../../../lib/personas";
 
 const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "Decision"];
@@ -124,11 +124,6 @@ router.get("/changelog", async (req, res): Promise<void> => {
       triggered_by: e.triggered_by,
     }))
   );
-});
-
-router.get("/compliance-constants", async (_req, res): Promise<void> => {
-  const data = getComplianceConstants();
-  res.json(data);
 });
 
 router.get("/seed/validate", async (_req, res): Promise<void> => {

@@ -14,6 +14,7 @@ import acuRouter from "./acu";
 import campaignsRouter from "./campaigns";
 import templatesRouter from "./templates";
 import promptsRouter from "./prompts";
+import complianceConstantsRouter from "./compliance-constants";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(acuRouter);
 router.use(campaignsRouter);
 router.use(templatesRouter);
 router.use(promptsRouter);
+router.use(complianceConstantsRouter);
 
 export default router;
