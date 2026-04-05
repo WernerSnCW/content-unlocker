@@ -1,0 +1,388 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+
+Only stop for BLOCKERs.
+
+---
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+- Never import or call any function from generation/index.ts — quality scorer
+  is completely separate from the QC pipeline
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan.
+If deletion of existing code outside the change plan is required: stop and report.
+
+SIDE EFFECT RULE:
+If you must modify a function imported by files outside your change plan: stop
+and report before making the change.
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate a stated constraint: stop immediately
+and report. Do not attempt a workaround.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Document Quality Scorer, Phase A (Backend)
+
+Version: v1.0
+Date: 2026-04-05
+Build ID: RR-2026-04-05-006a
+Effort: 3–4 hours
+Dependencies: RR-2026-04-05-003 (complete)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds a POST /documents/:id/quality-score endpoint that evaluates any document
+in the registry against a structured six-dimension quality rubric using a single
+Claude call. Returns a non-persisted score report with per-dimension scores (0–10),
+findings, verdicts (PASS/ADVISORY/FAIL), and an overall score and verdict.
+Phase A — backend only. No frontend changes.
+
+---
+
+## Section 2 — Why this is necessary
+
+The existing 19-check QC pipeline confirms compliance. It does not evaluate
+quality — strategic alignment, persona fit, structural completeness, or tone.
+Documents can pass QC and still be unconvincing or wrongly framed. There is no
+mechanism to evaluate this today.
+
+---
+
+## Section 3 — Current state
+
+- artifacts/api-server/src/routes/documents/index.ts: implements document CRUD,
+  PDF import/export, propagation. POST /documents/:id/quality-score does not
+  exist. Static routes must be declared before parameterized :id routes.
+- lib/db/src/schema/documents.ts: documentsTable has type (text),
+  persona_relevance (jsonb), and content (text, nullable).
+- artifacts/api-server/src/routes/generation/index.ts: implements the existing
+  19-check QC pipeline. Must not be touched.
+- lib/integrations-anthropic-ai/src/index.ts: exports anthropic client.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched: API + Domain + External (Claude call)
+Layer count: 3
+Split required: YES — this is Phase A (backend only). Phase B (frontend) follows
+after Phase A ships and a Step 1 scan of registry pages is completed.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Add POST /documents/:id/quality-score route
+
+File: artifacts/api-server/src/routes/documents/index.ts
+
+Add route: POST /documents/:id/quality-score
+
+Declare BEFORE any existing parameterized :id routes in the file.
+
+Handler:
+1. Extract id from req.params
+2. Fetch document from documentsTable by id — if not found, return 404
+3. If document.content is null or empty, return 400:
+   { error: "Document has no content to score" }
+4. Proceed to scoring logic
+
+### 5.2 — Build the scoring prompt
+
+Document context:
+- Document type: document.type — use as-is
+- Persona: extract from document.persona_relevance JSONB — if array, join values
+  as comma-separated string; if empty or null, use "General (no specific persona)"
+- Content: truncate document.content to first 6000 characters if longer.
+  If truncated, append: [CONTENT TRUNCATED AT 6000 CHARS]
+
+Prompt to send to Claude (use this exact text, substituting the three variables):
+
+---
+You are evaluating an investor-facing document for a UK fintech called Unlock.
+Unlock provides portfolio intelligence and tax planning tools for UK HNW private
+investors (£250K–£5M investable). It is NOT a fund, NOT a regulated adviser.
+Its competitive advantage is structural independence — subscription-only, no
+product conflicts, no AUM fee.
+
+DOCUMENT TYPE: [document.type]
+TARGET PERSONA: [persona string]
+
+DOCUMENT CONTENT:
+[truncated content]
+
+Evaluate this document across the following six dimensions. For each dimension,
+provide:
+- score: integer 0-10
+- verdict: "PASS" (score 8-10), "ADVISORY" (score 5-7), or "FAIL" (score 0-4)
+- findings: array of 1-3 strings, each maximum 20 words, citing specific evidence
+  from the document
+
+DIMENSION 1 — STRUCTURAL COMPLETENESS
+Does the document contain the sections expected for its type? For investor
+one-pagers (100): problem, platform modules, investment opportunity, why now.
+For Pack 1 (120): executive summary, problem, platform, market, team, investment
+case, tax benefits, how to invest, founding investor benefits.
+For Pack 2/IIM (130): all Pack 1 sections plus business model, financial
+projections, risk factors, regulatory, appendices.
+For case studies (160): background, situation, EIS strategy, outcome table, why now.
+For EIS/IHT planning docs (170/180): IHT calculation, BPR change impact,
+pension IHT, EIS rolling programme, scenario modelling, death sequencing.
+For email templates (230): subject line, opening, body, CTA, sign-off.
+For other document types: assess whether logical required sections are present.
+
+DIMENSION 2 — COMPLIANCE CONSTANT ACCURACY
+Check these locked values (flag any that appear incorrectly):
+- EIS income tax relief: must be 30% (not any other figure)
+- SEIS income tax relief: must be 50%
+- VCT income tax relief: must be 20% (not 30%)
+- BPR cap: must be £2.5M per estate (with caveat "announced, subject to final
+  enactment" if forward-looking)
+- EIS loss relief (additional rate): up to 61.5p in the pound (or 38.5p per £)
+- SEIS loss relief: up to 27.5p per £ (never 22p — that is prohibited)
+- Minimum investment ticket: £40,000
+- Pre-money valuation: £6.5M (if stated)
+- Round name: "Growth Capital round" (never "Series A")
+- Instrument: "Instant Investment" (never "ASA", "SAFE", "Advanced Subscription")
+- Pension IHT change: April 2027 (with caveat "subject to final legislation")
+
+DIMENSION 3 — STRATEGIC ALIGNMENT
+Does the document reflect Play to Win and Storybrand SB7 framing?
+- Investor is positioned as the hero, Unlock as the guide (not vice versa)
+- Structural independence is the competitive advantage (subscription-only,
+  no AUM fee, no product conflicts)
+- UK regulatory depth (EIS/SEIS/CGT/IHT modelling) is cited as a moat
+- Problem framing appears before product description
+- The winning aspiration resonates: "complete picture before they act, not after"
+
+DIMENSION 4 — PERSONA FIT
+Does the document's language, pain points, and value proposition match the
+target persona?
+- Preserver: stress-testing, decumulation decisions, risk visibility, downside
+  protection, no blind spots before committing
+- Growth Seeker: EIS deal transparency, lot-level tracking, portfolio simulator,
+  tax impact before committing, access on fair terms
+- Legacy Builder: IHT exposure, BPR qualifying periods, rolling EIS programme,
+  estate modelling, April 2027 pension IHT change
+- If persona is general/unspecified: assess whether the document would resonate
+  with a sophisticated UK HNW private investor
+
+DIMENSION 5 — PROHIBITED CONTENT ABSENCE
+Check for the presence of any of the following prohibited items:
+- Platform pricing (£99/month, £249/month) in investor-facing documents
+- "Series A" language
+- "ASA", "SAFE", "Advanced Subscription Agreement"
+- 22p per pound (prohibited figure — must never appear)
+- 7.8x average EIS return (prohibited claim)
+- Scoring or evaluation language for Unlock Access companies ("scored",
+  "evaluated", "rated")
+- BPR cap without caveat in forward-looking context
+- Pension IHT without "subject to final legislation" caveat
+- Manufacturing urgency (artificial scarcity claims)
+
+DIMENSION 6 — TONE COMPLIANCE
+Does the document use the approved Unlock tone?
+- Institutional and intelligence-forward, never salesy
+- "Investors in the know" framing — structural knowledge gap, not investor failure
+- Integrity under pressure — genuine urgency only, not manufactured
+- Plain English for complex concepts — no jargon without explanation
+- The three problems Unlock solves are structural, not personal criticism of
+  advisers or platforms
+- Sign-off from Tom King directly (not "The Unlock Team") where applicable
+
+Return ONLY a JSON object with this exact structure. No prose before or after.
+No markdown code fences. No explanatory text.
+
+{
+  "dimensions": {
+    "structural_completeness": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "compliance_constant_accuracy": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "strategic_alignment": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "persona_fit": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "prohibited_content_absence": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "tone_compliance": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    }
+  },
+  "overall_score": <integer — average of six dimension scores, rounded>,
+  "overall_verdict": "<PASS|ADVISORY|FAIL — worst dimension verdict>",
+  "document_type": "<string>",
+  "persona_context": "<string>",
+  "content_truncated": <boolean>
+}
+---
+
+### 5.3 — Call Claude and parse response
+
+Call anthropic.messages.create() with:
+- model: "claude-sonnet-4-6"
+- max_tokens: 8192
+- messages: [{ role: "user", content: promptString }]
+
+Parse response:
+- Extract text from first content block
+- Apply regex /\{[\s\S]*\}/ to find JSON
+- JSON.parse() the match
+- If parsing fails: return 500 with { error: "Quality scoring failed — could not parse response" }
+
+Validate parsed object has: dimensions (object, 6 keys), each with score (number),
+verdict (string), findings (array). If validation fails: return 500 with
+{ error: "Quality scoring failed — malformed response" }
+
+Calculate server-side (override Claude's values):
+- overall_score = Math.round(sum of all six dimension scores / 6)
+- overall_verdict:
+  - If any dimension verdict is "FAIL": "FAIL"
+  - Else if any dimension verdict is "ADVISORY": "ADVISORY"
+  - Else: "PASS"
+
+### 5.4 — Return response
+
+HTTP 200 with the validated, server-calculated score object including:
+- All six dimensions (score, verdict, findings)
+- overall_score (server-calculated)
+- overall_verdict (server-calculated)
+- document_type: document.type
+- persona_context: the persona string used
+- content_truncated: boolean
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. POST /documents/:id/quality-score with a valid document ID containing
+content returns HTTP 200 with JSON body containing dimensions (6 keys),
+overall_score (integer), overall_verdict (PASS/ADVISORY/FAIL), document_type,
+persona_context, and content_truncated.
+
+AC2. Each dimension contains score (integer 0-10), verdict (PASS/ADVISORY/FAIL),
+and findings (array of 1-3 strings). Manual test required: inspect response body.
+
+AC3. overall_score equals the average of the six dimension scores rounded to
+nearest integer — calculated server-side.
+
+AC4. overall_verdict is the worst dimension verdict (FAIL > ADVISORY > PASS)
+— calculated server-side.
+
+AC5. POST /documents/:id/quality-score with a document that has null or empty
+content returns HTTP 400 with { error: "Document has no content to score" }.
+
+AC6. POST /documents/:id/quality-score with a non-existent document ID returns
+HTTP 404.
+
+AC7. For a document whose content exceeds 6000 characters, content_truncated
+is true in the response.
+
+AC8. The existing POST /documents/:id/qc-rerun endpoint is unchanged and
+continues to return its existing response shape. Manual test required.
+
+AC9. No changes to lib/db/src/schema/documents.ts. Manual test required: git diff.
+
+AC10. No changes to artifacts/api-server/src/routes/generation/index.ts.
+Manual test required: git diff.
+
+---
+
+## Section 7 — Constraints
+
+- artifacts/api-server/src/routes/documents/index.ts: new route must be declared
+  before any existing parameterized :id routes. Do not modify existing handlers.
+- artifacts/api-server/src/routes/generation/index.ts: must not be modified.
+  Do not import or call any function from this file.
+- lib/db/src/schema/documents.ts: must not be modified.
+- Anthropic: model claude-sonnet-4-6, max_tokens 8192. Import via
+  import { anthropic } from "@workspace/integrations-anthropic-ai".
+- Quality scores must NOT be persisted to any table.
+- Do not run or modify Orval codegen.
+- The rubric is hardcoded in the prompt string — 410 schema not queried at runtime.
+- Backward compatibility: all existing document endpoints unchanged.
+
+---
+
+## Section 8 — Non-goals
+
+- No frontend UI — Phase B only.
+- No persistence of quality scores.
+- No batch scoring of multiple documents.
+- No modification of the 19-check QC pipeline.
+- No quality score filtering on the registry list.
+- No auto-triggering of scoring on document promotion.
+
+---
+
+## Section 9 — Assumptions
+
+- document.type contains a meaningful document type identifier.
+- document.persona_relevance JSONB is either an array of persona strings or null.
+- Rubric prompt plus 6000 char content fits within Claude's context at max_tokens 8192.
+- POST /documents/:id/quality-score route name does not conflict with existing
+  static routes in documents/index.ts.
+
+---
+
+## Section 10 — Rollback
+
+Revert artifacts/api-server/src/routes/documents/index.ts. No other changes.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]

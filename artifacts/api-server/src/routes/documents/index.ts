@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { propagateFromDocument } from "../../lib/propagation";
 import { getTemplate, type DocumentTemplate } from "../../lib/templates/index";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import multer from "multer";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
@@ -60,6 +61,238 @@ router.get("/documents/propagation-status", async (_req, res): Promise<void> => 
     .where(eq(documentsTable.review_state, "REQUIRES_REVIEW"));
 
   res.json(docs.map(formatDoc));
+});
+
+const QUALITY_SCORE_CONTENT_LIMIT = 6000;
+const QUALITY_DIMENSIONS = [
+  "structural_completeness",
+  "compliance_constant_accuracy",
+  "strategic_alignment",
+  "persona_fit",
+  "prohibited_content_absence",
+  "tone_compliance",
+] as const;
+
+router.post("/documents/:id/quality-score", async (req, res): Promise<void> => {
+  const { id } = req.params;
+
+  const [doc] = await db.select().from(documentsTable).where(eq(documentsTable.id, id));
+  if (!doc) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+
+  if (!doc.content || doc.content.trim().length === 0) {
+    res.status(400).json({ error: "Document has no content to score" });
+    return;
+  }
+
+  const contentTruncated = doc.content.length > QUALITY_SCORE_CONTENT_LIMIT;
+  let truncatedContent = doc.content;
+  if (contentTruncated) {
+    truncatedContent = doc.content.slice(0, QUALITY_SCORE_CONTENT_LIMIT) + "\n[CONTENT TRUNCATED AT 6000 CHARS]";
+  }
+
+  const personaRelevance = doc.persona_relevance as any;
+  const personaString = Array.isArray(personaRelevance) && personaRelevance.length > 0
+    ? personaRelevance.join(", ")
+    : "General (no specific persona)";
+
+  const promptString = `You are evaluating an investor-facing document for a UK fintech called Unlock.
+Unlock provides portfolio intelligence and tax planning tools for UK HNW private
+investors (£250K–£5M investable). It is NOT a fund, NOT a regulated adviser.
+Its competitive advantage is structural independence — subscription-only, no
+product conflicts, no AUM fee.
+
+DOCUMENT TYPE: ${doc.type}
+TARGET PERSONA: ${personaString}
+
+DOCUMENT CONTENT:
+${truncatedContent}
+
+Evaluate this document across the following six dimensions. For each dimension,
+provide:
+- score: integer 0-10
+- verdict: "PASS" (score 8-10), "ADVISORY" (score 5-7), or "FAIL" (score 0-4)
+- findings: array of 1-3 strings, each maximum 20 words, citing specific evidence
+  from the document
+
+DIMENSION 1 — STRUCTURAL COMPLETENESS
+Does the document contain the sections expected for its type? For investor
+one-pagers (100): problem, platform modules, investment opportunity, why now.
+For Pack 1 (120): executive summary, problem, platform, market, team, investment
+case, tax benefits, how to invest, founding investor benefits.
+For Pack 2/IIM (130): all Pack 1 sections plus business model, financial
+projections, risk factors, regulatory, appendices.
+For case studies (160): background, situation, EIS strategy, outcome table, why now.
+For EIS/IHT planning docs (170/180): IHT calculation, BPR change impact,
+pension IHT, EIS rolling programme, scenario modelling, death sequencing.
+For email templates (230): subject line, opening, body, CTA, sign-off.
+For other document types: assess whether logical required sections are present.
+
+DIMENSION 2 — COMPLIANCE CONSTANT ACCURACY
+Check these locked values (flag any that appear incorrectly):
+- EIS income tax relief: must be 30% (not any other figure)
+- SEIS income tax relief: must be 50%
+- VCT income tax relief: must be 20% (not 30%)
+- BPR cap: must be £2.5M per estate (with caveat "announced, subject to final
+  enactment" if forward-looking)
+- EIS loss relief (additional rate): up to 61.5p in the pound (or 38.5p per £)
+- SEIS loss relief: up to 27.5p per £ (never 22p — that is prohibited)
+- Minimum investment ticket: £40,000
+- Pre-money valuation: £6.5M (if stated)
+- Round name: "Growth Capital round" (never "Series A")
+- Instrument: "Instant Investment" (never "ASA", "SAFE", "Advanced Subscription")
+- Pension IHT change: April 2027 (with caveat "subject to final legislation")
+
+DIMENSION 3 — STRATEGIC ALIGNMENT
+Does the document reflect Play to Win and Storybrand SB7 framing?
+- Investor is positioned as the hero, Unlock as the guide (not vice versa)
+- Structural independence is the competitive advantage (subscription-only,
+  no AUM fee, no product conflicts)
+- UK regulatory depth (EIS/SEIS/CGT/IHT modelling) is cited as a moat
+- Problem framing appears before product description
+- The winning aspiration resonates: "complete picture before they act, not after"
+
+DIMENSION 4 — PERSONA FIT
+Does the document's language, pain points, and value proposition match the
+target persona?
+- Preserver: stress-testing, decumulation decisions, risk visibility, downside
+  protection, no blind spots before committing
+- Growth Seeker: EIS deal transparency, lot-level tracking, portfolio simulator,
+  tax impact before committing, access on fair terms
+- Legacy Builder: IHT exposure, BPR qualifying periods, rolling EIS programme,
+  estate modelling, April 2027 pension IHT change
+- If persona is general/unspecified: assess whether the document would resonate
+  with a sophisticated UK HNW private investor
+
+DIMENSION 5 — PROHIBITED CONTENT ABSENCE
+Check for the presence of any of the following prohibited items:
+- Platform pricing (£99/month, £249/month) in investor-facing documents
+- "Series A" language
+- "ASA", "SAFE", "Advanced Subscription Agreement"
+- 22p per pound (prohibited figure — must never appear)
+- 7.8x average EIS return (prohibited claim)
+- Scoring or evaluation language for Unlock Access companies ("scored",
+  "evaluated", "rated")
+- BPR cap without caveat in forward-looking context
+- Pension IHT without "subject to final legislation" caveat
+- Manufacturing urgency (artificial scarcity claims)
+
+DIMENSION 6 — TONE COMPLIANCE
+Does the document use the approved Unlock tone?
+- Institutional and intelligence-forward, never salesy
+- "Investors in the know" framing — structural knowledge gap, not investor failure
+- Integrity under pressure — genuine urgency only, not manufactured
+- Plain English for complex concepts — no jargon without explanation
+- The three problems Unlock solves are structural, not personal criticism of
+  advisers or platforms
+- Sign-off from Tom King directly (not "The Unlock Team") where applicable
+
+Return ONLY a JSON object with this exact structure. No prose before or after.
+No markdown code fences. No explanatory text.
+
+{
+  "dimensions": {
+    "structural_completeness": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "compliance_constant_accuracy": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "strategic_alignment": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "persona_fit": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "prohibited_content_absence": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    },
+    "tone_compliance": {
+      "score": <integer 0-10>,
+      "verdict": "<PASS|ADVISORY|FAIL>",
+      "findings": ["<string max 20 words>", ...]
+    }
+  },
+  "overall_score": <integer — average of six dimension scores, rounded>,
+  "overall_verdict": "<PASS|ADVISORY|FAIL — worst dimension verdict>",
+  "document_type": "${doc.type}",
+  "persona_context": "${personaString}",
+  "content_truncated": ${contentTruncated}
+}`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: promptString }],
+    });
+
+    const block = message.content[0];
+    const text = block.type === "text" ? block.text : "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      res.status(500).json({ error: "Quality scoring failed — could not parse response" });
+      return;
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      res.status(500).json({ error: "Quality scoring failed — could not parse response" });
+      return;
+    }
+
+    if (!parsed.dimensions || typeof parsed.dimensions !== "object") {
+      res.status(500).json({ error: "Quality scoring failed — malformed response" });
+      return;
+    }
+
+    for (const dim of QUALITY_DIMENSIONS) {
+      const d = parsed.dimensions[dim];
+      if (!d || typeof d.score !== "number" || typeof d.verdict !== "string" || !Array.isArray(d.findings)) {
+        res.status(500).json({ error: "Quality scoring failed — malformed response" });
+        return;
+      }
+    }
+
+    let totalScore = 0;
+    let worstVerdict: "PASS" | "ADVISORY" | "FAIL" = "PASS";
+    for (const dim of QUALITY_DIMENSIONS) {
+      const d = parsed.dimensions[dim];
+      totalScore += d.score;
+      if (d.verdict === "FAIL") {
+        worstVerdict = "FAIL";
+      } else if (d.verdict === "ADVISORY" && worstVerdict !== "FAIL") {
+        worstVerdict = "ADVISORY";
+      }
+    }
+
+    const overallScore = Math.round(totalScore / QUALITY_DIMENSIONS.length);
+
+    res.json({
+      dimensions: parsed.dimensions,
+      overall_score: overallScore,
+      overall_verdict: worstVerdict,
+      document_type: doc.type,
+      persona_context: personaString,
+      content_truncated: contentTruncated,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Quality scoring failed — " + (err.message || "unexpected error") });
+  }
 });
 
 router.get("/documents/:id", async (req, res): Promise<void> => {
