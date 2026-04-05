@@ -218,8 +218,17 @@ export async function generateFromTemplate(request: GenerationRequest): Promise<
   const metadata = output._metadata || {};
   delete output._metadata;
 
+  const stringOutput: Record<string, string> = {};
+  for (const [key, val] of Object.entries(output)) {
+    if (typeof val === "string") {
+      stringOutput[key] = val;
+    } else if (val != null) {
+      stringOutput[key] = JSON.stringify(val);
+    }
+  }
+
   const compliance = checkTemplateCompliance(
-    output,
+    stringOutput,
     composedSections,
     uniqueRequiredIds,
     uniqueProhibitedIds,
@@ -228,7 +237,7 @@ export async function generateFromTemplate(request: GenerationRequest): Promise<
 
   return {
     template_id: request.template_id,
-    output,
+    output: stringOutput,
     compliance_check: compliance,
     metadata: {
       ...metadata,
