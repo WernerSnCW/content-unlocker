@@ -1,0 +1,408 @@
+# 500 — BUILD PROMPT
+Version: 1.2
+
+---
+
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria,
+   constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- Cache anything the spec says to cache — never compute on every render
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+GATE RULE:
+If the spec contains a section marked as a GATE: stop at that point, return
+the required output to the user exactly as specified, and wait for explicit
+confirmation before continuing. Do not proceed past a gate autonomously under
+any circumstances.
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+PHASE DOCUMENT:
+
+# PHASE DOCUMENT — Template Generation Persistence
+
+Version: v1.0
+Date: 2026-04-05
+Build ID: RR-2026-04-05-003
+Effort: 3–4 hours
+Dependencies: RR-2026-04-05-001 (complete)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Extends POST /generation/from-template to persist template-generated output to
+documentsTable after generation completes, making template-generated documents
+promotable to the registry. The route handler serialises the template output,
+runs the existing AI-based 19-check QC pipeline, inserts a document record, and
+returns an extended response including a document ID. The From Template result
+panel in generate.tsx gains a "View in Registry" link and a conditional
+"Promote to Registry" button.
+
+---
+
+## Section 2 — Why this is necessary
+
+Template generation currently produces governed, compliance-checked output that
+is immediately discarded — nothing is written to documentsTable, no document ID
+is returned, and the user cannot promote template-generated content to the
+registry. The compliance value of the Template Registry (required ACU enforcement,
+prohibited ACU checking, section-level QC) is wasted if the output cannot be
+saved. Every template-generated document must currently be recreated via custom
+generation to enter the registry, defeating the purpose of the template path.
+
+---
+
+## Section 3 — Current state
+
+- artifacts/api-server/src/routes/generation/index.ts: implements POST
+  /generation/from-template which calls generateFromTemplate() and returns
+  its result directly with no persistence. Also implements POST
+  /generation/generate (custom path) which persists to documentsTable
+  immediately after generation and runs runQC(). The runQC(),
+  getLockedACUs(), buildACUPromptSection(), and getComplianceConstants()
+  functions are all defined and used in this file.
+- artifacts/api-server/src/lib/generationEngine.ts: exports
+  generateFromTemplate(request) which returns { template_id, output:
+  Record<string, string>, compliance_check: { pass, issues[] }, metadata }.
+  Must not be modified.
+- lib/db/src/schema/documents.ts: defines documentsTable with all required
+  columns. No schema changes needed.
+- artifacts/unlock-intel/src/pages/generate.tsx: From Template result panel
+  currently shows compliance badge, issues, named sections, and metadata. No
+  promote button and no registry link exist because no document ID is returned.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- New UI components — YES (promote button, registry link in generate.tsx)
+- Additive edits to existing files — YES (generation route handler, generate.tsx)
+- External service integration — YES (additional runQC() Anthropic call on template path)
+
+Layer count: 3
+Split required: NO
+Split rationale: Both external reviewers confirmed single pass. The backend
+persistence and frontend wiring are tightly coupled to the new document ID.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Confirm nanoid import in generation route
+
+File: artifacts/api-server/src/routes/generation/index.ts
+
+Before writing any code, check whether nanoid is already imported in this file.
+If it is imported: use the existing import as-is.
+If it is not imported: add the same import used elsewhere in the codebase
+(check other route files for the pattern — likely import { nanoid } from "nanoid").
+
+Include this finding in the pre-build report.
+
+### 5.2 — Extend POST /generation/from-template route handler
+
+File: artifacts/api-server/src/routes/generation/index.ts
+
+After the call to generateFromTemplate(request) returns, add the following
+steps in sequence before the response is sent. Do not modify any code before or
+after the existing call to generateFromTemplate() except to add these steps.
+
+Step A — Serialise output to markdown
+
+Convert result.output (type Record<string, string>) to a single markdown
+string using the following rules:
+
+- Section order: use the order in which keys appear in result.output as
+  returned — do not sort or reorder
+- For each section: render as ## [section_label]\n\n[content]
+- Section label: use the key name from result.output as the heading (e.g.
+  if the key is "introduction", render ## introduction)
+- Empty sections: if a section's value is an empty string or contains only
+  whitespace, omit it entirely — do not render a heading with no content
+- Join sections with \n\n between them
+- Result: a single serialisedContent string
+
+Step B — Run AI QC
+
+Call runQC(serialisedContent, complianceText, templateName, 1) where:
+- serialisedContent is the string from Step A
+- complianceText is obtained by calling getComplianceConstants() then
+  formatting it the same way the custom generation path does
+- templateName is result.metadata.template_name (used as documentType parameter)
+- attempt is 1
+
+Store the result as aiQcReport.
+Set reviewState to "CLEAN" if aiQcReport.overall === "pass",
+otherwise "REQUIRES_REVIEW".
+
+Step C — Insert document record
+
+Insert a new row into documentsTable. For all fields not explicitly listed
+below, mirror the insert pattern from POST /generation/generate in the same
+file exactly — use the same field names, defaults, and patterns. Explicitly set:
+
+- id: nanoid() (or the local nanoid pattern confirmed in 5.1)
+- file_code: "gen_" + nanoid(8)
+- name: request.context?.document_name ?? "Template: " + result.metadata.template_name
+- type: "generated"
+- tier: 3
+- category: "Generated"
+- lifecycle_status: "DRAFT"
+- review_state: reviewState (from Step B)
+- is_generated: true
+- content: serialisedContent (from Step A)
+- output_type: result.metadata.template_name ?? "whitepaper"
+- qc_report_id: aiQcReport.overall (stores "pass" or "fail" — follow existing pattern)
+- qc_history: [aiQcReport]
+- version: 1
+- last_reviewed: new Date().toISOString()
+- description: request.context?.document_name ?? result.metadata.template_name
+
+Store the inserted document's id as documentId.
+
+Step D — Insert changelog entry
+
+Insert a changelog entry mirroring the pattern used in POST /generation/generate
+in the same file exactly — same fields, same structure. Set:
+- action: "DOCUMENT_GENERATED"
+- document_id: documentId
+- details: "Generated from template: " + result.metadata.template_name
+- triggered_by: "template_generation"
+
+Step E — Return extended response
+
+Return the original generateFromTemplate() response shape with three additional
+fields appended. Do not rename, remove, or restructure any existing fields:
+
+{
+  "template_id": "...",
+  "output": { ... },
+  "compliance_check": { ... },
+  "metadata": { ... },
+  "document_id": "[documentId]",
+  "review_state": "[reviewState]",
+  "ai_qc_report": { ... }
+}
+
+compliance_check in the response reflects the rule-based result from
+generateFromTemplate() only. review_state reflects the AI QC result only.
+These must not be swapped, combined, or cross-referenced.
+
+### 5.3 — Update From Template result panel in generate.tsx
+
+File: artifacts/unlock-intel/src/pages/generate.tsx
+
+The From Template result panel currently displays compliance badge, issues list,
+named sections, and metadata. Update it to also display:
+
+"View in Registry" link:
+- Show when result.document_id is present
+- Renders as a link navigating to /registry/[result.document_id]
+- Label: "View in Registry"
+- Show below the metadata line
+
+"Promote to Registry" button:
+- Show when result.document_id is present AND result.review_state !== "REQUIRES_REVIEW"
+- On click: call POST /generation/[result.document_id]/promote using manual
+  fetch with API_BASE prefix (consistent with existing manual fetch pattern in this file)
+- Loading state: disable button and show spinner during request
+- On success: show inline success message "Document promoted to registry." and disable the button
+- On error: show inline error "Could not promote. Please try again."
+- Label: "Promote to Registry"
+
+"Promote unavailable" state:
+- When result.document_id is present AND result.review_state === "REQUIRES_REVIEW":
+  show a greyed-out disabled button labelled "Promote to Registry" with a tooltip
+  or inline note: "Fix compliance issues before promoting."
+
+The From Template state isolation rules from RR-2026-04-05-001 remain in effect:
+all new state variables for promote status must be declared in the From Template
+state block, not shared with Custom mode.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. POST /generation/from-template with a valid template_id returns a response
+containing all original fields (template_id, output, compliance_check, metadata)
+plus three new fields: document_id (non-empty string), review_state ("CLEAN" or
+"REQUIRES_REVIEW"), and ai_qc_report (object with overall, checks, fail_count fields).
+
+AC2. After calling POST /generation/from-template, a new row exists in
+documentsTable with lifecycle_status: "DRAFT", is_generated: true, tier: 3,
+category: "Generated", and content containing the serialised markdown output.
+Manual test required: query DB — SELECT id, lifecycle_status, tier, category,
+is_generated, length(content) FROM documents WHERE id = '[document_id]'.
+
+AC3. The review_state field in the response and in documentsTable is "CLEAN"
+when ai_qc_report.overall === "pass" and "REQUIRES_REVIEW" when
+ai_qc_report.overall === "fail". It is not derived from compliance_check.
+
+AC4. The serialised content in documentsTable contains one ## [key] heading
+per non-empty section from output, in the order the keys appear in the response,
+with sections joined by \n\n. Empty or whitespace-only sections are omitted.
+Manual test required: inspect content column for a generated document.
+
+AC5. A changelog entry exists for the generated document with action:
+"DOCUMENT_GENERATED" and document_id matching the returned document_id.
+Manual test required: SELECT * FROM changelog WHERE document_id = '[id]'.
+
+AC6. The From Template result panel in /generate shows a "View in Registry"
+link when generation succeeds. Clicking it navigates to /registry/[document_id].
+Manual test required: visual inspection in browser.
+
+AC7. The "Promote to Registry" button is visible and enabled when
+review_state !== "REQUIRES_REVIEW". Clicking it calls POST
+/generation/[document_id]/promote and on success shows "Document promoted to
+registry." Manual test required: visual inspection and network tab inspection.
+
+AC8. When review_state === "REQUIRES_REVIEW", the promote button is visible
+but disabled with label "Promote to Registry" and note "Fix compliance issues
+before promoting." Manual test required: visual inspection using a template that
+produces an AI QC failure, or by directly querying the DB for a document with
+review_state "REQUIRES_REVIEW" and verifying the button state.
+
+AC9. POST /generation/generate (custom mode) behaviour is unchanged — same
+request, same response shape, same persistence pattern. Manual test required:
+run a custom generation and verify it completes without error.
+
+AC10. generateFromTemplate() in artifacts/api-server/src/lib/generationEngine.ts
+is unmodified. Manual test required: confirm git diff contains no changes to this file.
+
+AC11. No changes to lib/db/src/schema/documents.ts. Manual test required:
+confirm git diff contains no changes to this file.
+
+---
+
+## Section 7 — Constraints
+
+- artifacts/api-server/src/lib/generationEngine.ts: must not be modified.
+  Persistence logic lives only in the route handler. If the agent finds itself
+  editing this file: stop and report a SPEC-CONSTRAINT CONFLICT.
+- artifacts/api-server/src/routes/generation/index.ts: the POST /generation/generate
+  handler and all its helper functions (runQC, getLockedACUs, buildACUPromptSection,
+  runACUChecks, runQCSingle, splitIntoChunks, mergeChunkResults, isFalsePositive)
+  must remain completely unchanged. Only the POST /generation/from-template handler
+  is modified.
+- lib/db/src/schema/documents.ts: must not be modified.
+- artifacts/unlock-intel/src/pages/generate.tsx: From Template state and Custom
+  mode state must remain independent. No shared state between modes. No changes
+  to Custom mode tab.
+- Anthropic calls: model claude-sonnet-4-6, max_tokens 8192. Do not change.
+- Response shape: additive only — existing fields (template_id, output,
+  compliance_check, metadata) must not be renamed, removed, or restructured.
+- qc_report_id column: stores "pass" or "fail" string — follow existing pattern,
+  do not store the full QC report object.
+- Do not run or modify Orval codegen.
+- Backward compatibility: existing documents in documentsTable are unaffected.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add regeneration for template-generated documents —
+  POST /generation/:id/regenerate is not wired to the From Template flow.
+- This build does not fix the qc_report_id naming inconsistency.
+- This build does not fix the duplicate parent template fetch in generationEngine.ts.
+- This build does not fix channel_temperature being accepted but unused.
+- This build does not add the promote flow to the Custom mode tab.
+- This build does not modify the Document Registry page.
+
+---
+
+## Section 9 — Assumptions
+
+- runQC(), getLockedACUs(), buildACUPromptSection(), and getComplianceConstants()
+  are all available in scope within generation/index.ts and can be called directly
+  in the extended from-template handler without import changes.
+- nanoid import: assumed to be present in generation/index.ts — confirmed at 5.1.
+- Section labels: key names from result.output are used directly as markdown headings.
+- POST /generation/:id/promote requires no modification and works with
+  template-generated documents.
+- request.context?.document_name is the correct path to the user-supplied document
+  name (context passed as { document_name, brief } from the From Template form).
+
+---
+
+## Section 10 — Rollback
+
+- Revert artifacts/api-server/src/routes/generation/index.ts
+- Revert artifacts/unlock-intel/src/pages/generate.tsx
+- Documents already inserted cannot be auto-rolled back — delete rows where
+  category = "Generated" and created_at falls within the build window if needed.
+
+---
+
+## Section 11 — What comes next
+
+After this ships, template generation is a complete end-to-end workflow. Next
+phase: regeneration for template-generated documents. Requires Step 1 scan of
+the regenerate handler.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST: exact manual test steps]
+  [COULD NOT SATISFY: why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]

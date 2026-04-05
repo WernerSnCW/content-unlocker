@@ -339,7 +339,67 @@ router.post("/generation/from-template", async (req, res): Promise<void> => {
   try {
     const { generateFromTemplate } = await import("../../lib/generationEngine");
     const result = await generateFromTemplate({ template_id, context, channel_temperature });
-    res.json(result);
+
+    const serialisedContent = Object.entries(result.output)
+      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+      .map(([key, value]) => `## ${key}\n\n${value}`)
+      .join("\n\n");
+
+    const compliance = getComplianceConstants();
+    const complianceText = compliance.constants
+      .map((c: any) => `${c.label}: ${c.value}${c.note ? ` (${c.note})` : ""}`)
+      .join("\n");
+
+    const templateName = result.metadata?.template_name || template_id;
+    const aiQcReport = await runQC(serialisedContent, complianceText, templateName, 1);
+    const reviewState = aiQcReport.overall === "pass" ? "CLEAN" : "REQUIRES_REVIEW";
+
+    const docId = `gen_tmpl_${randomUUID().slice(0, 8)}`;
+    const fileCode = `gen_${randomUUID().slice(0, 8)}`;
+    const documentName = context?.document_name ?? `Template: ${templateName}`;
+    const documentDescription = context?.document_name ?? templateName;
+
+    await db.insert(documentsTable).values({
+      id: docId,
+      file_code: fileCode,
+      type: "generated",
+      name: documentName,
+      filename: `${fileCode}_V1_DRAFT.md`,
+      tier: 3,
+      category: "Generated",
+      lifecycle_status: "DRAFT",
+      review_state: reviewState,
+      version: 1,
+      last_reviewed: new Date().toISOString(),
+      description: documentDescription,
+      pipeline_stage_relevance: [],
+      persona_relevance: [],
+      upstream_dependencies: [],
+      downstream_dependents: [],
+      is_generated: true,
+      generation_brief_id: null,
+      generation_attempt: 1,
+      qc_report_id: aiQcReport.overall,
+      source_trace: [`Generated from template: ${templateName} on ${new Date().toISOString()}`],
+      content: serialisedContent,
+      qc_history: [aiQcReport],
+      output_type: result.metadata?.template_name ?? "whitepaper",
+    });
+
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "DOCUMENT_GENERATED",
+      document_id: docId,
+      details: `Generated from template: ${templateName}`,
+      triggered_by: "template_generation",
+    });
+
+    res.json({
+      ...result,
+      document_id: docId,
+      review_state: reviewState,
+      ai_qc_report: aiQcReport,
+    });
   } catch (err: any) {
     req.log.error({ err }, "Template generation failed");
     res.status(500).json({ error: err.message || "Template generation failed" });

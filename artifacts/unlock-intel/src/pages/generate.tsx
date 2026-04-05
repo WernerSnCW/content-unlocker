@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,9 @@ function TemplateTab() {
   const [tmplNameError, setTmplNameError] = useState(false);
   const [tmplResult, setTmplResult] = useState<any>(null);
   const [tmplError, setTmplError] = useState<string | null>(null);
+  const [tmplPromoting, setTmplPromoting] = useState(false);
+  const [tmplPromoteSuccess, setTmplPromoteSuccess] = useState(false);
+  const [tmplPromoteError, setTmplPromoteError] = useState<string | null>(null);
 
   const { data: templates, isLoading: templatesLoading, error: templatesError } = useListTemplates();
 
@@ -67,6 +71,9 @@ function TemplateTab() {
     setTmplNameError(false);
     setTmplError(null);
     setTmplResult(null);
+    setTmplPromoting(false);
+    setTmplPromoteSuccess(false);
+    setTmplPromoteError(null);
 
     const payload: any = { template_id: selectedTemplateId };
     const contextObj: Record<string, string> = { document_name: tmplDocName.trim() };
@@ -93,6 +100,31 @@ function TemplateTab() {
     setTmplResult(null);
     setTmplError(null);
     setTmplNameError(false);
+    setTmplPromoting(false);
+    setTmplPromoteSuccess(false);
+    setTmplPromoteError(null);
+  };
+
+  const handleTemplatePromote = async () => {
+    if (!tmplResult?.document_id) return;
+    setTmplPromoting(true);
+    setTmplPromoteError(null);
+    try {
+      const base = API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`;
+      const res = await fetch(`${base}api/generation/${tmplResult.document_id}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Promote failed");
+      }
+      setTmplPromoteSuccess(true);
+    } catch (err: any) {
+      setTmplPromoteError("Could not promote. Please try again.");
+    } finally {
+      setTmplPromoting(false);
+    }
   };
 
   const sections = templateDetail?.sections || (templateDetail as any)?.composed_sections || [];
@@ -354,6 +386,51 @@ function TemplateTab() {
                 <div className="text-xs text-muted-foreground pt-4 border-t">
                   Template: {tmplResult.metadata?.template_name || tmplResult.template_id} · {tmplResult.metadata?.sections_count || "—"} sections
                 </div>
+
+                {tmplResult.document_id && (
+                  <div className="flex flex-col gap-3 pt-4 border-t">
+                    <Link
+                      href={`/registry/${tmplResult.document_id}`}
+                      className="text-sm text-primary hover:underline inline-flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      View in Registry
+                    </Link>
+
+                    {tmplPromoteSuccess ? (
+                      <div className="text-sm text-green-600 flex items-center gap-2 p-2 bg-green-500/10 rounded">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Document promoted to registry.
+                      </div>
+                    ) : tmplResult.review_state === "REQUIRES_REVIEW" ? (
+                      <div className="flex flex-col gap-1">
+                        <Button disabled variant="secondary" className="gap-2 opacity-60">
+                          <ArrowUpCircle className="w-4 h-4" />
+                          Promote to Registry
+                        </Button>
+                        <p className="text-xs text-muted-foreground">Fix compliance issues before promoting.</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <Button
+                          onClick={handleTemplatePromote}
+                          disabled={tmplPromoting}
+                          className="gap-2"
+                        >
+                          {tmplPromoting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ArrowUpCircle className="w-4 h-4" />
+                          )}
+                          Promote to Registry
+                        </Button>
+                        {tmplPromoteError && (
+                          <p className="text-xs text-destructive">{tmplPromoteError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
