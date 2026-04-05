@@ -1,0 +1,111 @@
+# PHASE DOC AMENDMENT — RR-2026-04-05-001
+
+Version: v1.2
+Date: 2026-04-05
+Reason: GATE finding — POST /generation/from-template response shape differs from
+POST /generation/generate. Section 5.8 and AC10 replaced. Non-goals updated.
+
+Apply this amendment to PHASE_DOC_RR-2026-04-05-001_v1_1_READY.md.
+All other sections unchanged.
+
+-----
+
+## GATE FINDING (for the record)
+
+POST /generation/from-template response shape:
+template_id: string
+output: Record<string, string>  (section_id → generated content)
+compliance_check: { pass: boolean, issues: string[] }
+metadata: { template_name, parent_template_id, sections_count, … }
+
+Differences from POST /generation/generate:
+
+- No document object — template generation does NOT persist to documentsTable
+- No document ID — regenerate and promote are therefore not available
+- No qc_report with overall/checks/fail_count/warnings — replaced by compliance_check
+- No generated_content as single string — replaced by output keyed by section_id
+
+-----
+
+## SECTION 5.8 — REPLACEMENT (replaces existing Section 5.8 in full)
+
+### 5.8 — From Template compliance result display
+
+**File:** `artifacts/unlock-intel/src/pages/generate.tsx`
+
+On successful response from `POST /generation/from-template`, render a compliance
+result panel below the From Template form. Do not reuse the Custom mode QC display
+block — the response shapes are incompatible.
+
+The compliance result panel must display:
+
+**Compliance status:**
+
+- If `compliance_check.pass` is `true`: render a green pass badge labelled
+  “Compliance Check Passed”.
+- If `compliance_check.pass` is `false`: render a red fail badge labelled
+  “Compliance Check Failed”.
+
+**Issues list (if any):**
+
+- If `compliance_check.issues` is a non-empty array: render each issue as a
+  bullet item below the status badge. Label the section “Issues”.
+- If `compliance_check.issues` is empty: do not render an issues section.
+
+**Generated output:**
+
+- Render the content from `output` (Record<string, string>) as a series of
+  named sections. For each key-value pair in `output`, display the key as a
+  section heading and the value as the section body text.
+- Sections must be rendered in the order returned by the response.
+
+**Metadata:**
+
+- Below the output sections, display a small metadata line:
+  “Template: [metadata.template_name] · [metadata.sections_count] sections”
+
+**No regenerate button. No promote button.**
+Template generation does not produce a document record — there is no document ID,
+so regenerate and promote actions are not available from this flow. Do not add
+these buttons. Do not invent a persistence action.
+
+**Error state:** already specified in Section 5.7 — if the request fails, show
+an inline error below the submit button.
+
+-----
+
+## SECTION 6 — AC10 REPLACEMENT (replaces AC10 only)
+
+AC10. On successful generation via the From Template flow, a compliance result
+panel renders below the form containing: (a) a green “Compliance Check Passed”
+badge if `compliance_check.pass` is true, or a red “Compliance Check Failed”
+badge if false; (b) each item in `compliance_check.issues` rendered as a bullet
+if the array is non-empty; (c) the generated output rendered as named sections
+with the section key as heading and section value as body, in response order;
+(d) a metadata line displaying the template name and section count. No regenerate
+button and no promote button are present in the From Template result panel.
+Manual test required: live app with seeded templates and ACUs.
+
+-----
+
+## SECTION 8 — NON-GOALS ADDITION (add to existing non-goals list)
+
+- This build does not persist template-generated output to the documents table —
+  template generation is a preview/review workflow only. Persistence of template
+  output is deferred to a future phase.
+- This build does not provide regenerate or promote actions in the From Template
+  result panel — these require a document ID which template generation does not
+  produce.
+
+-----
+
+## CONFIRMATION TO REPLIT
+
+The GATE is now resolved. Proceed with the build using:
+
+- Phase doc: PHASE_DOC_RR-2026-04-05-001_v1_1_READY.md
+- With this amendment applied (v1.2)
+- Section 5.8 replaced in full per above
+- AC10 replaced per above
+- Two non-goals added per above
+- All other sections unchanged
