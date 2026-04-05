@@ -1,0 +1,131 @@
+# 100 — CURRENT STATE PROMPT (TARGETED)
+Version: 1.4
+
+---
+
+CRITICAL INSTRUCTION: Your only output must be the completed template below.
+Do not write any prose before or after it. Do not describe what you are doing.
+Do not say "Let me scan" or "I'll read" or "Good" or anything else.
+Start your response with "## CURRENT STATE OUTPUT" and end it with the last
+line of Section 8. Nothing else.
+
+SCOPE: Scan the following files only. Answer the four specific questions
+in Section 8. Do not scan anything outside this list.
+
+Files to scan:
+- lib/db/src/schema/content-bank.ts (or wherever the content bank table is defined — check schema barrel index.ts if unsure of filename)
+- lib/db/src/schema/changelog.ts (or equivalent)
+- artifacts/api-server/src/routes/acu/index.ts (PUT /:id handler only)
+- artifacts/api-server/src/routes/recommendation/index.ts (check if any long-running operation uses async pattern / status polling)
+- artifacts/api-server/src/index.ts (check Express request timeout configuration if any)
+
+Read every file in scope before completing the template.
+Do not fill in any placeholder until you have read all files.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** targeted — 5 files for Phase B open assumptions
+**Fully scanned:** [list every file you read]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list any files you could not open, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+#### `[exact file path]`
+**What it does:** [one sentence]
+**Key functions, variables, data structures:** [specific names with one-line descriptions]
+
+[one block per file — do not skip any file you read]
+
+---
+
+### 2. Data model
+
+Answer these exactly:
+
+**Content bank table:**
+- Table name: [exact table name as defined in Drizzle]
+- Columns: [name: type, name: type — list all]
+- Any status or lifecycle fields: [yes/no — list if yes]
+- Any existing write endpoint: [yes/no — state the route if yes]
+
+**Changelog table:**
+- Table name: [exact table name]
+- Columns: [name: type — list all]
+- How entries are currently written: [which function or route writes to it, what fields it populates]
+- Whether document_id can be null: [yes/no]
+
+---
+
+### 3. Data flow
+
+Answer these exactly:
+
+**ACU PUT /:id handler:**
+- Does it accept status changes (e.g. can it set status to a different value)? [yes/no]
+- Is there any guard preventing writes to LOCKED ACUs? [yes/no — describe if yes]
+- What fields does it accept in the request body? [list]
+
+**Long-running operations pattern:**
+- Does any existing route use async execution with session status polling? [yes/no — name the route if yes]
+- What is the longest-running operation currently in the codebase? [describe]
+- Is there any Express timeout configuration in index.ts or app.ts? [yes/no — state the value if yes]
+
+---
+
+### 4. Dependencies between files
+
+- [file or function]: depends on [what] for [reason]
+
+[only dependencies directly relevant to the four questions above]
+
+---
+
+### 5. Test coverage
+
+- "No tests currently exist." (confirm or correct)
+
+---
+
+### 6. External services
+
+- "No new external services relevant to this scan."
+
+---
+
+### 7. Patterns and conventions
+
+Note only patterns directly relevant to the four open assumptions:
+- [pattern — where established and what it governs]
+
+---
+
+### 8. Inconsistencies and flags — ANSWER THESE FOUR QUESTIONS DIRECTLY
+
+**Q1 — Content bank write path:**
+Does a POST /content/bank or equivalent write endpoint exist?
+If not, what does the content bank table schema look like — list all columns
+so Phase B spec can define the write endpoint correctly.
+
+**Q2 — ACU LOCKED override:**
+Can the existing PUT /acu/:id endpoint write to a LOCKED ACU, or is there
+a guard that prevents it? If guarded, does a separate override endpoint exist,
+or must one be created for Phase B?
+
+**Q3 — Changelog compatibility:**
+What fields does the changelog table require? Can document_id be null
+(needed for import-sourced entries that don't target a specific document)?
+Is there an existing helper function for writing changelog entries, or
+does each route write directly?
+
+**Q4 — Async execution viability:**
+Is synchronous execution within a single Express request viable for this
+codebase (i.e. no aggressive timeout configuration), or does the existing
+pattern for long operations (e.g. recommendation analysis, transcript upload)
+suggest that async + polling is needed for operations that may take >5 seconds?
