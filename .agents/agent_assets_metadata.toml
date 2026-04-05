@@ -36,3 +36,9 @@ id = "Ufp3tveU5HHSXAq_6WShh"
 uri = "file://artifacts/api-server/src/data/snapshots/gap_assessment_2026-04-04.md"
 type = "text"
 title = "Gap Assessment Report — 4 April 2026"
+
+[[outputs]]
+id = "oTCvZwgPt7VSJzblwHgqD"
+uri = "file://attached_assets/100_CURRENT_STATE_OUTPUT.md"
+type = "text"
+title = "100 — Current State Output (Full Repo Scan)"
