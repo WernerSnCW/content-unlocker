@@ -1,0 +1,95 @@
+CRITICAL INSTRUCTION — READ THIS BEFORE DOING ANYTHING ELSE:
+
+Your only job is to fill in the template below exactly as written.
+Do not summarise. Do not write prose. Do not say "what would you like
+to work on next." Output the completed template and nothing else.
+Every bracketed placeholder must be replaced with real content from
+code inspection. Stop when the template is complete.
+
+---
+
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+SCOPE: Scope this scan to the following files only:
+- artifacts/unlock-intel/src/pages/registry.tsx
+- artifacts/unlock-intel/src/pages/document-detail.tsx
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to: artifacts/unlock-intel/src/pages/registry.tsx,
+artifacts/unlock-intel/src/pages/document-detail.tsx
+**Fully scanned:** [list files actually read]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+#### `artifacts/unlock-intel/src/pages/registry.tsx`
+**What it does:** [one sentence from code inspection]
+**Key functions, variables, data structures:**
+- List every state variable and what it controls
+- How document list data is fetched (hook name, endpoint, query key)
+- How the document list is rendered (table, card, etc.)
+- What columns/fields are currently shown per row
+- How row clicks are handled (navigation pattern)
+- Loading and error state handling
+- Any existing per-row action buttons
+
+#### `artifacts/unlock-intel/src/pages/document-detail.tsx`
+**What it does:** [one sentence from code inspection]
+**Key functions, variables, data structures:**
+- List every state variable and what it controls
+- How the document is fetched (hook name, endpoint, query key)
+- What panels/sections are currently rendered (list each)
+- Where the existing compliance status panel is rendered
+- Any existing action buttons and what they call
+- Loading and error state handling
+
+---
+
+### 2. Data model
+
+- **[Type or interface name used in these files]:** [its fields]
+
+---
+
+### 3. Data flow
+
+- **[Step]:** [what happens — which hook, what endpoint, what renders]
+
+---
+
+### 4. Dependencies between files
+
+- **[File or component]:** depends on [what] for [reason]
+
+---
+
+### 5. Test coverage
+
+If no tests: "No tests currently exist."
+
+---
+
+### 6. External services
+
+- **[Endpoint consumed]:** [how it is called and what it returns]
+
+---
+
+### 7. Patterns and conventions
+
+- [pattern — specifically how data fetching and panel rendering works in these two files]
+
+---
+
+### 8. Inconsistencies and flags
+
+- [flag, or "None identified"]
