@@ -127,6 +127,100 @@ router.post("/leads", async (req, res): Promise<void> => {
   });
 });
 
+router.delete("/leads/:id", async (req, res): Promise<void> => {
+  const id = req.params.id;
+
+  const [existing] = await db.select().from(leadsTable).where(eq(leadsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(leadsTable).where(eq(leadsTable.id, id));
+    await tx.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "LEAD_DELETED",
+      lead_id: id,
+      details: `Lead "${existing.name}" (${existing.company || "no company"}) deleted`,
+      triggered_by: "operator",
+    });
+  });
+
+  res.json({ success: true, id, name: existing.name });
+});
+
+router.post("/leads/bulk", async (req, res): Promise<void> => {
+  const { leads: rows } = req.body;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "leads array is required and must not be empty" });
+    return;
+  }
+
+  if (rows.length > 500) {
+    res.status(400).json({ error: "Maximum 500 leads per bulk upload" });
+    return;
+  }
+
+  const now = new Date().toISOString().split("T")[0];
+  const created: string[] = [];
+  const errors: { index: number; name?: string; error: string }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    if (!name) {
+      errors.push({ index: i, error: "name is required" });
+      continue;
+    }
+
+    const id = `lead_${randomUUID().slice(0, 8)}`;
+    const stage = row.pipeline_stage || "Outreach";
+
+    if (!PIPELINE_STAGES.includes(stage)) {
+      errors.push({ index: i, name, error: `Invalid pipeline_stage: ${stage}` });
+      continue;
+    }
+
+    try {
+      await db.insert(leadsTable).values({
+        id,
+        name,
+        company: row.company || null,
+        pipeline_stage: stage,
+        first_contact: row.first_contact || now,
+        last_contact: row.last_contact || now,
+        detected_persona: row.detected_persona || null,
+        archived: false,
+        send_log: [],
+        stage_history: [{ stage, date: now, logged_by: "bulk_import" }],
+        notes: row.notes || null,
+        source: row.source || "bulk_import",
+      });
+      created.push(id);
+    } catch (err: any) {
+      errors.push({ index: i, name, error: err.message || "insert failed" });
+    }
+  }
+
+  if (created.length > 0) {
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "LEADS_BULK_IMPORTED",
+      details: `Bulk imported ${created.length} leads (${errors.length} errors)`,
+      triggered_by: "operator",
+    });
+  }
+
+  res.json({
+    created: created.length,
+    errors: errors.length,
+    error_details: errors.length > 0 ? errors : undefined,
+    total_submitted: rows.length,
+  });
+});
+
 router.get("/leads/:id", async (req, res): Promise<void> => {
   const params = GetLeadParams.safeParse(req.params);
   if (!params.success) {

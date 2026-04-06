@@ -1,19 +1,53 @@
 import { useListLeads } from "@workspace/api-client-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Plus, Loader2, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
 const PIPELINE_STAGES = ["Outreach", "Called", "Demo Booked", "Demo Complete", "Decision"];
+
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.trim().split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = splitCsvLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, "_"));
+  return lines.slice(1).map(line => {
+    const values = splitCsvLine(line);
+    const obj: Record<string, string> = {};
+    headers.forEach((h, i) => { if (values[i]) obj[h] = values[i]; });
+    return obj;
+  }).filter(obj => obj.name);
+}
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -29,6 +63,15 @@ export default function Leads() {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ created: number; errors: number } | null>(null);
+  const [bulkError, setBulkError] = useState("");
+
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const resetForm = () => {
     setFormName("");
     setFormCompany("");
@@ -38,15 +81,8 @@ export default function Leads() {
     setSubmitError("");
   };
 
-  const handleOpenModal = () => {
-    resetForm();
-    setModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    resetForm();
-    setModalOpen(false);
-  };
+  const handleOpenModal = () => { resetForm(); setModalOpen(true); };
+  const handleCloseModal = () => { resetForm(); setModalOpen(false); };
 
   const handleSubmitLead = async () => {
     setNameError("");
@@ -80,6 +116,47 @@ export default function Leads() {
     }
   };
 
+  const handleBulkUpload = async () => {
+    setBulkError("");
+    setBulkResult(null);
+    const rows = parseCsv(bulkCsv);
+    if (rows.length === 0) {
+      setBulkError("No valid rows found. Ensure CSV has a header row with at least a 'name' column.");
+      return;
+    }
+
+    setBulkSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/leads/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leads: rows }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      setBulkResult({ created: data.created, errors: data.errors });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    } catch {
+      setBulkError("Bulk upload failed. Please try again.");
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API_BASE}/leads/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    } catch {
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
@@ -87,9 +164,14 @@ export default function Leads() {
           <h1 className="text-3xl font-bold tracking-tight">Lead Management</h1>
           <p className="text-muted-foreground mt-1">Manage and track investor outreach.</p>
         </div>
-        <Button className="gap-2" onClick={handleOpenModal}>
-          <Plus className="w-4 h-4" /> New Lead
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => { setBulkCsv(""); setBulkResult(null); setBulkError(""); setBulkOpen(true); }}>
+            <Upload className="w-4 h-4" /> Bulk Upload
+          </Button>
+          <Button className="gap-2" onClick={handleOpenModal}>
+            <Plus className="w-4 h-4" /> New Lead
+          </Button>
+        </div>
       </div>
 
       <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleCloseModal(); }}>
@@ -149,6 +231,63 @@ export default function Leads() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Upload Leads</DialogTitle>
+            <DialogDescription>
+              Paste CSV data with columns: name, company, pipeline_stage, source.
+              The first row must be headers.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Textarea
+              placeholder={"name,company,pipeline_stage,source\nJohn Smith,Acme Corp,Outreach,LinkedIn\nJane Doe,Beta Ltd,Called,Referral"}
+              value={bulkCsv}
+              onChange={(e) => setBulkCsv(e.target.value)}
+              rows={8}
+              className="font-mono text-sm"
+            />
+            {bulkCsv && (
+              <p className="text-sm text-muted-foreground">
+                {parseCsv(bulkCsv).length} valid row(s) detected
+              </p>
+            )}
+            {bulkError && <p className="text-sm text-destructive">{bulkError}</p>}
+            {bulkResult && (
+              <p className="text-sm text-green-600">
+                {bulkResult.created} lead(s) created{bulkResult.errors > 0 ? `, ${bulkResult.errors} error(s)` : ""}.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(false)}>Close</Button>
+            <Button onClick={handleBulkUpload} disabled={bulkSubmitting || !bulkCsv.trim()}>
+              {bulkSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Upload
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center gap-4 bg-card p-4 rounded-lg border shadow-sm">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -197,7 +336,17 @@ export default function Leads() {
                   <TableCell>{lead.send_count}</TableCell>
                   <TableCell>{format(new Date(lead.last_contact), "MMM d, yyyy")}</TableCell>
                   <TableCell className="text-right">
-                    <Link href={`/leads/${lead.id}`} className="text-sm text-primary hover:underline">View</Link>
+                    <div className="flex items-center justify-end gap-2">
+                      <Link href={`/leads/${lead.id}`} className="text-sm text-primary hover:underline">View</Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTarget({ id: lead.id, name: lead.name })}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
