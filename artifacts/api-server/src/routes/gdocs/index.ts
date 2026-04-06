@@ -22,26 +22,6 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
   const title = `[Unlock] ${doc.name} (${doc.file_code})`;
 
   try {
-    const existingGdocUrl = (doc as any).gdoc_url;
-    if (existingGdocUrl) {
-      const gdocId = extractGdocId(existingGdocUrl);
-      if (gdocId) {
-        const checkResp = await connectors.proxy("google-drive", `/drive/v3/files/${gdocId}?fields=id,name,webViewLink`, {
-          method: "GET",
-        });
-        if (checkResp.ok) {
-          const existing = await checkResp.json();
-          res.json({
-            gdoc_url: existing.webViewLink,
-            gdoc_id: existing.id,
-            document_id: docId,
-            status: "existing",
-          });
-          return;
-        }
-      }
-    }
-
     const formattedHtml = getTemplate(
       {
         id: doc.id,
@@ -55,6 +35,56 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
         last_reviewed: doc.last_reviewed || undefined,
       }
     );
+
+    const existingGdocUrl = (doc as any).gdoc_url;
+    const existingGdocId = existingGdocUrl ? extractGdocId(existingGdocUrl) : null;
+
+    if (existingGdocId) {
+      const checkResp = await connectors.proxy("google-drive", `/drive/v3/files/${existingGdocId}?fields=id,name,webViewLink`, {
+        method: "GET",
+      });
+      if (checkResp.ok) {
+        const boundary = "unlock_boundary_" + Date.now();
+        const updateBody =
+          `--${boundary}\r\n` +
+          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+          JSON.stringify({ name: title }) +
+          `\r\n--${boundary}\r\n` +
+          `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
+          formattedHtml +
+          `\r\n--${boundary}--`;
+
+        const updateResp = await connectors.proxy(
+          "google-drive",
+          `/upload/drive/v3/files/${existingGdocId}?uploadType=multipart&fields=id,name,webViewLink`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": `multipart/related; boundary=${boundary}`,
+            },
+            body: updateBody,
+          }
+        );
+
+        if (updateResp.ok) {
+          const updated = await updateResp.json();
+          await db.insert(changelogTable).values({
+            id: randomUUID(),
+            action: "GDOCS_CONTENT_PUSHED",
+            document_id: docId,
+            details: `Content pushed to existing Google Doc with formatted HTML`,
+            triggered_by: "agent",
+          });
+          res.json({
+            gdoc_url: updated.webViewLink,
+            gdoc_id: updated.id,
+            document_id: docId,
+            status: "updated",
+          });
+          return;
+        }
+      }
+    }
 
     const metadata = {
       name: title,
@@ -94,6 +124,14 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
     await db.update(documentsTable)
       .set({ gdoc_url: created.webViewLink, gdoc_id: created.id } as any)
       .where(eq(documentsTable.id, docId));
+
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "GDOCS_EXPORTED",
+      document_id: docId,
+      details: `Content exported to new Google Doc with formatted HTML`,
+      triggered_by: "agent",
+    });
 
     res.json({
       gdoc_url: created.webViewLink,
