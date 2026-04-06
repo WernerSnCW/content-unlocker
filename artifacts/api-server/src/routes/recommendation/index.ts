@@ -1252,7 +1252,22 @@ router.post("/recommendation/email-draft", async (req, res): Promise<void> => {
     return;
   }
 
-  const { lead_name, detected_persona, pipeline_stage, document_names, transcript_summary } = parsed.data;
+  const { lead_name, detected_persona, pipeline_stage, document_names, transcript_summary, lead_id } = parsed.data;
+
+  let intelligenceContext = '';
+  if (lead_id) {
+    const intelRows = await db.select().from(leadIntelligenceTable)
+      .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+    const intel = intelRows[0] || null;
+    if (intel) {
+      intelligenceContext = `
+INVESTOR INTELLIGENCE:
+- Emotional driver (hot button): ${intel.hot_button ? intel.hot_button.replace(/_/g, ' ') : 'not identified'}
+${intel.hot_button_quote ? `- Their own words: "${intel.hot_button_quote}"` : ''}- Investor cluster: ${intel.cluster ? intel.cluster.replace(/_/g, ' ') : 'not identified'}
+- Primary blocker: ${intel.primary_blocker || 'none identified'}
+- Readiness: ${intel.readiness_status || 'unknown'}`;
+    }
+  }
 
   try {
     const message = await anthropic.messages.create({
@@ -1269,7 +1284,7 @@ CONTEXT:
 - Pipeline stage: ${pipeline_stage}
 - Documents being sent: ${document_names.join(", ")}
 - Call summary: ${transcript_summary}
-
+${intelligenceContext}
 EMAIL TEMPLATES REFERENCE:
 ${emailTemplates.slice(0, 4000)}
 
@@ -1280,6 +1295,8 @@ RULES:
 - Use Unlock terminology: "Founding investor", "Instant Investment" (not ASA), "EIS/SEIS relief"
 - Product tagline: "Clarity, without complexity"
 - Never publish discount tier percentages
+- If an investor's emotional driver is identified, frame the email around what matters to them personally — not generic EIS benefits
+- If their own words are available (hot button quote), echo that language back naturally
 
 Return ONLY valid JSON:
 {

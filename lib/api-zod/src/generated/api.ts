@@ -311,6 +311,7 @@ export const GenerateEmailDraftBody = zod.object({
   pipeline_stage: zod.string(),
   document_names: zod.array(zod.string()),
   transcript_summary: zod.string(),
+  lead_id: zod.string().optional(),
 });
 
 export const GenerateEmailDraftResponse = zod.object({

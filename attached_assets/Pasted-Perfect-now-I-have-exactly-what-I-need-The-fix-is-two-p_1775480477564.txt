@@ -1,0 +1,48 @@
+Perfect — now I have exactly what I need. The fix is two parts: add lead_id to the request body, fetch intelligence, inject it into the prompt. Surgical edit.
+Tell Replit AI:
+
+Make the following surgical edit to POST /recommendation/email-draft in artifacts/api-server/src/routes/recommendation/index.ts.
+Change 1 — Add lead_id to the request body validation.
+Find the GenerateEmailDraftBody Zod schema (or wherever the body is validated for this endpoint). Add lead_id: z.string().optional() as an optional field.
+Change 2 — Fetch intelligence when lead_id is provided.
+After body validation, add:
+typescriptconst { lead_name, detected_persona, pipeline_stage, document_names, transcript_summary, lead_id } = parsed.data;
+
+let intelligenceContext = '';
+if (lead_id) {
+  const intelRows = await db.select().from(leadIntelligenceTable)
+    .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+  const intel = intelRows[0] || null;
+  if (intel) {
+    intelligenceContext = `
+INVESTOR INTELLIGENCE:
+- Emotional driver (hot button): ${intel.hot_button ? intel.hot_button.replace(/_/g, ' ') : 'not identified'}
+${intel.hot_button_quote ? `- Their own words: "${intel.hot_button_quote}"` : ''}
+- Investor cluster: ${intel.cluster ? intel.cluster.replace(/_/g, ' ') : 'not identified'}
+- Primary blocker: ${intel.primary_blocker || 'none identified'}
+- Readiness: ${intel.readiness_status || 'unknown'}`;
+  }
+}
+Change 3 — Inject into the prompt.
+In the Claude prompt string, add intelligenceContext immediately after the CONTEXT section and before EMAIL TEMPLATES REFERENCE:
+CONTEXT:
+- Investor name: ${lead_name}
+- Detected persona: ${detected_persona}
+- Pipeline stage: ${pipeline_stage}
+- Documents being sent: ${document_names.join(", ")}
+- Call summary: ${transcript_summary}
+${intelligenceContext}
+EMAIL TEMPLATES REFERENCE:
+...
+Also add one new rule to the RULES section:
+- If an investor's emotional driver is identified, frame the email around what matters to them personally — not generic EIS benefits
+- If their own words are available (hot button quote), echo that language back naturally
+No other changes. Do not modify any other endpoint. Do not change the response schema.
+Verify by:
+
+Calling the endpoint with a lead_id that has an intelligence profile — confirm the response body references the investor's hot_button framing
+Calling without a lead_id — confirm identical behaviour to before (no regression)
+
+Return the updated prompt string verbatim in your response so I can confirm the edit is correct.
+
+Once that's done and verified, we move to the quick data fixes (#3 C4 belief, #5 doc 210 review_state) and then straight into 011d Work Queue UI.
