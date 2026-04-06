@@ -60,3 +60,15 @@ id = "tfXTbjOsxt23yLLMrSqKx"
 uri = "file://.local/system-integrity-audit.md"
 type = "text"
 title = "System Integrity Audit (056–062)"
+
+[[outputs]]
+id = "Wsnm_GUTCfbCF_oDsmSbi"
+uri = "file://.local/build-reports/011b-work-queue-analysis.md"
+type = "text"
+title = "011b Build Report — Work Queue Analysis Engine"
+
+[[outputs]]
+id = "Li07Txcc2n5vwBN_kHqYP"
+uri = "file://.local/build-reports/011c-work-queue-resolution.md"
+type = "text"
+title = "011c Build Report — Work Queue Resolution Endpoints"
