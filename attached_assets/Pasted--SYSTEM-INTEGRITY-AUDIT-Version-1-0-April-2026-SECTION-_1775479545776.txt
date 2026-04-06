@@ -1,0 +1,747 @@
+# SYSTEM INTEGRITY AUDIT
+Version: 1.0 | April 2026
+
+---
+
+# SECTION 1 — DATA INTEGRITY (056)
+
+## 056 DATA INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Tables checked:** lead_beliefs, leads, lead_intelligence, tasks, documents, work_queue_sessions, work_queue_findings, belief_registry
+**Records checked:** 30 beliefs + 8 leads + 84 documents + 9 tasks + 3 intelligence + 1 session + 55 findings = 190
+
+---
+
+### 1. Impossible belief states
+
+**Q1: Beliefs ESTABLISHED with no evidence**
+
+Violations found:
+| id | lead_id | belief_id | state |
+|---|---|---|---|
+| 20f33d2f... | lead_001 | U1 | ESTABLISHED |
+| da89cc2f... | lead_002 | U4 | ESTABLISHED |
+| 0a2ef05f... | lead_002 | F0 | ESTABLISHED |
+| 8b3b59ac... | lead_002 | F1 | ESTABLISHED |
+| b5f5bf94... | lead_002 | F2 | ESTABLISHED |
+| 3e337f2a... | lead_003 | U1 | ESTABLISHED |
+| 2ea82608... | lead_003 | U2 | ESTABLISHED |
+| 2dc3e3df... | lead_003 | U3 | ESTABLISHED |
+
+8 beliefs are ESTABLISHED with no evidence or confidence recorded. These were likely set manually via the dot-grid UI, which does not capture evidence.
+
+**Q2: F1/F2/F3 ESTABLISHED but F0 not ESTABLISHED**
+
+Violations found: None
+
+**Q3: P1 or L3 ESTABLISHED (blocked_pending_legal beliefs)**
+
+Violations found: None
+
+**Q4: Tasks Done but document still REQUIRES_REVIEW**
+
+Violations found:
+| task_id | title | doc_id | doc_name | review_state |
+|---|---|---|---|---|
+| 6de7bdf8... | Review: Pipedrive_Aircall_Setup | 210 | Pipedrive_Aircall_Setup | REQUIRES_REVIEW |
+| 1a9a18ae... | Review: Pipedrive_Aircall_Setup | 210 | Pipedrive_Aircall_Setup | REQUIRES_REVIEW |
+
+Document 210 has 2 Done Review tasks but is still marked REQUIRES_REVIEW. The task completion flow does not reset the document's review_state.
+
+**Q5: Tasks Open but document is CLEAN**
+
+Stale tasks found: None
+
+**Q6: Intelligence cluster contradicts all cluster beliefs being not_applicable**
+
+Violations found: None
+
+---
+
+### 2. Overall data integrity verdict
+
+| Check | Violations | Severity |
+|---|---|---|
+| ESTABLISHED beliefs with no evidence | 8 | MEDIUM |
+| F1/F2/F3 without F0 | 0 | HIGH |
+| Blocked beliefs ESTABLISHED | 0 | HIGH |
+| Tasks Done / docs still flagged | 2 (same doc) | MEDIUM |
+| Stale Open tasks on CLEAN docs | 0 | LOW |
+| Cluster contradiction | 0 | MEDIUM |
+
+**Data health:** 🟡 MINOR ISSUES — 8 ESTABLISHED beliefs lack evidence (UI does not capture it), and doc 210 review_state is stale after task completion.
+
+---
+
+---
+
+# SECTION 2 — COMPLIANCE DRIFT (057)
+
+## 057 COMPLIANCE DRIFT OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Documents scanned:** 64 (CURRENT, non-internal)
+**Compliance constants loaded:** 22 (ACTIVE)
+
+---
+
+### 1. Load compliance context
+
+**Prohibited values (is_prohibited = true):**
+- `platform_pricing_prohibition`: "£99/£249 subscription tiers" — Platform pricing must NEVER appear in any investor-facing document.
+- `seis_loss_relief_prohibited`: "22p" — 22p per pound is WRONG. Correct figure is 27.5p per pound.
+
+**Canonical values (is_prohibited = false):**
+- `instrument`: "Instant Investment"
+- `bpr_cap`: "£2,500,000"
+- `founding_investor_maximum`: "£500,000"
+- `founding_investor_minimum`: "£40,000"
+- `pre_money_valuation`: "£6,500,000"
+- `target_portfolio_range`: "£250K–£5M"
+- `access_framework_framing`: "Structured disclosure — not scoring, evaluation, or investment advice"
+- `decumulation_planner_status`: "Specification complete. Prototype build commencing."
+- `product_tagline`: "Clarity, without complexity"
+- `annual_eis_limit`: "£1,000,000 (£2,000,000 if ≥£1M in knowledge-intensive companies)"
+- `annual_seis_limit`: "£200,000"
+- `bpr_effective_date`: "April 2026"
+- `eis_cgt_deferral`: "100%"
+- `eis_income_tax_relief`: "30%"
+- `eis_loss_relief_per_pound`: "~38.5p"
+- `loss_relief_rate`: "Up to effective 38.5% for EIS (after income tax relief), up to 72% for SEIS"
+- `pension_iht_change`: "April 2027"
+- `seis_income_tax_relief`: "50%"
+- `seis_loss_relief_per_pound`: "~27.5p"
+- `vct_relief_rate`: "20%"
+
+---
+
+### 2. Document scan
+
+#### `Founding_Investor_Three_Page` (Tier 3, file_code: 110_PROMO_Founding_Investor_Three_Page_V1_CURRENT)
+**Review state:** REQUIRES_REVIEW
+**Open Review task exists:** NO
+**Violations:**
+- "£99" and "£249" found in content
+  Issue: Prohibited platform pricing
+  Should be: "Founding investors receive lifetime premium access at no cost"
+
+#### `Investment Opportunity — February 2026` (Tier 3, file_code: inv_opp_feb26)
+**Review state:** REQUIRES_REVIEW
+**Open Review task exists:** NO
+**Violations:**
+- "£99" and "£249" found in content
+  Issue: Prohibited platform pricing
+  Should be: "Founding investors receive lifetime premium access at no cost"
+
+All other 62 documents: No violations found.
+
+---
+
+### 3. Documents with violations but no open task
+
+| Document | Tier | Violation | Task exists |
+|---|---|---|---|
+| Founding_Investor_Three_Page (110) | 3 | Prohibited pricing (£99/£249) | NO |
+| Investment Opportunity (inv_opp_feb26) | 3 | Prohibited pricing (£99/£249) | NO |
+
+---
+
+### 4. Compliance health summary
+
+| Metric | Value |
+|---|---|
+| Documents scanned | 64 |
+| Documents with violations | 2 |
+| Violations with no open task | 2 |
+| Tier 1 documents with violations | 0 |
+
+**Compliance health:** 🟡 MINOR DRIFT — 2 documents still contain prohibited platform pricing (£99/£249). Both are Tier 3, both REQUIRES_REVIEW but no open Review tasks exist.
+
+**Immediate action required:** Create Review tasks for documents 110 and inv_opp_feb26, or run Work Queue to detect and auto-fix these prohibited values.
+
+---
+
+---
+
+# SECTION 3 — PROMPT INTEGRITY (058)
+
+## 058 PROMPT INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Prompts assessed:** 7
+
+---
+
+### 1. Prompt assessments
+
+#### `POST /recommendation/analyze` (Transcript Analysis)
+**File:** artifacts/api-server/src/routes/recommendation/index.ts, ~line 497
+**Purpose:** Analyse an investor call transcript to detect persona, stage, readiness, objections, and gaps.
+
+**Data injected at runtime:** transcript, lead history (send_log, pipeline_stage), intelligence profile (cluster, qualification, hot_button, blocker, readiness), belief states with registry names, persona guide (520 markdown), pipeline stages list, questions_answered checklist.
+
+**Data available but NOT injected:**
+- Compliance constants — transcript may reference outdated figures that the analysis should flag.
+
+**Hardcoded values that should come from DB:**
+- None. Persona guide is loaded from file. Pipeline stages from constant list.
+
+**Output schema — prompt instructs Claude to return:** detected_persona (name, confidence_score, evidence), pipeline_stage (stage, confidence_score, rationale), readiness_score, objections[], blocking_objections[], information_gaps[], primary_issue, recommended_next_action, questions_answered, transcript_summary, pipeline_stage_suggestion.
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — output changes materially with different lead_id and transcript content.
+
+**Status:** CURRENT
+
+**Impact:** None — prompt is fit for purpose.
+
+---
+
+#### `POST /recommendation/rank` (Document Ranking)
+**File:** artifacts/api-server/src/routes/recommendation/index.ts, ~line 928
+**Purpose:** Rank available documents by relevance for a specific lead.
+
+**Data injected at runtime:** detected_persona, pipeline_stage, transcript_summary, objections, persona route rules, stage rules, candidate document list with descriptions and Worth-it weights.
+
+**Data available but NOT injected:**
+- Lead intelligence profile (hot_button, cluster, primary_blocker) — could influence ranking priority.
+- Compliance constants — not validated against document content before recommending.
+
+**Hardcoded values that should come from DB:**
+- None identified.
+
+**Output schema — prompt instructs Claude to return:** ranked_documents[] with document_id, priority, rationale, relevance_score.
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — ranking changes with different persona/stage/transcript.
+
+**Status:** CURRENT
+
+**Impact:** Minor — ranking could benefit from hot_button awareness but produces useful results without it.
+
+---
+
+#### `POST /recommendation/email-draft` (Email Generation)
+**File:** artifacts/api-server/src/routes/recommendation/index.ts, ~line 1258
+**Purpose:** Generate a personalised email to accompany documents being sent.
+
+**Data injected at runtime:** lead_name, detected_persona, pipeline_stage, document_names, transcript_summary, email templates (230 markdown, first 4000 chars).
+
+**Data available but NOT injected:**
+- Intelligence profile (hot_button, hot_button_quote, cluster, primary_blocker) from leadIntelligenceTable.
+- Belief states — which beliefs the documents target.
+
+**Hardcoded values that should come from DB:**
+- "Founding investor" (line 1280) — terminology, matches DB `instrument` constant. LOW risk.
+- "Instant Investment" (line 1280) — terminology, matches DB. LOW risk.
+- "Clarity, without complexity" (line 1281) — tagline, matches DB `product_tagline`. LOW risk.
+- "Never publish discount tier percentages" (line 1282) — prohibition rule, matches DB `platform_pricing_prohibition` spirit. LOW risk.
+
+**Output schema — prompt instructs Claude to return:** subject, body, template_used.
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** PARTIALLY SENSITIVE — changes with persona/stage/docs, but ignores individual investor emotional drivers (hot_button).
+
+**Status:** PARTIALLY STALE — does not use intelligence profile data that now exists in the system.
+
+**Impact:** MEDIUM — emails are persona-personalised but not individually targeted. Two investors with the same persona but different hot buttons receive effectively identical emails.
+
+---
+
+#### `POST /leads/:id/intelligence/generate` (Intelligence Profile Generation)
+**File:** artifacts/api-server/src/routes/lead-intelligence/index.ts, ~line 45
+**Purpose:** Extract structured intelligence profile from lead notes and transcripts.
+
+**Data injected at runtime:** lead.name, lead.notes, lead.transcript_text.
+
+**Data available but NOT injected:**
+- Current belief states — could ground the extraction in what the system already knows.
+- Send log — context about what the investor has seen.
+
+**Hardcoded values that should come from DB:**
+- None. Cluster definitions, qualification criteria, and hot_button options are prompt-internal taxonomies.
+
+**Output schema — prompt instructs Claude to return:** qualification_status, cluster, hot_button, profile_summary, SPIN fields, readiness_status, blocker, and 15+ financial/status flags.
+**Output schema — calling code expects:** Same fields via ALLOWED_FIELDS list.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — output changes materially based on notes/transcript content.
+
+**Status:** CURRENT
+
+**Impact:** None — the function's purpose is extraction from unstructured text, not synthesis across system data.
+
+---
+
+#### `POST /generation/generate` (Document Generation)
+**File:** artifacts/api-server/src/routes/generation/index.ts, ~line 65
+**Purpose:** Generate a new investor-facing document using AI, compliant with regulations.
+
+**Data injected at runtime:** document_type, requirements, target_personas, pipeline_stage_relevance, complianceText (from complianceConstantsService), acuSection (locked ACUs + prohibited ACUs).
+
+**Data available but NOT injected:**
+- None significant — this is a system-level generation, not lead-specific.
+
+**Hardcoded values that should come from DB:**
+- None. Compliance constants and ACUs are fetched from DB.
+
+**Output schema — prompt instructs Claude to return:** content (Markdown), metadata (word_count, compliance_references, tone_assessment).
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — changes with document type, requirements, personas, compliance context.
+
+**Status:** CURRENT
+
+**Impact:** None.
+
+---
+
+#### `POST /work-queue/start` → `runAnalysis` (Compliance Audit)
+**File:** artifacts/api-server/src/routes/work-queue/index.ts, ~line 495
+**Purpose:** Analyse documents for compliance violations against current prohibited and canonical values.
+
+**Data injected at runtime:** document.name, document.content, prohibitedList (all ACTIVE prohibited compliance constants), canonicalList (all ACTIVE canonical compliance constants).
+
+**Data available but NOT injected:**
+- Locked ACUs — the work queue checks compliance constants but not ACU consistency.
+
+**Hardcoded values that should come from DB:**
+- None. All compliance values are fetched from DB.
+
+**Output schema — prompt instructs Claude to return:** JSON array of findings with finding_type (auto_fix/decision_card), issue_description, original_text, proposed_fix, severity.
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — output depends on document content and current compliance constants.
+
+**Status:** CURRENT
+
+**Impact:** None.
+
+---
+
+#### `POST /content/gaps` → `generateBriefFromGap` (Content Brief Generation)
+**File:** artifacts/api-server/src/routes/content/gaps.ts, ~line 410
+**Purpose:** Generate a content brief to fill an identified coverage gap.
+
+**Data injected at runtime:** gapDescription, contentBankText (700 markdown), masterGenerationContext (065 markdown), complianceText (from compliance constants service).
+
+**Data available but NOT injected:**
+- Belief registry — the brief could specify which beliefs the new document should target.
+- Existing document belief_targets — to avoid duplication of belief coverage.
+
+**Hardcoded values that should come from DB:**
+- None. Compliance constants are fetched from DB.
+
+**Output schema — prompt instructs Claude to return:** title, document_type, archetypes, stages, key_messages, tone, length_guidance, compliance_considerations, source_material_pointers, information_needed[].
+**Output schema — calling code expects:** Same fields.
+**Schema match:** MATCHES
+
+**Context sensitivity:** SENSITIVE — output changes with gap description and available content.
+
+**Status:** CURRENT
+
+**Impact:** Minor — briefs could be more belief-aware but produce useful results.
+
+---
+
+### 2. Hardcoded values across all prompts
+
+| Prompt | Hardcoded value | Should come from | Risk |
+|---|---|---|---|
+| email-draft | "Founding investor" | DB `instrument` or conventions | LOW |
+| email-draft | "Instant Investment" | DB `instrument` constant | LOW |
+| email-draft | "Clarity, without complexity" | DB `product_tagline` constant | LOW |
+| email-draft | "Never publish discount tier percentages" | DB `platform_pricing_prohibition` | LOW |
+
+All hardcoded values match their DB counterparts. Risk is LOW because these are brand terminology unlikely to change, and the DB values serve as the compliance enforcement layer (via QC/work-queue), not the generation layer.
+
+---
+
+### 3. Prompt integrity verdict
+
+| Prompt | Status | Priority |
+|---|---|---|
+| /recommendation/analyze | CURRENT | LOW |
+| /recommendation/rank | CURRENT | LOW |
+| /recommendation/email-draft | PARTIALLY STALE | MEDIUM |
+| /intelligence/generate | CURRENT | LOW |
+| /generation/generate | CURRENT | LOW |
+| /work-queue/runAnalysis | CURRENT | LOW |
+| /content/gaps/generateBrief | CURRENT | LOW |
+
+**Recommendation:** PROMPTS ARE CURRENT — one prompt (email-draft) should be updated to include intelligence profile data (hot_button, cluster, blocker) when available.
+
+---
+
+---
+
+# SECTION 4 — RELATIONSHIP INTEGRITY (059)
+
+## 059 RELATIONSHIP INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Relationship types checked:** 5
+**Total references checked:** 21 belief→doc + 8 doc→belief_targets + 7 task→doc + 2 lead→send_log + 23 belief→doc validity = 61
+
+---
+
+### 1. Belief → Document references
+
+| Belief | primary_document_id | Document exists? | lifecycle_status | Valid? |
+|---|---|---|---|---|
+| C1 | 130 | YES | CURRENT | YES |
+| C2 | 120 | YES | CURRENT | YES |
+| C3 | 120 | YES | CURRENT | YES |
+| C4 | 196 | NO | — | **NO** |
+| C5 | 120 | YES | CURRENT | YES |
+| C6 | 130 | YES | CURRENT | YES |
+| F0 | 120 | YES | CURRENT | YES |
+| F1 | 120 | YES | CURRENT | YES |
+| F2 | 150 | YES | CURRENT | YES |
+| F3 | 130 | YES | CURRENT | YES |
+| G1 | 160 | YES | CURRENT | YES |
+| G2 | 140 | YES | CURRENT | YES |
+| G3 | 140 | YES | CURRENT | YES |
+| L1 | 170 | YES | CURRENT | YES |
+| L2 | 170 | YES | CURRENT | YES |
+| P2 | 150 | YES | CURRENT | YES |
+| P3 | 190 | YES | CURRENT | YES |
+| U1 | 140 | YES | CURRENT | YES |
+| U2 | 190 | YES | CURRENT | YES |
+| U3 | 120 | YES | CURRENT | YES |
+| U4 | 150 | YES | CURRENT | YES |
+
+Broken references: **C4 → document 196 does not exist in the database.**
+
+---
+
+### 2. Document belief_targets → Belief registry
+
+8 documents have belief_targets. All referenced belief_ids verified against belief_registry:
+
+- Doc 140: U1 ✓, G2 ✓, G3 ✓
+- Doc 160: U4 ✓, G1 ✓
+- Doc 170: L1 ✓, L2 ✓
+- Doc 150: U4 ✓, P2 ✓, F2 ✓
+- Doc 190: U2 ✓, P3 ✓
+- Doc 120: U3 ✓, C2 ✓, C3 ✓, C5 ✓, F0 ✓, F1 ✓
+- Doc 130: C1 ✓, C6 ✓, F3 ✓
+- Doc 100: U3 ✓, C4 ✓
+
+Orphaned belief_targets: None — all belief_ids exist in belief_registry.
+
+---
+
+### 3. Task → Document references
+
+| Task | Status | linked_doc | Doc exists? | lifecycle_status | Valid? |
+|---|---|---|---|---|---|
+| Review: Marketing_Investor_Conversion | Done | 220 | YES | CURRENT | YES |
+| Review: Pipedrive_Aircall_Setup | Done | 210 | YES | CURRENT | YES* |
+| Review: Pipedrive_Aircall_Setup | Done | 210 | YES | CURRENT | YES* |
+| Review: Agent_Quick_Reference | Done | 530 | YES | CURRENT | YES |
+| Review: Pack1_Email_Templates | Done | 230 | YES | CURRENT | YES |
+| Review: Agent_Training | Done | 510 | YES | CURRENT | YES |
+| Review: Cold_Call | Open | 500 | YES | CURRENT | YES |
+
+*Note: Doc 210 has review_state REQUIRES_REVIEW despite 2 Done tasks (flagged in Section 1 Q4).
+
+Invalid combinations found:
+- Task Open + document ARCHIVED: None
+- Task Open + document CLEAN: None
+- Task Done + document REQUIRES_REVIEW: 2 tasks (both for doc 210)
+
+---
+
+### 4. Lead send_log → Document references
+
+**lead_001 (Duncan Stewart):** send_log references documents 100, 110, 120, 170, "110_PROMO_Founding_Investor_Three_Page_V1_CURRENT" (file_code used as ID in one entry).
+- Documents 100, 110, 120, 170: All exist ✓
+- "110_PROMO_Founding_Investor_Three_Page_V1_CURRENT": This is a file_code, not an ID. The actual document ID is "110". **STALE REFERENCE** — will not match by ID lookup.
+
+**lead_002 (Sarah Mitchell):** send_log references documents 100, 190.
+- Documents 100, 190: All exist ✓
+
+Missing documents: 1 stale reference in lead_001 send_log (file_code used instead of ID).
+
+---
+
+### 5. Beliefs with no valid document
+
+| Belief | Name | Reason |
+|---|---|---|
+| C4 | The Timing Is Right | primary_document_id = 196, document does not exist |
+| L3 | (not in query results — no primary_document_id mapped) | No document mapped |
+| P1 | (not in query results — no primary_document_id mapped) | No document mapped |
+
+3 active beliefs cannot be recommended because they have no valid CURRENT document reference.
+
+---
+
+### 6. Relationship integrity verdict
+
+| Relationship | Broken | Stale | Status |
+|---|---|---|---|
+| Belief → Document | 1 (C4→196) | 0 | 🟡 |
+| Document belief_targets → Belief | 0 | 0 | 🟢 |
+| Task → Document | 0 | 2 (Done/still flagged) | 🟡 |
+| Lead send_log → Document | 0 | 1 (file_code ref) | 🟡 |
+| Beliefs without documents | 3 (C4, L3, P1) | — | 🟡 |
+
+**Recommendation:** FIX BROKEN REFERENCES — C4's primary_document_id points to non-existent document 196. L3 and P1 lack any document mapping (though P1 is a blocked belief). The stale send_log entry using file_code instead of ID should be corrected.
+
+---
+
+---
+
+# SECTION 5 — COVERAGE GAPS (061)
+
+## 061 COVERAGE GAPS OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Tables reviewed:** lead_intelligence, lead_beliefs, belief_transitions (does not exist as a table), work_queue_sessions, work_queue_findings, leads
+**UI pages reviewed:** 20 pages — Dashboard, Recommend, Leads, LeadDetail, Registry, DocumentDetail, ContentBank, Changelog, Generate, GapAnalysis, FeatureUpdates, CallPrep, PersonaAnalytics, ACU, Campaigns, CampaignDetail, ComplianceConstants, Import, Tasks, NotFound
+
+---
+
+### 1. Data generated but not surfaced in UI
+
+**`lead_intelligence` fields:**
+
+| Field | DISPLAYED | NOT DISPLAYED |
+|---|---|---|
+| qualification_status | DISPLAYED | |
+| cluster | DISPLAYED | |
+| hot_button | DISPLAYED | |
+| hot_button_quote | DISPLAYED | |
+| hot_button_confirmed | | NOT DISPLAYED |
+| profile_summary | DISPLAYED | |
+| readiness_status | DISPLAYED | |
+| recommended_action | DISPLAYED | |
+| primary_blocker | DISPLAYED | |
+| blocker_type | DISPLAYED | |
+| higher_rate_taxpayer | | NOT DISPLAYED |
+| capital_available | | NOT DISPLAYED |
+| self_directed | | NOT DISPLAYED |
+| open_to_early_stage_risk | | NOT DISPLAYED |
+| ifa_involved | | NOT DISPLAYED |
+| already_done_eis | | NOT DISPLAYED |
+| estate_above_2m | | NOT DISPLAYED |
+| assets_abroad | | NOT DISPLAYED |
+| vct_aim_experience | | NOT DISPLAYED |
+| qualification_notes | | NOT DISPLAYED |
+| spin_situation | | NOT DISPLAYED |
+| spin_problem | | NOT DISPLAYED |
+| spin_implication | | NOT DISPLAYED |
+| spin_need_payoff | | NOT DISPLAYED |
+
+#### `spin_situation`, `spin_problem`, `spin_implication`, `spin_need_payoff`
+**Where it lives:** lead_intelligence table
+**What it contains:** SPIN selling framework analysis — Situation (current circumstances), Problem (pain points), Implication (consequences of inaction), Need-payoff (benefits of solution).
+**Should it be surfaced?** YES
+**If YES — where:** Lead Detail → Intelligence & Beliefs tab, in a collapsible "SPIN Analysis" section below the profile summary.
+**Effort:** LOW
+
+#### `higher_rate_taxpayer`, `capital_available`, `self_directed`, `open_to_early_stage_risk`, `ifa_involved`, `already_done_eis`
+**Where it lives:** lead_intelligence table
+**What it contains:** Boolean/status flags that directly inform qualification decisions and document recommendations.
+**Should it be surfaced?** YES
+**If YES — where:** Lead Detail → Intelligence & Beliefs tab, as a compact "Qualification Signals" grid of pill badges.
+**Effort:** LOW
+
+#### `evidence`, `evidence_source`, `confidence` on lead_beliefs
+**Where it lives:** lead_beliefs table
+**What it contains:** Why a belief is in its current state, source of that evidence, and confidence level.
+**Should it be surfaced?** DEFERRED — currently no UI for entering evidence, so the fields are always null.
+
+#### `belief_transitions` table
+**Does not exist as a separate table.** Belief state changes are not logged anywhere. There is no history of belief transitions.
+**Should it be surfaced?** YES — but requires schema addition first.
+**Effort:** MEDIUM (schema + UI)
+
+#### `work_queue_sessions` and `work_queue_findings`
+**Where it lives:** work_queue_sessions, work_queue_findings tables
+**What it contains:** Compliance audit results, auto-fixes applied, decision cards pending.
+**Should it be surfaced?** YES — entire Work Queue UI is missing.
+**If YES — where:** Dedicated Work Queue page (new page needed).
+**Effort:** HIGH
+
+#### `notes_legacy` on leads
+**Where it lives:** leads table
+**What it contains:** Legacy/historical notes field.
+**Should it be surfaced?** DEFERRED — replaced by `notes` field which IS displayed.
+
+#### `transcript_text` on leads
+**Where it lives:** leads table
+**What it contains:** Raw call transcript text.
+**Should it be surfaced?** YES
+**If YES — where:** Lead Detail → Overview tab, collapsible "Transcript" section.
+**Effort:** LOW
+
+---
+
+### 2. API endpoints with no UI entry point
+
+| Endpoint | What it does | UI entry point | Accessible to operator? |
+|---|---|---|---|
+| GET /work-queue/status | Work queue session status | None | NO |
+| POST /work-queue/start | Start compliance audit | None | NO |
+| GET /work-queue/cards | Get pending decision cards | None | NO |
+| POST /work-queue/auto-fix | Apply auto-fixes | None | NO |
+| POST /work-queue/cards/:id/accept | Accept a decision card | None | NO |
+| POST /work-queue/cards/:id/skip | Skip a decision card | None | NO |
+| GET /work-queue/summary | Session summary counts | None | NO |
+| GET /prompts | List system prompts | None | NO |
+| GET /prompts/:id | Get prompt detail | None | NO |
+| GET /templates | List output templates | None | NO |
+| GET /templates/:id | Get template detail | None | NO |
+| GET /videos | List video assets | None | NO |
+| POST /videos/:id/promote | Promote video version | None | NO |
+| POST /sheet-sync/sync | Sync from Google Sheet | None | NO |
+| GET /sheet-sync/sessions | List sync sessions | None | NO |
+| GET /leads/match | Fuzzy lead matching | None | NO |
+
+---
+
+### 3. High-value invisible fields
+
+| Field | Table | Contains | Where to surface | Value |
+|---|---|---|---|---|
+| SPIN fields (4) | lead_intelligence | Selling framework analysis | Lead Detail Intelligence tab | Operators see the "why" behind qualification — directly actionable in calls |
+| Qualification signals (6) | lead_intelligence | Tax, capital, risk appetite flags | Lead Detail Intelligence tab | Quick visual confirmation of qualification criteria met/unmet |
+| transcript_text | leads | Raw call transcript | Lead Detail Overview tab | Operators can re-read the original call without leaving the platform |
+| Work Queue (all) | work_queue_* | Compliance audit results | New Work Queue page | 55 findings currently invisible — operators cannot see or act on compliance issues |
+| Sheet Sync | sheet_sync_* | Transcript import status | Import page | Operators cannot trigger or monitor sheet syncs from the UI |
+
+---
+
+### 4. Coverage gaps verdict
+
+**Recommendation:** SIGNIFICANT VALUE BURIED — The entire Work Queue system (7 endpoints, 55 findings) has no UI. SPIN analysis data is generated but invisible. 6 qualification signal flags are computed but not shown.
+
+**Highest priority gap:** Work Queue UI — 55 compliance findings exist in the database with no way for operators to see, approve, or act on them.
+
+---
+
+---
+
+# SECTION 6 — SEQUENCE INTEGRITY (062)
+
+## 062 SEQUENCE INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** 2026-04-06
+**Leads checked:** 8
+**Documents checked:** 84
+
+---
+
+### 1. Belief hard gate violations
+
+**F0 gate: F1/F2/F3 ESTABLISHED without F0**
+Result: None (referenced from Section 1 Q2).
+
+**U4 gate: risk profile confirmed without U4 ESTABLISHED**
+Violations: None — no leads have open_to_early_stage_risk set without U4 being ESTABLISHED.
+
+---
+
+### 2. Document send sequence violations
+
+**Pack 1 or Pack 2 sent but F0 not established:**
+
+Inspecting send_logs:
+- **lead_001 (Duncan Stewart):** Sent documents 120 (Pack 1) on 2026-03-30. F0 state: NULL (not ESTABLISHED).
+  **VIOLATION:** Pack 1 was sent to Duncan Stewart without F0 being established. However, this is a pre-belief-system send (belief system was built after the send occurred).
+
+- **lead_002 (Sarah Mitchell):** Sent documents 100, 190 only. No Pack 1/Pack 2 sends. F0 is ESTABLISHED. No violation.
+
+Violations found: 1 historical violation (lead_001, pre-belief-system). No violations since belief system was implemented.
+
+---
+
+### 3. Work queue sequence violations
+
+**Sessions marked COMPLETE with pending findings:**
+Violations: None
+
+**Auto-fix applied but text not found in document:**
+10 AUTO_FIXED findings found. Spot-checking:
+- Finding f055c8de: Fixed "SEIS/SEIS" → "EIS/SEIS" in doc 220. Doc 220 review_state is CLEAN (fix was applied). ✓
+- Finding 105f137d: Fixed "subscriptions start at £99/month..." → "Founding investors receive lifetime premium access..." in doc 510. Doc 510 review_state is CLEAN. ✓
+- Finding 3a2ab489: Fixed "20 pence on the pound" → "27.5p per pound" in doc 510. ✓
+
+Violations: None — all sampled auto-fixes were successfully applied.
+
+---
+
+### 4. Intelligence generation without basis
+
+Leads with intelligence but no source data:
+| lead_id | name | notes | transcript_text | qualification_status |
+|---|---|---|---|---|
+| lead_001 | Duncan Stewart | NULL | NULL | INSUFFICIENT_DATA |
+
+**1 lead** has an intelligence profile despite having no notes or transcript. The qualification_status is INSUFFICIENT_DATA and profile_summary is empty, which is the correct degraded state. This is not a true violation — the intelligence was likely generated from now-deleted notes, or generated when notes existed and they were later cleared.
+
+---
+
+### 5. Sequence integrity verdict
+
+| Sequence domain | Violations | Severity |
+|---|---|---|
+| Belief hard gates (F0) | 0 | 🟢 |
+| U4 gate | 0 | 🟢 |
+| Document send gates | 1 (historical, pre-system) | 🟢 |
+| Work queue integrity | 0 | 🟢 |
+| Intelligence basis | 1 (degraded gracefully) | 🟢 |
+
+**Recommendation:** SEQUENCE IS CLEAN — the single historical send-gate violation predates the belief system. All work queue sequences are correct. Intelligence degradation is handled gracefully.
+
+---
+
+---
+
+# COMBINED AUDIT SUMMARY
+
+## Priority action list
+
+| # | Finding | Section | Severity | Action required |
+|---|---|---|---|---|
+| 1 | Work Queue has no UI — 55 findings, 7 endpoints invisible | 061 | HIGH | Build Work Queue page with start/cards/auto-fix/accept/skip UI |
+| 2 | 2 documents contain prohibited pricing (£99/£249) with no open Review tasks | 057 | HIGH | Create Review tasks for docs 110 and inv_opp_feb26, or run Work Queue |
+| 3 | Belief C4 references non-existent document 196 | 059 | MEDIUM | Map C4 to an existing CURRENT document or create document 196 |
+| 4 | 3 beliefs (C4, L3, P1) have no valid document for recommendation | 059 | MEDIUM | Map L3 to a document; P1 is blocked so acceptable as unmapped |
+| 5 | Document 210 has review_state REQUIRES_REVIEW despite 2 Done Review tasks | 056 | MEDIUM | Fix task completion flow to reset review_state, or manually set doc 210 to CLEAN |
+| 6 | 8 ESTABLISHED beliefs have no evidence/confidence recorded | 056 | MEDIUM | Update UI to capture evidence when changing belief state |
+| 7 | Email-draft prompt ignores lead intelligence (hot_button, cluster, blocker) | 058 | MEDIUM | Inject intelligence profile into email-draft prompt |
+| 8 | SPIN fields generated but not shown in UI | 061 | LOW | Add SPIN Analysis section to Lead Detail page |
+| 9 | 6 qualification signal flags not shown in UI | 061 | LOW | Add Qualification Signals grid to Lead Detail page |
+| 10 | lead_001 send_log contains file_code instead of document ID | 059 | LOW | Correct the stale reference in send_log |
+| 11 | transcript_text not surfaced in UI | 061 | LOW | Add collapsible Transcript section to Lead Detail |
+
+## Overall system health
+
+| Dimension | Status | Key finding |
+|---|---|---|
+| Data integrity (056) | 🟡 | 8 ESTABLISHED beliefs lack evidence; doc 210 review_state stale after task completion |
+| Compliance drift (057) | 🟡 | 2 documents contain prohibited pricing with no open tasks |
+| Prompt integrity (058) | 🟢 | All prompts current; email-draft partially stale (missing intelligence context) |
+| Relationship integrity (059) | 🟡 | C4→doc 196 broken; 3 beliefs unrecommendable; 1 stale send_log reference |
+| Coverage gaps (061) | 🔴 | Entire Work Queue system (55 findings) invisible; SPIN fields buried |
+| Sequence integrity (062) | 🟢 | All sequences clean; 1 historical pre-system violation |
+
+**Single most important fix:** Build the Work Queue UI. The backend has detected 55 compliance findings across documents, including auto-fixes and decision cards, but operators have zero visibility into this data. The system is doing compliance work that nobody can see or act on.
+
+**Safe to keep building:** YES — the codebase is structurally sound with no hollow functions, no broken sequences, and no systemic data corruption. The compliance drift is minor (2 documents, Tier 3). The coverage gap (Work Queue UI) is a feature gap, not a safety issue. Building can continue while the Work Queue UI is prioritised as the next feature.
