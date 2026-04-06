@@ -1,0 +1,327 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+---
+
+# PHASE DOC — Investor Intelligence & Belief State System (Phase 010b1: CRUD API)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-010b1
+Effort: 4–5 hours
+Dependencies: RR-2026-04-06-010a (all four belief tables and updated leads schema must exist)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Exposes the belief state and intelligence tables via API endpoints, fixes three notes-field inconsistencies introduced by the Phase 010a schema migration, and updates the lead detail endpoint to return `transcript_text` and `notes`. Adds CRUD endpoints for beliefs (registry read, per-lead belief state read/update), intelligence (read/update), and a notes save endpoint. No LLM calls in this phase — all endpoints are deterministic CRUD.
+
+---
+
+## Section 2 — Why this is necessary
+
+The four tables from Phase 010a have no API access. The lead detail page cannot read `transcript_text` or `notes`. Three bugs were introduced by the notes jsonb→text migration: `POST /leads` writes an array to a text column, and two endpoints return `|| []` fallback producing type-inconsistent responses. These must be fixed before Phase 010b2 builds on top of them.
+
+---
+
+## Section 3 — Current state
+
+From the Phase 010b1 Step 1 scan:
+
+- `artifacts/api-server/src/routes/leads/index.ts`:
+  - `GET /leads/:id` returns `notes: lead.notes || []` — type inconsistency (text column returns string or array)
+  - `PATCH /leads/:id` response returns `notes: lead.notes || []` — same issue
+  - `POST /leads` sets `notes: []` in insert values — writes JavaScript array to text column
+  - `transcript_text` is NOT in the GET /leads/:id response field mapping
+  - `notes` (text) is NOT correctly typed in the response
+
+- `artifacts/api-server/src/routes/index.ts`: No belief routers mounted. 19 routers currently.
+
+- All four belief/intelligence tables exist in DB with correct schemas.
+  - `lead_beliefs`: unique constraint on (lead_id, belief_id), FKs to leads and belief_registry
+  - `belief_transitions`: no FK constraints (plain text lead_id, belief_id)
+  - `lead_intelligence`: unique lead_id, FK to leads
+  - `belief_registry`: 23 rows seeded
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] API — new routers, updated existing endpoint response mappings
+- [x] Additive edits to existing files — leads/index.ts fixes, routes/index.ts mounts
+Layer count: 2 (API, Additive edits)
+Split required: NO — deterministic CRUD only.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Fix notes inconsistencies in leads/index.ts
+
+File: `artifacts/api-server/src/routes/leads/index.ts` (surgical edits — three fixes only)
+
+**Fix 1 — POST /leads insert:**
+Change `notes: []` in the db.insert values to `notes: null`.
+
+**Fix 2 — GET /leads/:id response mapping:**
+Change `notes: lead.notes || []` to `notes: lead.notes ?? null`.
+Also add `transcript_text: lead.transcript_text ?? null` to the response mapping.
+
+**Fix 3 — PATCH /leads/:id response:**
+Change `notes: lead.notes || []` to `notes: lead.notes ?? null`.
+
+No other changes to leads/index.ts.
+
+---
+
+### 5.2 — Add PATCH /leads/:id/notes endpoint
+
+File: `artifacts/api-server/src/routes/leads/index.ts` (additive — new endpoint)
+
+Add this endpoint in the route file. It must appear BEFORE any `/:id` parameterised routes in the file to avoid being captured by them. Since the existing file already has static routes before parameterised ones, insert this in the same static section.
+
+**PATCH /leads/:id/notes**
+
+- Body: `{ notes: string }`
+- Validate: `notes` must be a string (may be empty string). If not a string: return 400 `{ error: 'notes must be a string' }`
+- Fetch lead by id — if not found: 404 `{ error: 'Lead not found' }`
+- Update `leadsTable` set `notes = body.notes`, `updated_at = new Date()`
+- Write changelog: `action: 'LEAD_NOTES_UPDATED'`, `lead_id: id`, `details: 'Notes updated'`, `triggered_by: 'operator'`
+- Return 200 `{ id, notes: updated.notes }`
+- Error: 500 `{ error: 'Failed to update notes' }`
+
+---
+
+### 5.3 — New router: beliefs (registry)
+
+File: `artifacts/api-server/src/routes/beliefs/index.ts` (create new file)
+
+Create an Express Router. Define one endpoint with path `/beliefs`:
+
+**GET /beliefs**
+- Query all rows from `beliefRegistryTable` ordered by `id` ascending
+- Return `{ beliefs: BeliefRegistry[] }`
+- Error: 500 `{ error: 'Failed to fetch beliefs' }`
+
+---
+
+### 5.4 — New router: lead beliefs
+
+File: `artifacts/api-server/src/routes/lead-beliefs/index.ts` (create new file)
+
+Create an Express Router. Declare routes in this exact order (static before parameterised):
+
+**GET /leads/:leadId/beliefs**
+- Fetch all rows from `leadBeliefsTable` where `lead_id = leadId`
+- Join with `beliefRegistryTable` to include for each belief: `name`, `cluster`, `cluster_display_name`, `cluster_tagline`, `is_hard_gate`, `policy_status`, `primary_document_id`
+- If no belief rows exist for this lead, return `{ beliefs: [] }` (not 404)
+- Return `{ beliefs: Array<LeadBelief & registry fields> }`
+- Error: 500 `{ error: 'Failed to fetch lead beliefs' }`
+
+**PATCH /leads/:leadId/beliefs/:beliefId**
+- Must be declared AFTER `GET /leads/:leadId/beliefs` in this file
+- Body: `{ state?: string, investor_relevance?: string, evidence?: string, evidence_source?: string, confidence?: string, relevance_rationale?: string }`
+- Validate `state` if provided: must be one of `'UNKNOWN'`, `'ABSENT'`, `'PARTIAL'`, `'ESTABLISHED'`, `'BLOCKED'` — else 400 `{ error: 'Invalid state' }`
+- Validate `investor_relevance` if provided: must be one of `'high'`, `'standard'`, `'low'`, `'not_applicable'` — else 400 `{ error: 'Invalid investor_relevance' }`
+- Check if a `lead_beliefs` row exists for (leadId, beliefId):
+  - If EXISTS and new `state` differs from current state: insert a `belief_transitions` row with `from_state`, `to_state`, `triggered_by: 'manual'`. Then update the `lead_beliefs` row.
+  - If EXISTS and state unchanged (or state not provided): update other fields only. No transition record.
+  - If NOT EXISTS: create a new `lead_beliefs` row. Default state to `'UNKNOWN'` if not provided. No transition record for first creation.
+- Return 200 with the updated/created belief row including registry join fields
+- Write changelog: `action: 'BELIEF_STATE_UPDATED'`, `lead_id: leadId`, `details: 'Belief [beliefId] updated to [state]'`, `triggered_by: 'operator'`
+- Error: 500 `{ error: 'Failed to update belief' }`
+
+---
+
+### 5.5 — New router: lead intelligence
+
+File: `artifacts/api-server/src/routes/lead-intelligence/index.ts` (create new file)
+
+Create an Express Router. Declare routes in this exact order:
+
+**GET /leads/:leadId/intelligence**
+- Fetch row from `leadIntelligenceTable` where `lead_id = leadId`
+- If no row: return `{ intelligence: null }` (not 404)
+- If row exists: return `{ intelligence: LeadIntelligence }`
+- Error: 500 `{ error: 'Failed to fetch intelligence' }`
+
+**PATCH /leads/:leadId/intelligence**
+- Body: any subset of `leadIntelligenceTable` fields (all optional)
+- Allowed fields: `qualification_status`, `higher_rate_taxpayer`, `capital_available`, `self_directed`, `open_to_early_stage_risk`, `qualification_notes`, `cluster`, `ifa_involved`, `already_done_eis`, `estate_above_2m`, `assets_abroad`, `vct_aim_experience`, `hot_button`, `hot_button_confirmed`, `hot_button_quote`, `spin_situation`, `spin_problem`, `spin_implication`, `spin_need_payoff`, `readiness_status`, `primary_blocker`, `blocker_type`, `recommended_action`, `profile_summary`
+- Upsert: if no `lead_intelligence` row exists, create one. If exists, update it.
+- Set `last_updated: new Date()` on every write
+- Return 200 `{ intelligence: LeadIntelligence }`
+- Write changelog: `action: 'INTELLIGENCE_UPDATED'`, `lead_id: leadId`, `details: 'Intelligence record updated'`, `triggered_by: 'operator'`
+- Error: 500 `{ error: 'Failed to update intelligence' }`
+
+---
+
+### 5.6 — Mount new routers in routes/index.ts
+
+File: `artifacts/api-server/src/routes/index.ts` (additive edit)
+
+Import and mount three new routers after the existing sheetSync mount:
+
+```typescript
+import beliefsRouter from './beliefs';
+import leadBeliefsRouter from './lead-beliefs';
+import leadIntelligenceRouter from './lead-intelligence';
+
+router.use(beliefsRouter);
+router.use(leadBeliefsRouter);
+router.use(leadIntelligenceRouter);
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `GET /api/leads/:id` response includes `transcript_text` (string or null) and `notes` (string or null). Manual test required: call GET /api/leads/:id and confirm both fields in response.
+
+AC2. `GET /api/leads/:id` returns `notes: null` for leads where notes is null, not `notes: []`. Manual test required: call for a lead with no notes — confirm `notes` is `null`.
+
+AC3. `PATCH /api/leads/:id/notes` with `{ "notes": "Test note" }` returns 200 with `{ id, notes: "Test note" }`. Changelog row with `action = 'LEAD_NOTES_UPDATED'` exists. Manual test required.
+
+AC4. `PATCH /api/leads/:id/notes` with `{ "notes": 123 }` returns 400 `{ "error": "notes must be a string" }`.
+
+AC5. `PATCH /api/leads/:id/notes` with `{ "notes": "" }` returns 200. Empty string is valid.
+
+AC6. `GET /api/beliefs` returns 200 with `{ beliefs: [...] }` containing exactly 23 beliefs ordered by id ascending. Manual test required.
+
+AC7. `GET /api/leads/:leadId/beliefs` returns 200 with `{ beliefs: [] }` for a lead with no belief records. Manual test required.
+
+AC8. `GET /api/leads/:leadId/beliefs` returns belief rows with `name`, `cluster`, `is_hard_gate`, `policy_status`, `primary_document_id` from the registry join. Manual test required: create a belief row, then call.
+
+AC9. `PATCH /api/leads/:leadId/beliefs/:beliefId` with `{ "state": "PARTIAL" }` on a lead with no existing belief row creates a new `lead_beliefs` row with state `PARTIAL`. No `belief_transitions` row is created. Manual test required: inspect both tables.
+
+AC10. `PATCH /api/leads/:leadId/beliefs/:beliefId` with `{ "state": "ESTABLISHED" }` on a lead that already has `state: "PARTIAL"` for that belief: updates to `ESTABLISHED` AND creates a `belief_transitions` row with `from_state: 'PARTIAL'`, `to_state: 'ESTABLISHED'`, `triggered_by: 'manual'`. Manual test required.
+
+AC11. `PATCH /api/leads/:leadId/beliefs/:beliefId` with `{ "state": "InvalidState" }` returns 400 `{ "error": "Invalid state" }`.
+
+AC12. `GET /api/leads/:leadId/intelligence` returns `{ intelligence: null }` for a lead with no intelligence record. Manual test required.
+
+AC13. `PATCH /api/leads/:leadId/intelligence` with `{ "cluster": "growth_seeker", "hot_button": "freedom" }` creates a row if none exists, returns 200 with the full intelligence record. Changelog row with `action = 'INTELLIGENCE_UPDATED'` exists. Manual test required.
+
+AC14. `PATCH /api/leads/:leadId/intelligence` called twice creates only one row. Manual test required: call twice, then `SELECT COUNT(*) FROM lead_intelligence WHERE lead_id = :id` — must return 1.
+
+AC15. `POST /api/leads` no longer writes an array to the `notes` column. Manual test required: create a new lead, inspect `notes` column in DB — must be `null`.
+
+AC16. `GET /api/beliefs` returns `is_hard_gate: true` for U4 and F0. Manual test required.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/routes/leads/index.ts`: only three surgical fixes (5.1) and one new endpoint (5.2) — no other changes
+- `artifacts/api-server/src/routes/index.ts`: additive only — three new mounts after existing mounts
+- Belief state canonical values: `'UNKNOWN'`, `'ABSENT'`, `'PARTIAL'`, `'ESTABLISHED'`, `'BLOCKED'`
+- Investor relevance canonical values: `'high'`, `'standard'`, `'low'`, `'not_applicable'`
+- `belief_transitions` rows written ONLY when state changes — not on first creation
+- `lead_intelligence` one-row-per-lead — upsert, never duplicate
+- Static routes before parameterised in all new router files
+- All IDs via `randomUUID()` from `crypto`
+- Changelog entries inline — no shared helper
+- `propagateFromDocument()` must not be called
+- No Orval codegen
+
+---
+
+## Section 8 — Non-goals
+
+- No `GET /next`, `POST /analyze`, `GET /gates`, or `POST /intelligence/generate` — Phase 010b2
+- No Recommendation Engine changes — Phase 010c
+- No frontend changes — Phase 010d
+- No fix to `UpdateLeadBody` Zod schema in `@workspace/api-zod`
+- No seeding of `belief_targets` on existing documents
+
+---
+
+## Section 9 — Assumptions
+
+- `leadBeliefsRouter` defines full paths internally: `router.get('/leads/:leadId/beliefs', ...)` — consistent with codebase pattern where paths are defined inside sub-routers
+- Drizzle leftJoin or secondary select is acceptable for registry join in GET /leads/:leadId/beliefs
+- Upsert in PATCH /leads/:leadId/intelligence: check-then-insert-or-update pattern is acceptable (or `onConflictDoUpdate` if preferred)
+- `randomUUID` imported from `'crypto'`
+
+---
+
+## Section 10 — Rollback
+
+1. Revert three surgical fixes in `leads/index.ts`
+2. Remove PATCH /leads/:id/notes endpoint from `leads/index.ts`
+3. Delete three new router files
+4. Remove three router mounts from `routes/index.ts`
+
+No schema changes. No data loss.
+
+---
+
+## Section 11 — What comes next
+
+Phase 010b2 adds LLM-backed endpoints: GET /next, POST /analyze, GET /gates, POST /intelligence/generate. Requires Step 1 rescan of the new router files from this phase.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, risks]
+
+PHASE DOC FINAL:
+[paste here]

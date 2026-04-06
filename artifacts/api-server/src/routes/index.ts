@@ -18,6 +18,9 @@ import complianceConstantsRouter from "./compliance-constants";
 import importRouter from "./import";
 import tasksRouter from "./tasks";
 import sheetSyncRouter from "./sheet-sync";
+import beliefsRouter from "./beliefs";
+import leadBeliefsRouter from "./lead-beliefs";
+import leadIntelligenceRouter from "./lead-intelligence";
 
 const router: IRouter = Router();
 
@@ -40,5 +43,8 @@ router.use(complianceConstantsRouter);
 router.use(importRouter);
 router.use(tasksRouter);
 router.use("/sheet-sync", sheetSyncRouter);
+router.use(beliefsRouter);
+router.use(leadBeliefsRouter);
+router.use(leadIntelligenceRouter);
 
 export default router;

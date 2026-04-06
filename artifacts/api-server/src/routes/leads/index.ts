@@ -91,7 +91,7 @@ router.post("/leads", async (req, res): Promise<void> => {
       archived: false,
       send_log: [],
       stage_history: [{ stage, date: now, logged_by: "system" }],
-      notes: [],
+      notes: null,
       source: source || null,
       transcript_filename: transcript_filename || null,
     })
@@ -164,7 +164,8 @@ router.get("/leads/:id", async (req, res): Promise<void> => {
     send_log: sendLog,
     send_count: sendLog.length,
     stage_history: lead.stage_history || [],
-    notes: lead.notes || [],
+    notes: lead.notes ?? null,
+    transcript_text: lead.transcript_text ?? null,
   });
 });
 
@@ -229,8 +230,44 @@ router.patch("/leads/:id", async (req, res): Promise<void> => {
     updated_at: lead.updated_at.toISOString(),
     send_log: lead.send_log || [],
     stage_history: lead.stage_history || [],
-    notes: lead.notes || [],
+    notes: lead.notes ?? null,
   });
+});
+
+router.patch("/leads/:id/notes", async (req, res): Promise<void> => {
+  const id = req.params.id;
+  const { notes } = req.body;
+
+  if (typeof notes !== "string") {
+    res.status(400).json({ error: "notes must be a string" });
+    return;
+  }
+
+  try {
+    const [existing] = await db.select().from(leadsTable).where(eq(leadsTable.id, id));
+    if (!existing) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(leadsTable)
+      .set({ notes, updated_at: new Date() })
+      .where(eq(leadsTable.id, id))
+      .returning();
+
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "LEAD_NOTES_UPDATED",
+      lead_id: id,
+      details: "Notes updated",
+      triggered_by: "operator",
+    });
+
+    res.json({ id: updated.id, notes: updated.notes });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update notes" });
+  }
 });
 
 router.post("/leads/:id/confirm-persona", async (req, res): Promise<void> => {
