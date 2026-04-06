@@ -1,0 +1,351 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+CRITICAL NOTE — CONST DESTRUCTURING:
+Before implementing Step 2 (intelligence overrides for eis_familiar and
+adviser_mentioned): check whether these variables are declared as `const`
+after destructuring from req.body. If `const`, do NOT reassign them — instead
+declare new `let` variables (e.g. `let effective_eis_familiar`) and use those
+in the matrix logic downstream. Report which approach you used.
+
+---
+
+# PHASE DOC — Investor Intelligence & Belief State System (Phase 010c: Recommendation Engine Integration)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-010c
+Effort: 4–5 hours
+Dependencies: RR-2026-04-06-010b2
+Risk: HIGH
+Feature flag: belief_intelligence_v2: boolean
+
+---
+
+## Section 1 — Feature
+
+Extends `POST /recommendation/rank` with three belief-aware behaviours when a `lead_id` is provided: (1) hard gate exclusions — documents gated behind F0 are removed before Claude ranking; (2) intelligence-derived matrix flags — `eis_familiar` and `adviser_mentioned` auto-populated from `lead_intelligence`; (3) belief context on ranked output — each ranked document gains `belief_targeted`, `current_state`, `state_after_send`, `gate_it_unlocks`. When no `lead_id` provided, behaviour is completely unchanged.
+
+---
+
+## Section 2 — Why this is necessary
+
+Without this phase, the recommendation engine ranks documents without awareness of belief states or gates. A lead without F0 could receive Pack 1. The intelligence table stores `already_done_eis` and `ifa_involved` but rank ignores them.
+
+---
+
+## Section 3 — Current state
+
+From the Phase 010c Step 1 scan of `POST /recommendation/rank`:
+
+- Input: `lead_id` (optional), `detected_persona`, `pipeline_stage`, `transcript_summary`, `objections`, `eis_familiar` (bool), `iht_confirmed` (bool), `adviser_mentioned` (bool)
+- When `lead_id` provided: fetches lead from `leadsTable` for send history only — does NOT fetch `lead_intelligence` or `lead_beliefs`
+- Filter pipeline: lifecycle → review state → stage → persona → already-sent → usage matrix exclusion
+- No belief-based gate logic exists
+- `eis_familiar`/`iht_confirmed`/`adviser_mentioned` are request-supplied only
+- Ranked document output: `document_id`, `file_code`, `name`, `description`, `tier`, `priority`, `rank`, `relevance_score`, `worth_it`, `rationale` — no belief fields
+- `documentsTable` has `belief_targets` column (added in 010a, defaulting to `[]`) — not used in rank
+- `documentsTable` already imported in recommendation/index.ts
+- `eq` from drizzle-orm already imported in recommendation/index.ts
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Domain/API — surgical extension of one existing endpoint
+- [x] Additive edits to existing files
+
+Layer count: 2
+Split required: NO
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Surgical extension of POST /recommendation/rank
+
+File: `artifacts/api-server/src/routes/recommendation/index.ts` (surgical additive edit — rank handler only)
+
+DO NOT change any other endpoint. DO NOT restructure or reorganise.
+
+**New imports — add to existing `@workspace/db` import line (additive only):**
+```typescript
+leadBeliefsTable, leadIntelligenceTable
+```
+(`documentsTable` already imported — do not add again.)
+
+**Step 1 — Fetch belief and intelligence context**
+
+Insert AFTER existing send history lookup, BEFORE document fetch (`const allDocs`):
+
+```typescript
+// Belief and intelligence context (when lead_id provided)
+let beliefStateMap: Record<string, string> = {};
+let leadIntelligence: typeof leadIntelligenceTable.$inferSelect | null = null;
+
+if (lead_id) {
+  const beliefRows = await db.select({
+    belief_id: leadBeliefsTable.belief_id,
+    state: leadBeliefsTable.state,
+  }).from(leadBeliefsTable).where(eq(leadBeliefsTable.lead_id, lead_id));
+
+  beliefStateMap = Object.fromEntries(beliefRows.map(b => [b.belief_id, b.state]));
+
+  const intelRows = await db.select().from(leadIntelligenceTable)
+    .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+  leadIntelligence = intelRows[0] || null;
+}
+```
+
+**Step 2 — Override matrix flags from intelligence**
+
+Insert AFTER Step 1, BEFORE document fetch:
+
+```typescript
+// Override matrix flags from intelligence when available
+// NOTE: if eis_familiar/adviser_mentioned are const, use effective_ variables instead
+let effective_eis_familiar = eis_familiar;
+let effective_adviser_mentioned = adviser_mentioned;
+
+if (leadIntelligence) {
+  if (leadIntelligence.already_done_eis !== null && leadIntelligence.already_done_eis !== undefined) {
+    effective_eis_familiar = leadIntelligence.already_done_eis;
+  }
+  if (leadIntelligence.ifa_involved !== null && leadIntelligence.ifa_involved !== undefined) {
+    effective_adviser_mentioned = leadIntelligence.ifa_involved;
+  }
+}
+```
+
+Then replace all uses of `eis_familiar` and `adviser_mentioned` in the matrix/shouldExclude calls within this handler with `effective_eis_familiar` and `effective_adviser_mentioned`.
+
+**Step 3 — Hard gate exclusions**
+
+Insert AFTER pre-eligibility filter (`eligible` array built), BEFORE usage matrix exclusion:
+
+```typescript
+// Hard gate exclusions
+const F0_established = beliefStateMap['F0'] === 'ESTABLISHED';
+const U4_established = beliefStateMap['U4'] === 'ESTABLISHED';
+
+const FOUNDING_ROUND_FILE_CODES = ['120', '130'];
+const gateExcluded: Array<{ document_id: string; file_code: string; name: string; reason: string }> = [];
+
+const eligible_gated = eligible.filter(doc => {
+  if (FOUNDING_ROUND_FILE_CODES.includes(doc.file_code) && !F0_established) {
+    gateExcluded.push({
+      document_id: doc.id,
+      file_code: doc.file_code,
+      name: doc.name,
+      reason: 'Gate: F0 (Structurally Essential) not yet established',
+    });
+    return false;
+  }
+  return true;
+});
+
+excludedDocs.push(...gateExcluded);
+
+// U4 advisory flag — no exclusion, just a warning
+const U4_flag = !U4_established && lead_id
+  ? 'Note: U4 (EIS Risk Is Manageable) not yet established — avoid risk-appetite questions on this call'
+  : null;
+```
+
+Replace all subsequent uses of `eligible` in this handler with `eligible_gated`:
+- The empty eligible check: `if (eligible_gated.length === 0)`
+- The Claude candidate list: `eligible_gated.slice(0, 8)`
+- The merge step: look up in `eligible_gated`
+
+**Step 4 — Add belief context to ranked document output**
+
+Add helper function BEFORE the rank handler (outside the handler, not inside):
+
+```typescript
+function getGateUnlocked(beliefId: string): string | null {
+  const gateMap: Record<string, string> = {
+    'U4': 'can_ask_risk_appetite_question',
+    'F0': 'can_recommend_pack_1, can_recommend_pack_2, can_make_investment_ask',
+    'F1': 'can_make_investment_ask (partial)',
+    'F2': 'can_make_investment_ask (partial)',
+  };
+  return gateMap[beliefId] || null;
+}
+```
+
+After `rankedWithDetails` is built (after Claude response is parsed and merged), add belief context:
+
+```typescript
+// Add belief context fields to each ranked document
+const rankedWithBelief = await Promise.all(rankedWithDetails.map(async (doc) => {
+  const docRows = await db.select({ belief_targets: documentsTable.belief_targets })
+    .from(documentsTable)
+    .where(eq(documentsTable.id, doc.document_id))
+    .limit(1);
+
+  const beliefTargets = (docRows[0]?.belief_targets as Array<{belief_id: string, state_from: string, state_to: string}> | null) || [];
+
+  const matchingTarget = beliefTargets.find(bt =>
+    (beliefStateMap[bt.belief_id] || 'UNKNOWN') === bt.state_from
+  );
+
+  return {
+    ...doc,
+    belief_targeted: matchingTarget?.belief_id || null,
+    current_state: matchingTarget ? (beliefStateMap[matchingTarget.belief_id] || 'UNKNOWN') : null,
+    state_after_send: matchingTarget?.state_to || null,
+    gate_it_unlocks: matchingTarget ? getGateUnlocked(matchingTarget.belief_id) : null,
+  };
+}));
+```
+
+**Step 5 — Update final response**
+
+Replace `rankedWithDetails` with `rankedWithBelief` in the return statement.
+
+Add two new optional fields to the response object:
+
+```typescript
+u4_advisory: U4_flag,
+gate_summary: lead_id ? {
+  F0_established,
+  U4_established,
+  founding_round_docs_gated: !F0_established,
+} : undefined,
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `POST /recommendation/rank` with `lead_id` where F0 is NOT established: documents with `file_code` `'120'` and `'130'` absent from `ranked_documents`, present in `excluded_documents` with reason containing `'Gate: F0'`. Manual test required.
+
+AC2. `POST /recommendation/rank` with `lead_id` where F0 IS established: documents 120 and 130 eligible for ranking. Manual test required.
+
+AC3. `POST /recommendation/rank` with no `lead_id`: response shape identical to pre-010c — no `gate_summary`, no `u4_advisory`, belief fields on documents are null. Manual test required.
+
+AC4. With `lead_id` where U4 is NOT established: `u4_advisory` is a non-null string. Documents not excluded. Manual test required.
+
+AC5. With `lead_id` where U4 IS established: `u4_advisory` is null. Manual test required.
+
+AC6. With `lead_id` that has intelligence with `already_done_eis: true`, request body passes `eis_familiar: false`: matrix uses `effective_eis_familiar = true`. Manual test required.
+
+AC7. Each document in `ranked_documents` has four fields: `belief_targeted`, `current_state`, `state_after_send`, `gate_it_unlocks` (all string or null). Manual test required.
+
+AC8. `gate_summary` correctly reflects belief states for the lead. Manual test required.
+
+AC9. Lead with NO belief records: `gate_summary` shows `F0_established: false`, `U4_established: false`, `founding_round_docs_gated: true`. Documents 120/130 excluded. Manual test required.
+
+AC10. `excluded_documents` contains both gate-excluded AND usage-matrix-excluded documents. Manual test required.
+
+AC11. `POST /recommendation/rank` without `lead_id`: no regressions — identical response shape and ranking as before. Manual test required.
+
+---
+
+## Section 7 — Constraints
+
+- `recommendation/index.ts`: surgical addition to rank handler only — no other endpoints touched
+- `FOUNDING_ROUND_FILE_CODES = ['120', '130']` — only these two gated behind F0
+- U4: advisory flag only — no document exclusion
+- `belief_targets` lookup: per ranked document AFTER Claude ranking — not a pre-filter
+- Gate exclusions slot in AFTER pre-eligibility filter, BEFORE usage matrix
+- Intelligence overrides: `eis_familiar` (from `already_done_eis`) and `adviser_mentioned` (from `ifa_involved`) only — not `iht_confirmed`
+- New imports added to existing `@workspace/db` import line only
+- `propagateFromDocument()` must not be called
+- No Orval codegen
+- Backward compatibility: when `lead_id` absent, all new behaviour skipped
+
+---
+
+## Section 8 — Non-goals
+
+- No frontend changes — Phase 010d
+- No gating of documents other than 120 and 130
+- No document exclusion based on U4
+- No population of `belief_targets` data on documents
+- No changes to Claude ranking prompt
+
+---
+
+## Section 9 — Assumptions
+
+- `documentsTable` and `eq` already imported in recommendation/index.ts — do not duplicate
+- `eis_familiar`/`adviser_mentioned` may be `const` — use `effective_` variables if so
+- `belief_targets` is `[]` on most documents — belief context fields return null for these (acceptable)
+- `excludedDocs` is a mutable array — push is safe
+- `getGateUnlocked` declared outside handler to avoid re-declaration per request
+
+---
+
+## Section 10 — Rollback
+
+Feature flag: `belief_intelligence_v2: boolean`. If regressions occur, wrap all new behaviour in flag check.
+
+Full rollback: revert surgical addition to recommendation/index.ts. No schema changes. No data loss.
+
+---
+
+## Section 11 — What comes next
+
+Phase 010d adds frontend: notes textarea, Generate Profile button, Beliefs tab on lead detail page. Requires Step 1 rescan of `lead-detail.tsx`.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [none expected]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, risks]

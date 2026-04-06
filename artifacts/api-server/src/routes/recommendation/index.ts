@@ -664,6 +664,16 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
   }
 });
 
+function getGateUnlocked(beliefId: string): string | null {
+  const gateMap: Record<string, string> = {
+    'U4': 'can_ask_risk_appetite_question',
+    'F0': 'can_recommend_pack_1, can_recommend_pack_2, can_make_investment_ask',
+    'F1': 'can_make_investment_ask (partial)',
+    'F2': 'can_make_investment_ask (partial)',
+  };
+  return gateMap[beliefId] || null;
+}
+
 router.post("/recommendation/rank", async (req, res): Promise<void> => {
   const parsed = RankDocumentsBody.safeParse(req.body);
   if (!parsed.success) {
@@ -687,6 +697,34 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, lead_id));
     if (lead) {
       sentDocIds = ((lead.send_log as any[]) || []).flatMap((s: any) => s.documents_sent || []);
+    }
+  }
+
+  let beliefStateMap: Record<string, string> = {};
+  let leadIntelligence: typeof leadIntelligenceTable.$inferSelect | null = null;
+
+  if (lead_id) {
+    const beliefRows = await db.select({
+      belief_id: leadBeliefsTable.belief_id,
+      state: leadBeliefsTable.state,
+    }).from(leadBeliefsTable).where(eq(leadBeliefsTable.lead_id, lead_id));
+
+    beliefStateMap = Object.fromEntries(beliefRows.map(b => [b.belief_id, b.state]));
+
+    const intelRows = await db.select().from(leadIntelligenceTable)
+      .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+    leadIntelligence = intelRows[0] || null;
+  }
+
+  let effective_eis_familiar = eis_familiar;
+  let effective_adviser_mentioned = adviser_mentioned;
+
+  if (leadIntelligence) {
+    if (leadIntelligence.already_done_eis !== null && leadIntelligence.already_done_eis !== undefined) {
+      effective_eis_familiar = leadIntelligence.already_done_eis;
+    }
+    if (leadIntelligence.ifa_involved !== null && leadIntelligence.ifa_involved !== undefined) {
+      effective_adviser_mentioned = leadIntelligence.ifa_involved;
     }
   }
 
@@ -774,9 +812,9 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
       stage: pipeline_stage,
       alreadySent: sentShortCodes,
       currentResults: matrixResultCodes,
-      eisFamiliar: eis_familiar,
+      eisFamiliar: effective_eis_familiar,
       ihtConfirmed: iht_confirmed,
-      adviserMentioned: adviser_mentioned,
+      adviserMentioned: effective_adviser_mentioned,
     });
     if (result.excluded) {
       excludedDocs.push({
@@ -791,7 +829,36 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     return true;
   });
 
-  if (eligible.length === 0) {
+  const F0_established = beliefStateMap['F0'] === 'ESTABLISHED';
+  const U4_established = beliefStateMap['U4'] === 'ESTABLISHED';
+
+  let eligible_gated = eligible;
+
+  if (lead_id) {
+    const FOUNDING_ROUND_FILE_CODES = ['120', '130'];
+    const gateExcluded: Array<{ document_id: string; file_code: string; name: string; reason: string }> = [];
+
+    eligible_gated = eligible.filter(doc => {
+      if (FOUNDING_ROUND_FILE_CODES.some(code => doc.file_code.startsWith(code)) && !F0_established) {
+        gateExcluded.push({
+          document_id: doc.id,
+          file_code: doc.file_code,
+          name: doc.name,
+          reason: 'Gate: F0 (Structurally Essential) not yet established',
+        });
+        return false;
+      }
+      return true;
+    });
+
+    excludedDocs.push(...gateExcluded);
+  }
+
+  const U4_flag = !U4_established && lead_id
+    ? 'Note: U4 (EIS Risk Is Manageable) not yet established — avoid risk-appetite questions on this call'
+    : null;
+
+  if (eligible_gated.length === 0) {
     const gapReasons: string[] = [];
     const totalForStage = allDocs.filter((d) => (d.pipeline_stage_relevance as string[])?.includes(pipeline_stage));
     const totalForPersona = allDocs.filter((d) => matchesPersona(d));
@@ -843,7 +910,7 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
     return;
   }
 
-  const candidateList = eligible.slice(0, 8).map((d) => ({
+  const candidateList = eligible_gated.slice(0, 8).map((d) => ({
     id: d.id,
     file_code: d.file_code,
     name: d.name,
@@ -928,7 +995,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
     }
 
     const rankedWithDetails = (ranking.ranked_documents || []).map((r: any) => {
-      const doc = eligible.find((d) => d.id === r.document_id);
+      const doc = eligible_gated.find((d) => d.id === r.document_id);
       const normRank = r.rank !== undefined ? r.rank : (r.ranking !== undefined ? r.ranking : null);
       const normScore = r.relevance_score !== undefined ? r.relevance_score : (r.score !== undefined ? r.score : null);
       const worthIt = doc ? getWorthItWeight(doc.id) : 2;
@@ -946,18 +1013,47 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       };
     });
 
+    const rankedWithBelief = await Promise.all(rankedWithDetails.map(async (doc: any) => {
+      const docRows = await db.select({ belief_targets: documentsTable.belief_targets })
+        .from(documentsTable)
+        .where(eq(documentsTable.id, doc.document_id))
+        .limit(1);
+
+      const beliefTargets = (docRows[0]?.belief_targets as Array<{belief_id: string, state_from: string, state_to: string}> | null) || [];
+
+      const matchingTarget = beliefTargets.find(bt =>
+        (beliefStateMap[bt.belief_id] || 'UNKNOWN') === bt.state_from
+      );
+
+      return {
+        ...doc,
+        belief_targeted: matchingTarget?.belief_id || null,
+        current_state: matchingTarget ? (beliefStateMap[matchingTarget.belief_id] || 'UNKNOWN') : null,
+        state_after_send: matchingTarget?.state_to || null,
+        gate_it_unlocks: matchingTarget ? getGateUnlocked(matchingTarget.belief_id) : null,
+      };
+    }));
+
     const LOW_RELEVANCE_THRESHOLD = 0.4;
-    const scoredResults = rankedWithDetails.filter((r: any) => r.relevance_score !== null && r.relevance_score !== undefined);
+    const scoredResults = rankedWithBelief.filter((r: any) => r.relevance_score !== null && r.relevance_score !== undefined);
     const allLowRelevance = scoredResults.length > 0 && scoredResults.every((r: any) => r.relevance_score < LOW_RELEVANCE_THRESHOLD);
 
     const recommendedVideos2 = await getRecommendedVideos(resolvedArchetype, pipeline_stage);
     const response: any = {
-      ranked_documents: rankedWithDetails,
+      ranked_documents: rankedWithBelief,
       already_sent: alreadySent,
       blocked_documents: blockedDocs,
       excluded_documents: excludedDocs,
       recommended_videos: recommendedVideos2,
       all_sent_message: null,
+      ...(lead_id ? {
+        u4_advisory: U4_flag,
+        gate_summary: {
+          F0_established,
+          U4_established,
+          founding_round_docs_gated: !F0_established,
+        },
+      } : {}),
     };
 
     if (allLowRelevance) {
@@ -982,7 +1078,7 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
     res.json(response);
   } catch (err: any) {
     req.log.error({ err }, "Claude ranking call failed");
-    const fallbackRanked = eligible.slice(0, 8).map((d, i) => ({
+    const fallbackRankedRaw = eligible_gated.slice(0, 8).map((d, i) => ({
       document_id: d.id,
       file_code: d.file_code,
       name: d.name,
@@ -994,6 +1090,27 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       rationale: d.description,
     }));
 
+    const fallbackRanked = await Promise.all(fallbackRankedRaw.map(async (doc) => {
+      const docRows = await db.select({ belief_targets: documentsTable.belief_targets })
+        .from(documentsTable)
+        .where(eq(documentsTable.id, doc.document_id))
+        .limit(1);
+
+      const beliefTargets = (docRows[0]?.belief_targets as Array<{belief_id: string, state_from: string, state_to: string}> | null) || [];
+
+      const matchingTarget = beliefTargets.find(bt =>
+        (beliefStateMap[bt.belief_id] || 'UNKNOWN') === bt.state_from
+      );
+
+      return {
+        ...doc,
+        belief_targeted: matchingTarget?.belief_id || null,
+        current_state: matchingTarget ? (beliefStateMap[matchingTarget.belief_id] || 'UNKNOWN') : null,
+        state_after_send: matchingTarget?.state_to || null,
+        gate_it_unlocks: matchingTarget ? getGateUnlocked(matchingTarget.belief_id) : null,
+      };
+    }));
+
     const recommendedVideosFallback = await getRecommendedVideos(resolvedArchetype, pipeline_stage);
     res.json({
       ranked_documents: fallbackRanked,
@@ -1002,6 +1119,14 @@ Rank by relevance to the transcript context and objections. Return ONLY the JSON
       excluded_documents: excludedDocs,
       recommended_videos: recommendedVideosFallback,
       all_sent_message: null,
+      ...(lead_id ? {
+        u4_advisory: U4_flag,
+        gate_summary: {
+          F0_established,
+          U4_established,
+          founding_round_docs_gated: !F0_established,
+        },
+      } : {}),
     });
   }
 });
