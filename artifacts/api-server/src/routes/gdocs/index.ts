@@ -71,50 +71,11 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
     const existingGdocId = existingGdocUrl ? extractGdocId(existingGdocUrl) : null;
 
     if (existingGdocId) {
-      const checkResp = await connectors.proxy("google-drive", `/drive/v3/files/${existingGdocId}?fields=id,name,webViewLink`, {
-        method: "GET",
-      });
-      if (checkResp.ok) {
-        const boundary = "unlock_boundary_" + Date.now();
-        const updateBody =
-          `--${boundary}\r\n` +
-          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-          JSON.stringify({ name: title }) +
-          `\r\n--${boundary}\r\n` +
-          `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
-          formattedHtml +
-          `\r\n--${boundary}--`;
-
-        const updateResp = await connectors.proxy(
-          "google-drive",
-          `/upload/drive/v3/files/${existingGdocId}?uploadType=multipart&fields=id,name,webViewLink`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": `multipart/related; boundary=${boundary}`,
-            },
-            body: updateBody,
-          }
-        );
-
-        if (updateResp.ok) {
-          const updated = await updateResp.json();
-          await db.insert(changelogTable).values({
-            id: randomUUID(),
-            action: "GDOCS_CONTENT_PUSHED",
-            document_id: docId,
-            details: `Content pushed to existing Google Doc with formatted HTML`,
-            triggered_by: "agent",
-          });
-          res.json({
-            gdoc_url: updated.webViewLink,
-            gdoc_id: updated.id,
-            document_id: docId,
-            status: "updated",
-          });
-          return;
-        }
-      }
+      try {
+        await connectors.proxy("google-drive", `/drive/v3/files/${existingGdocId}`, {
+          method: "DELETE",
+        });
+      } catch (_) {}
     }
 
     const metadata = {
