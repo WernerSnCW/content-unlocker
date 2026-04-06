@@ -166,6 +166,14 @@ function renderTable(rows: string[]): string {
   return html;
 }
 
+function buildLogoSvg(): string {
+  const { colours } = BRAND;
+  return `<svg width="140" height="32" viewBox="0 0 140 32" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="6" height="32" rx="2" fill="${colours.green}" />
+    <text x="16" y="24" font-family="Inter, sans-serif" font-size="22" font-weight="700" letter-spacing="0.12em" fill="${colours.darkNavy}">UNLOCK</text>
+  </svg>`;
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -227,12 +235,9 @@ function buildPdfHtml(doc: PdfDocumentInput): string {
     .header-left { flex: 1; }
 
     .logo {
-      font-family: 'Inter', sans-serif;
-      font-size: 24px;
-      font-weight: ${typography.h1.weight};
-      color: ${colours.darkNavy};
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
     }
 
     .doc-title {
@@ -356,7 +361,7 @@ function buildPdfHtml(doc: PdfDocumentInput): string {
           Ref: ${escapeHtml(doc.file_code)} | Tier ${doc.tier} | v${doc.version}
         </div>
       </div>
-      <div class="logo">UNLOCK</div>
+      <div class="logo">${buildLogoSvg()}</div>
     </div>
     <div class="content">${bodyHtml}</div>
     <div class="footer">

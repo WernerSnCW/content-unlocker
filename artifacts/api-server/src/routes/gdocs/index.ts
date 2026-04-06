@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import { documentsTable, changelogTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { getTemplate } from "../../lib/templates/index";
 
 const router: IRouter = Router();
 const connectors = new ReplitConnectors();
@@ -41,6 +42,20 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
       }
     }
 
+    const formattedHtml = getTemplate(
+      {
+        id: doc.id,
+        file_code: doc.file_code,
+        name: doc.name,
+        description: doc.description || undefined,
+        content: content,
+        tier: doc.tier,
+        category: doc.category,
+        version: doc.version,
+        last_reviewed: doc.last_reviewed || undefined,
+      }
+    );
+
     const metadata = {
       name: title,
       mimeType: "application/vnd.google-apps.document",
@@ -52,8 +67,8 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
       `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
       JSON.stringify(metadata) +
       `\r\n--${boundary}\r\n` +
-      `Content-Type: text/plain; charset=UTF-8\r\n\r\n` +
-      content +
+      `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
+      formattedHtml +
       `\r\n--${boundary}--`;
 
     const createResp = await connectors.proxy(

@@ -176,12 +176,9 @@ function getBaseStyles(): string {
     }
 
     .logo {
-      font-family: '${fonts.heading}', sans-serif;
-      font-size: 24px;
-      font-weight: ${typography.h1.weight};
-      color: ${colours.darkNavy};
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
     }
 
     .doc-title {
@@ -302,6 +299,14 @@ function getBaseStyles(): string {
   `;
 }
 
+function buildLogoSvg(): string {
+  const { colours } = BRAND;
+  return `<svg width="140" height="32" viewBox="0 0 140 32" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="6" height="32" rx="2" fill="${colours.green}" />
+    <text x="16" y="24" font-family="Inter, sans-serif" font-size="22" font-weight="700" letter-spacing="0.12em" fill="${colours.darkNavy}">UNLOCK</text>
+  </svg>`;
+}
+
 function buildHeader(doc: DocumentRecord): string {
   return `
     <div class="header">
@@ -313,7 +318,7 @@ function buildHeader(doc: DocumentRecord): string {
           ${doc.version ? ` | v${doc.version}` : ''}
         </div>
       </div>
-      <div class="logo">UNLOCK</div>
+      <div class="logo">${buildLogoSvg()}</div>
     </div>
   `;
 }
@@ -404,7 +409,7 @@ function buildBriefing(doc: DocumentRecord): string {
       padding-bottom: 12mm;
       margin-bottom: 8mm;
     }
-    .logo { text-align: right; margin-bottom: 8mm; }
+    .logo { display: flex; justify-content: flex-end; margin-bottom: 8mm; }
     .doc-title {
       font-size: 32px;
       text-align: center;
