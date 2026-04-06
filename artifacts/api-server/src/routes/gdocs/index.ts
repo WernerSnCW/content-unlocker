@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import { documentsTable, changelogTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { getTemplate } from "../../lib/templates/index";
+import { getGdocsTemplate } from "../../lib/templates/index";
 
 const router: IRouter = Router();
 const connectors = new ReplitConnectors();
@@ -22,19 +22,17 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
   const title = `[Unlock] ${doc.name} (${doc.file_code})`;
 
   try {
-    const formattedHtml = getTemplate(
-      {
-        id: doc.id,
-        file_code: doc.file_code,
-        name: doc.name,
-        description: doc.description || undefined,
-        content: content,
-        tier: doc.tier,
-        category: doc.category,
-        version: doc.version,
-        last_reviewed: doc.last_reviewed || undefined,
-      }
-    );
+    const formattedHtml = getGdocsTemplate({
+      id: doc.id,
+      file_code: doc.file_code,
+      name: doc.name,
+      description: doc.description || undefined,
+      content: content,
+      tier: doc.tier,
+      category: doc.category,
+      version: doc.version,
+      last_reviewed: doc.last_reviewed || undefined,
+    });
 
     const existingGdocUrl = (doc as any).gdoc_url;
     const existingGdocId = existingGdocUrl ? extractGdocId(existingGdocUrl) : null;

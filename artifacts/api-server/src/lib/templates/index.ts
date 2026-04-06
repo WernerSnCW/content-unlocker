@@ -432,6 +432,139 @@ function buildBriefing(doc: DocumentRecord): string {
 </html>`;
 }
 
+export function getGdocsTemplate(document: DocumentRecord): string {
+  const { colours } = BRAND;
+  const content = document.content || '';
+  const bodyHtml = markdownToGdocsHtml(content, colours);
+  const date = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric'
+  });
+
+  return `<html><head><meta charset="UTF-8"></head><body>
+<p style="text-align:right;margin-bottom:24px;">
+  <span style="font-size:22px;font-weight:bold;color:${colours.darkNavy};letter-spacing:2px;">
+    <span style="color:#01BC77;font-weight:bold;">|</span>&nbsp;UNLOCK
+  </span>
+</p>
+<h1 style="font-size:24px;color:${colours.darkNavy};margin-bottom:4px;">${escapeHtml(document.name)}</h1>
+<p style="font-size:11px;color:#888888;margin-bottom:24px;">
+  ${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}
+</p>
+<hr style="border:none;border-top:2px solid ${colours.darkNavy};margin-bottom:24px;">
+${bodyHtml}
+<hr style="border:none;border-top:1px solid #E0E0E0;margin-top:32px;margin-bottom:8px;">
+<p style="font-size:9px;color:#888888;">
+  ${escapeHtml(document.file_code)} | ${escapeHtml(document.name)} | ${date}
+</p>
+</body></html>`;
+}
+
+function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): string {
+  let html = content;
+
+  html = html.replace(/^#{4}\s+(.+)$/gm, (_, t) =>
+    `<h4 style="font-size:13px;font-weight:bold;color:${colours.charcoal};margin-top:16px;margin-bottom:8px;">${t}</h4>`);
+  html = html.replace(/^#{3}\s+(.+)$/gm, (_, t) =>
+    `<h3 style="font-size:15px;font-weight:bold;color:${colours.charcoal};margin-top:20px;margin-bottom:8px;">${t}</h3>`);
+  html = html.replace(/^#{2}\s+(.+)$/gm, (_, t) =>
+    `<h2 style="font-size:18px;font-weight:bold;color:${colours.darkNavy};margin-top:24px;margin-bottom:10px;">${t}</h2>`);
+  html = html.replace(/^#{1}\s+(.+)$/gm, (_, t) =>
+    `<h1 style="font-size:22px;font-weight:bold;color:${colours.darkNavy};margin-top:28px;margin-bottom:12px;">${t}</h1>`);
+
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  html = html.replace(/\*(.+?)\*/g, '<i>$1</i>');
+
+  const lines = html.split('\n');
+  const result: string[] = [];
+  let inList = false;
+  let listType = '';
+  let inTable = false;
+  let tableRows: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      if (!inTable) { inTable = true; tableRows = []; }
+      if (!/^\|[\s\-:|]+\|$/.test(trimmed)) { tableRows.push(trimmed); }
+      continue;
+    } else if (inTable) {
+      inTable = false;
+      result.push(renderGdocsTable(tableRows, colours));
+      tableRows = [];
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      if (!inList || listType !== 'ul') {
+        if (inList) result.push(listType === 'ol' ? '</ol>' : '</ul>');
+        result.push('<ul>');
+        inList = true; listType = 'ul';
+      }
+      result.push(`<li style="font-size:11px;color:${colours.black};margin-bottom:4px;">${trimmed.replace(/^[-*]\s+/, '')}</li>`);
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      if (!inList || listType !== 'ol') {
+        if (inList) result.push(listType === 'ol' ? '</ol>' : '</ul>');
+        result.push('<ol>');
+        inList = true; listType = 'ol';
+      }
+      result.push(`<li style="font-size:11px;color:${colours.black};margin-bottom:4px;">${trimmed.replace(/^\d+\.\s+/, '')}</li>`);
+      continue;
+    }
+
+    if (inList) {
+      result.push(listType === 'ol' ? '</ol>' : '</ul>');
+      inList = false;
+    }
+
+    if (trimmed === '---' || trimmed === '***') {
+      result.push('<hr style="border:none;border-top:1px solid #E0E0E0;margin:12px 0;">');
+      continue;
+    }
+
+    if (trimmed === '') {
+      result.push('<br>');
+      continue;
+    }
+
+    if (!trimmed.startsWith('<')) {
+      result.push(`<p style="font-size:11px;line-height:1.6;color:${colours.black};margin-bottom:8px;">${trimmed}</p>`);
+    } else {
+      result.push(trimmed);
+    }
+  }
+
+  if (inList) result.push(listType === 'ol' ? '</ol>' : '</ul>');
+  if (inTable) result.push(renderGdocsTable(tableRows, colours));
+
+  return result.join('\n');
+}
+
+function renderGdocsTable(rows: string[], colours: typeof BRAND.colours): string {
+  if (rows.length === 0) return '';
+  const headerCells = rows[0].split('|').filter(c => c.trim() !== '');
+  let html = '<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:10px;">';
+  html += '<tr>';
+  for (const cell of headerCells) {
+    html += `<td style="background-color:${colours.darkNavy};color:white;padding:8px 12px;font-weight:bold;font-size:9px;text-transform:uppercase;letter-spacing:0.5px;">${cell.trim()}</td>`;
+  }
+  html += '</tr>';
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i].split('|').filter(c => c.trim() !== '');
+    const bg = i % 2 === 0 ? '#F5F5F5' : 'white';
+    html += '<tr>';
+    for (const cell of cells) {
+      html += `<td style="padding:6px 12px;border-bottom:1px solid #E0E0E0;background-color:${bg};font-size:10px;">${cell.trim()}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
 export function getTemplate(
   document: DocumentRecord,
   template?: DocumentTemplate
