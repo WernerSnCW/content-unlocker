@@ -500,19 +500,22 @@ export function getGdocsTemplate(document: DocumentRecord, logoUrl?: string): st
 <table width="100%" style="border:none;margin-bottom:16pt;"><tr>
   <td style="border:none;vertical-align:bottom;padding:0;">
     <p style="font-size:20pt;margin:0;"><b>${escapeHtml(document.name)}</b></p>
-    <p style="font-size:9pt;color:#888888;margin:4pt 0 0 0;">${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}</p>
   </td>
   <td style="border:none;text-align:right;vertical-align:top;width:200pt;padding:0;">
     ${logoUrl
-      ? `<img src="${logoUrl}" width="180" height="36" alt="Unlock" style="display:block;margin-left:auto;">`
-      : `<table style="margin-left:auto;border:none;"><tr><td bgcolor="#01BC77" style="width:6pt;border:none;padding:0;">&nbsp;</td><td style="padding-left:8pt;border:none;"><b><font size="5" color="#0F1629">UNLOCK</font></b></td></tr></table>`
+      ? `<img src="${logoUrl}" width="180" height="36" alt="Unlock">`
+      : ``
     }
+    <table cellpadding="0" cellspacing="0" style="margin-left:auto;"><tr>
+      <td bgcolor="#01BC77" style="width:8pt;font-size:4pt;">&nbsp;&nbsp;</td>
+      <td style="padding-left:10pt;"><font size="5" color="#0F1629"><b>UNLOCK</b></font></td>
+    </tr></table>
   </td>
 </tr></table>
 <hr>
 ${bodyHtml}
 <hr>
-<p style="font-size:8pt;color:#888888;">${escapeHtml(document.file_code)} | ${escapeHtml(document.name)} | ${date}</p>
+<p style="font-size:8pt;color:#888888;">Unlock | ${escapeHtml(document.name)} | ${date}</p>
 </body></html>`;
 }
 

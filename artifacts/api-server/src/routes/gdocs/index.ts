@@ -10,28 +10,46 @@ import { formatContentForGdocs, wrapGdocsHtml } from "../../lib/formatService";
 const router: IRouter = Router();
 const connectors = new ReplitConnectors();
 
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48" viewBox="0 0 240 48"><rect x="0" y="6" width="7" height="36" rx="1" fill="#01BC77"/><text x="20" y="36" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="bold" fill="#0F1629" letter-spacing="5">UNLOCK</text></svg>`;
+import { execSync } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+
+const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="96" viewBox="0 0 480 96">
+  <rect x="0" y="12" width="14" height="72" rx="2" fill="#01BC77"/>
+  <text x="36" y="72" font-family="Arial,Helvetica,sans-serif" font-size="60" font-weight="bold" fill="#0F1629" letter-spacing="8">UNLOCK</text>
+</svg>`;
 
 let cachedLogoUrl: string | null = null;
 let cachedLogoExpiry = 0;
+
+function generateLogoPng(): Buffer {
+  const svgPath = "/tmp/unlock-logo-export.svg";
+  const pngPath = "/tmp/unlock-logo-export.png";
+  fs.writeFileSync(svgPath, LOGO_SVG);
+  execSync(`convert -background none "${svgPath}" -resize 240x48 "${pngPath}"`);
+  return fs.readFileSync(pngPath);
+}
 
 async function getOrUploadLogo(): Promise<string | null> {
   if (cachedLogoUrl && Date.now() < cachedLogoExpiry) return cachedLogoUrl;
 
   try {
+    const pngBuf = generateLogoPng();
+    const pngBase64 = pngBuf.toString("base64");
+
     const boundary = "logo_boundary_" + Date.now();
-    const metadata = {
-      name: "unlock-logo.svg",
-      mimeType: "image/svg+xml",
-    };
-    const body =
-      `--${boundary}\r\n` +
-      `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-      JSON.stringify(metadata) +
-      `\r\n--${boundary}\r\n` +
-      `Content-Type: image/svg+xml\r\n\r\n` +
-      LOGO_SVG +
-      `\r\n--${boundary}--`;
+    const metadataJson = JSON.stringify({
+      name: "unlock-logo.png",
+      mimeType: "image/png",
+    });
+
+    const bodyParts: Buffer[] = [];
+    bodyParts.push(Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n--${boundary}\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n\r\n`
+    ));
+    bodyParts.push(Buffer.from(pngBase64));
+    bodyParts.push(Buffer.from(`\r\n--${boundary}--`));
+    const fullBody = Buffer.concat(bodyParts);
 
     const uploadResp = await connectors.proxy(
       "google-drive",
@@ -39,11 +57,14 @@ async function getOrUploadLogo(): Promise<string | null> {
       {
         method: "POST",
         headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
-        body,
+        body: fullBody.toString(),
       }
     );
 
-    if (!uploadResp.ok) return null;
+    if (!uploadResp.ok) {
+      console.warn("Logo upload response not OK:", await uploadResp.text());
+      return null;
+    }
     const uploaded = await uploadResp.json();
 
     await connectors.proxy(
@@ -56,7 +77,7 @@ async function getOrUploadLogo(): Promise<string | null> {
       }
     );
 
-    cachedLogoUrl = `https://drive.google.com/uc?id=${uploaded.id}&export=download`;
+    cachedLogoUrl = `https://lh3.googleusercontent.com/d/${uploaded.id}`;
     cachedLogoExpiry = Date.now() + 24 * 60 * 60 * 1000;
     return cachedLogoUrl;
   } catch (err) {
