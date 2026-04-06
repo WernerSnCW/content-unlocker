@@ -48,3 +48,9 @@ id = "ElEwF_JYQujV8Lb_7yO4X"
 uri = "file://attached_assets/070_PRODUCT_REVIEW_OUTPUT.md"
 type = "text"
 title = "070 — Product Review Output"
+
+[[outputs]]
+id = "6lV6Sy45K2ITegbrPjsk2"
+uri = "file://.local/055-functional-integrity.md"
+type = "text"
+title = "055 Functional Integrity Assessment"

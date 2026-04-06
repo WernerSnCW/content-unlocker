@@ -1,0 +1,246 @@
+# 055 — FUNCTIONAL INTEGRITY PROMPT
+Version: 1.0
+
+---
+
+This prompt assesses whether the significant functions in this codebase
+are achieving their stated purpose — not just whether they run without
+errors, but whether they produce the right output, use the right inputs,
+and connect to the right parts of the system.
+
+050 (Health Check) tells you if a feature is WORKING or BROKEN.
+055 tells you if a feature is ACHIEVING ITS GOAL or HOLLOW.
+
+A function is HOLLOW when it:
+- Responds without errors but ignores available context it should use
+- Generates output that could have been produced without its inputs
+- Exists in isolation when it should be connected to other system state
+- Produces the same result regardless of what data it receives
+
+Run this after 050 confirms the system is in a working state.
+Do not run 055 to diagnose errors — use 050 for that.
+
+---
+
+## HOW TO RUN THIS ASSESSMENT
+
+For each significant function or workflow listed below:
+
+1. Read the code
+2. Identify what inputs are available vs what inputs are actually used
+3. Identify what outputs are produced vs what outputs should be produced
+4. Identify what system state the function could use but doesn't
+5. Run a live test with specific inputs and inspect the output
+6. Assess: is this function achieving its goal, or is it hollow?
+
+---
+
+## ASSESSMENT TEMPLATE
+
+Complete the template below exactly. Do not add prose before or after it.
+Replace every placeholder in square brackets.
+
+---
+
+## FUNCTIONAL INTEGRITY OUTPUT
+
+### 0. Assessment scope
+
+**Codebase:** [project name]
+**Functions assessed:** [count]
+**Date:** [today]
+
+---
+
+### 1. Function contracts
+
+For each significant function or workflow in the system:
+
+#### `[Function, endpoint, or workflow name]`
+
+**File:** [path/to/file.ts, line range if helpful]
+
+**Declared goal:** [what this function is supposed to achieve — inferred
+from code, comments, or route name. One sentence. If goal is unclear: write
+"Goal unclear from code inspection."]
+
+**Required inputs to achieve goal:** [what inputs this function NEEDS
+to achieve its declared goal — whether or not it currently uses them]
+
+**Inputs actually used:** [what inputs this function ACTUALLY reads and
+uses in its logic. Be specific — name the variables and where they come from.]
+
+**Available but unused context:** [data that exists in the system and is
+relevant to this function's goal, but is NOT currently fetched or used.
+Name the specific table, field, or API that is being ignored.]
+
+**Output produced:** [what this function actually returns or writes]
+
+**Output expected for goal:** [what this function SHOULD return or write
+to achieve its declared goal. If these match: state "Matches."]
+
+**Status:** [ACHIEVING GOAL / HOLLOW / PARTIAL / UNKNOWN]
+
+Status definitions:
+- ACHIEVING GOAL: inputs used match inputs required; output matches expected;
+  no significant available context is being ignored
+- HOLLOW: technically works (no errors) but ignores available context that
+  would materially change the output; or produces the same output regardless
+  of its inputs
+- PARTIAL: achieves part of its goal but missing one or more significant
+  inputs or output fields
+- UNKNOWN: cannot be assessed from code inspection alone; requires a live
+  test with specific known data
+
+**Evidence:** [the specific test or code inspection that supports this verdict.
+For HOLLOW findings: show that the output is the same with vs without the
+available context. For PARTIAL findings: show what is present and what is missing.]
+
+**Impact:** [what breaks, degrades, or becomes impossible for the user
+because this function is not achieving its full goal. Be specific.]
+
+[repeat for every significant function]
+
+---
+
+### 2. Connection gaps
+
+Functions that exist in isolation when they should be connected:
+
+#### `[Function A] → [Function B]`
+**What the connection should be:** [what data should flow from A to B,
+and why this connection would improve the output]
+**What exists instead:** [how A and B currently operate independently]
+**Effect:** [what the user experiences because this connection is missing]
+
+If none: "None identified."
+
+---
+
+### 3. Context starvation inventory
+
+A consolidated list of all cases where a function has access to richer
+context than it uses:
+
+| Function | Available context ignored | What it uses instead | Impact |
+|---|---|---|---|
+| [function name] | [table/field/data being ignored] | [what it uses] | [effect on output] |
+
+If none: "None identified."
+
+---
+
+### 4. Hollow function summary
+
+Functions assessed as HOLLOW, ordered by impact:
+
+#### `[Function name]`
+**Why hollow:** [specific reason — what context is ignored, what the
+output fails to reflect]
+**Fix required:** [the specific change needed to make this function
+achieve its goal — one sentence, actionable]
+**Effort:** [LOW / MEDIUM / HIGH]
+**Priority:** [HIGH / MEDIUM / LOW]
+
+If none: "None identified."
+
+---
+
+### 5. Data flow integrity
+
+For each major data pipeline in the system (data created in one place
+that should inform decisions in another):
+
+#### `[Pipeline name]`
+**Data created:** [what data is created and where it lives]
+**Should inform:** [which functions or features should use this data]
+**Actually informs:** [which functions or features currently use it]
+**Gap:** [what is created but not consumed, or consumed but not fully used]
+
+If no gaps: "None identified."
+
+---
+
+### 6. Overall verdict
+
+| Dimension | Status | Notes |
+|---|---|---|
+| Goal achievement rate | 🟢 / 🟡 / 🔴 | 🟢 = >80% ACHIEVING GOAL; 🟡 = 50–80%; 🔴 = <50% |
+| Connection integrity | 🟢 / 🟡 / 🔴 | 🟢 = all major pipelines connected; 🟡 = 1–2 gaps; 🔴 = systematic disconnection |
+| Context utilisation | 🟢 / 🟡 / 🔴 | 🟢 = functions use available context well; 🟡 = partial; 🔴 = widespread context starvation |
+| Output quality | 🟢 / 🟡 / 🔴 | 🟢 = outputs reflect all available inputs; 🟡 = some generic outputs; 🔴 = outputs routinely ignore context |
+
+**Recommendation:** [PROCEED TO BUILD / FIX HOLLOW FUNCTIONS BEFORE BUILDING MORE / ARCHITECTURAL REVIEW NEEDED]
+
+**Highest priority fix:** [the single most impactful hollow function or
+connection gap to address first — specific, actionable]
+
+---
+
+## WHAT TO ASSESS
+
+Run this assessment against every function, endpoint, or workflow that:
+- Takes a lead_id or document_id as input and generates output
+- Produces content, recommendations, or analysis
+- Is supposed to personalise its output based on stored data
+- Connects two or more parts of the system
+
+Do NOT assess:
+- Pure CRUD endpoints (GET/POST/PATCH that simply read/write data)
+- Schema definitions, migrations, seed functions
+- Utility functions with no business logic (fuzzyMatch, format, etc.)
+- Authentication or infrastructure code
+
+When uncertain whether to assess a function: assess it.
+
+---
+
+## EVIDENCE STANDARDS
+
+For ACHIEVING GOAL verdict:
+- Live test showing output changes meaningfully when input context changes
+- Code inspection confirming all relevant fields are read and used
+
+For HOLLOW verdict:
+- Show that a function with a lead_id produces the same output as without it
+- OR show that available context (intelligence profile, belief states, etc.)
+  is not fetched despite being relevant to the function's goal
+- Code inspection alone is sufficient for HOLLOW if the data fetch is
+  clearly absent from the code
+
+For PARTIAL verdict:
+- List exactly which inputs are used and which are ignored
+- Show which output fields are present and which are missing
+
+For UNKNOWN verdict:
+- State what specific test would be needed to determine the verdict
+- State what data would need to exist to run that test
+
+---
+
+## SCORING NOTE
+
+The goal of this assessment is to find HOLLOW functions — not to score
+the codebase. A system with 3 HOLLOW functions and 15 ACHIEVING GOAL
+functions is doing well. A system where every function is PARTIAL is
+systematically underperforming even if nothing is broken.
+
+The most dangerous finding is a function that produces plausible-looking
+output that is actually generic — the user cannot tell the difference, but
+the output is not informed by what the system knows.
+
+---
+
+## SCHEDULING
+
+Run 055 (Functional Integrity):
+- After every major feature build that adds new data to the system
+  (belief states, intelligence profiles, new tables) — check whether
+  existing functions have been updated to use the new data
+- When a feature is reported as working but producing generic or
+  unhelpful output
+- Before a product review (070) — 055 identifies the functional gaps
+  that 070 will surface as UX problems
+
+055 is a Replit AI prompt. Outputs are advisory. Any fix identified must
+be explicitly pulled into a future Step 2 idea before being built.
