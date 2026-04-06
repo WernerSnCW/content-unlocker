@@ -54,3 +54,9 @@ id = "6lV6Sy45K2ITegbrPjsk2"
 uri = "file://.local/055-functional-integrity.md"
 type = "text"
 title = "055 Functional Integrity Assessment"
+
+[[outputs]]
+id = "tfXTbjOsxt23yLLMrSqKx"
+uri = "file://.local/system-integrity-audit.md"
+type = "text"
+title = "System Integrity Audit (056–062)"

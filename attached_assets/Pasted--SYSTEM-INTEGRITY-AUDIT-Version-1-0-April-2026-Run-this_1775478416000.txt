@@ -1,0 +1,640 @@
+# SYSTEM INTEGRITY AUDIT
+Version: 1.0 | April 2026
+
+Run this entire audit in one pass. Complete every section in order.
+Do not skip sections. Do not add prose between sections.
+Replace every placeholder in square brackets.
+
+This audit covers six dimensions of system integrity:
+- 056: Data Integrity
+- 057: Compliance Drift
+- 058: Prompt Integrity
+- 059: Relationship Integrity
+- 061: Coverage Gaps
+- 062: Sequence Integrity
+
+---
+
+# SECTION 1 — DATA INTEGRITY (056)
+
+Assess whether the data in the system is semantically consistent —
+not just structurally valid, but internally coherent.
+
+Check every table that stores state driving downstream decisions.
+Run the specific queries below. Report every violation found with
+the specific record ID and the conflict.
+
+---
+
+## 056 DATA INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Tables checked:** [list]
+**Records checked:** [total count]
+
+---
+
+### 1. Impossible belief states
+
+Run these queries and report every row returned:
+
+**Q1: Beliefs ESTABLISHED with no evidence**
+```sql
+SELECT lb.id, lb.lead_id, lb.belief_id, lb.state, lb.evidence, lb.confidence
+FROM lead_beliefs lb
+WHERE lb.state = 'ESTABLISHED'
+AND lb.evidence IS NULL
+AND lb.confidence IS NULL;
+```
+Violations found: [list rows, or "None"]
+
+**Q2: F1/F2/F3 ESTABLISHED but F0 not ESTABLISHED**
+```sql
+SELECT
+  l.id as lead_id,
+  l.name,
+  f0.state as f0_state,
+  f1.state as f1_state,
+  f2.state as f2_state,
+  f3.state as f3_state
+FROM leads l
+LEFT JOIN lead_beliefs f0 ON f0.lead_id = l.id AND f0.belief_id = 'F0'
+LEFT JOIN lead_beliefs f1 ON f1.lead_id = l.id AND f1.belief_id = 'F1'
+LEFT JOIN lead_beliefs f2 ON f2.lead_id = l.id AND f2.belief_id = 'F2'
+LEFT JOIN lead_beliefs f3 ON f3.lead_id = l.id AND f3.belief_id = 'F3'
+WHERE (
+  f1.state = 'ESTABLISHED' OR
+  f2.state = 'ESTABLISHED' OR
+  f3.state = 'ESTABLISHED'
+)
+AND (f0.state IS NULL OR f0.state != 'ESTABLISHED');
+```
+Violations found: [list rows, or "None"]
+
+**Q3: P1 or L3 ESTABLISHED (blocked_pending_legal beliefs)**
+```sql
+SELECT lb.lead_id, lb.belief_id, lb.state
+FROM lead_beliefs lb
+WHERE lb.belief_id IN ('P1', 'L3')
+AND lb.state = 'ESTABLISHED';
+```
+Violations found: [list rows, or "None"]
+
+**Q4: Tasks Done but document still REQUIRES_REVIEW**
+```sql
+SELECT t.id, t.title, t.status, d.id as doc_id, d.name, d.review_state
+FROM tasks t
+JOIN documents d ON d.id = t.linked_document_id
+WHERE t.status = 'Done'
+AND d.review_state = 'REQUIRES_REVIEW';
+```
+Violations found: [list rows, or "None"]
+
+**Q5: Tasks Open but document is CLEAN**
+```sql
+SELECT t.id, t.title, t.status, d.id as doc_id, d.name, d.review_state
+FROM tasks t
+JOIN documents d ON d.id = t.linked_document_id
+WHERE t.status = 'Open'
+AND t.type = 'Review'
+AND d.review_state = 'CLEAN';
+```
+Stale tasks found: [list rows, or "None"]
+
+**Q6: Intelligence cluster contradicts all cluster beliefs being not_applicable**
+```sql
+SELECT
+  li.lead_id,
+  li.cluster,
+  COUNT(lb.id) as relevant_beliefs
+FROM lead_intelligence li
+LEFT JOIN lead_beliefs lb ON lb.lead_id = li.lead_id
+  AND lb.investor_relevance != 'not_applicable'
+WHERE li.cluster IS NOT NULL
+GROUP BY li.lead_id, li.cluster
+HAVING COUNT(lb.id) = 0;
+```
+Violations found: [list rows, or "None"]
+
+---
+
+### 2. Overall data integrity verdict
+
+| Check | Violations | Severity |
+|---|---|---|
+| ESTABLISHED beliefs with no evidence | [N] | MEDIUM |
+| F1/F2/F3 without F0 | [N] | HIGH |
+| Blocked beliefs ESTABLISHED | [N] | HIGH |
+| Tasks Done / docs still flagged | [N] | MEDIUM |
+| Stale Open tasks on CLEAN docs | [N] | LOW |
+| Cluster contradiction | [N] | MEDIUM |
+
+**Data health:** 🟢 CLEAN / 🟡 MINOR ISSUES / 🔴 ACTIVE VIOLATIONS
+
+---
+
+---
+
+# SECTION 2 — COMPLIANCE DRIFT (057)
+
+Scan all CURRENT investor-facing documents for compliance violations
+regardless of their current review_state.
+
+---
+
+## 057 COMPLIANCE DRIFT OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Documents scanned:** [count of CURRENT lifecycle_status documents]
+**Compliance constants loaded:** [count from complianceConstantsTable]
+
+---
+
+### 1. Load compliance context
+
+First, fetch and display:
+
+**Prohibited values (is_prohibited = true):**
+```sql
+SELECT key, label, value, prohibited_reason
+FROM compliance_constants
+WHERE is_prohibited = true AND status = 'ACTIVE';
+```
+List: [all prohibited values found]
+
+**Canonical values (is_prohibited = false):**
+```sql
+SELECT key, label, value, category
+FROM compliance_constants
+WHERE is_prohibited = false AND status = 'ACTIVE'
+ORDER BY category, key;
+```
+List: [all canonical values found]
+
+---
+
+### 2. Document scan
+
+For each CURRENT document, scan content for:
+- Every prohibited value (exact string, case-insensitive)
+- Common variants of prohibited values (e.g. "22p" → also check "22 pence", "22p per pound", "22p in the pound")
+- Incorrect canonical values in context (e.g. "30%" near "VCT")
+
+Exclude internal documents (file_code starting with 000, 600, 700).
+
+For each violation found:
+
+#### `[Document name]` (Tier [N], file_code: [code])
+**Review state:** [CLEAN / REQUIRES_REVIEW]
+**Open Review task exists:** [YES / NO]
+**Violations:**
+- "[exact text found in document]"
+  Issue: [prohibited value / wrong canonical value]
+  Should be: "[correct value]"
+
+If no violations: "No violations found in this document."
+
+---
+
+### 3. Documents with violations but no open task
+
+| Document | Tier | Violation | Task exists |
+|---|---|---|---|
+| [name] | [tier] | [description] | NO |
+
+If none: "All violations have existing open tasks."
+
+---
+
+### 4. Compliance health summary
+
+| Metric | Value |
+|---|---|
+| Documents scanned | [N] |
+| Documents with violations | [N] |
+| Violations with no open task | [N] |
+| Tier 1 documents with violations | [N] |
+
+**Compliance health:** 🟢 CLEAN / 🟡 MINOR DRIFT / 🔴 ACTIVE VIOLATIONS
+
+**Immediate action required:** [list documents needing urgent attention, or "None"]
+
+---
+
+---
+
+# SECTION 3 — PROMPT INTEGRITY (058)
+
+Assess whether the LLM prompts in this system are still fit for purpose —
+using current data, producing correct output schemas, and context-sensitive.
+
+---
+
+## 058 PROMPT INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Prompts assessed:** [count]
+
+---
+
+### 1. Prompt assessments
+
+For each significant LLM prompt, read the code and assess:
+
+#### `[Prompt name / endpoint]`
+**File:** [path, line range]
+**Purpose:** [one sentence]
+
+**Data injected at runtime:** [list variables passed into the prompt]
+
+**Data available but NOT injected:**
+- [table/field being ignored that is relevant to this prompt's goal]
+
+**Hardcoded values that should come from DB:**
+- [any values in the prompt text that should come from complianceConstantsTable or beliefRegistryTable]
+
+**Output schema — prompt instructs Claude to return:** [fields]
+**Output schema — calling code expects:** [fields]
+**Schema match:** MATCHES / MISMATCH — [describe gap if mismatch]
+
+**Context sensitivity:** Does the output change materially when different leads/documents are provided?
+SENSITIVE / PARTIALLY SENSITIVE / INSENSITIVE
+
+**Status:** CURRENT / STALE / PARTIALLY STALE
+
+**Impact:** [what the user gets that they shouldn't, or doesn't get that they should]
+
+[repeat for each prompt]
+
+---
+
+### 2. Hardcoded values across all prompts
+
+| Prompt | Hardcoded value | Should come from | Risk |
+|---|---|---|---|
+| [name] | [value] | [source] | HIGH / MEDIUM / LOW |
+
+If none: "None identified."
+
+---
+
+### 3. Prompt integrity verdict
+
+| Prompt | Status | Priority |
+|---|---|---|
+| [name] | CURRENT / STALE / PARTIALLY STALE | HIGH / MEDIUM / LOW |
+
+**Recommendation:** PROMPTS ARE CURRENT / UPDATE STALE PROMPTS / IMMEDIATE REVISION REQUIRED
+
+---
+
+---
+
+# SECTION 4 — RELATIONSHIP INTEGRITY (059)
+
+Assess whether references between entities are still valid.
+
+---
+
+## 059 RELATIONSHIP INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Relationship types checked:** [count]
+**Total references checked:** [count]
+
+---
+
+### 1. Belief → Document references
+
+**Check: belief_registry.primary_document_id points to existing CURRENT documents**
+```sql
+SELECT br.id, br.name, br.primary_document_id,
+       d.id as doc_exists, d.lifecycle_status
+FROM belief_registry br
+LEFT JOIN documents d ON d.id = br.primary_document_id
+WHERE br.primary_document_id IS NOT NULL
+ORDER BY br.id;
+```
+
+| Belief | primary_document_id | Document exists? | lifecycle_status | Valid? |
+|---|---|---|---|---|
+| [id] | [doc_id] | YES/NO | [status] | YES/NO |
+
+Broken references: [list, or "None"]
+
+---
+
+### 2. Document belief_targets → Belief registry
+
+For each document with non-empty belief_targets, check each belief_id exists:
+
+```sql
+SELECT d.id, d.name, d.belief_targets
+FROM documents d
+WHERE d.belief_targets != '[]'::jsonb
+AND d.belief_targets IS NOT NULL;
+```
+
+For each document returned, verify every belief_id in the belief_targets array exists in belief_registry.
+
+Orphaned belief_targets: [list document + missing belief_id, or "None"]
+
+---
+
+### 3. Task → Document references
+
+```sql
+SELECT t.id, t.title, t.status, t.linked_document_id,
+       d.id as doc_exists, d.name, d.lifecycle_status, d.review_state
+FROM tasks t
+LEFT JOIN documents d ON d.id = t.linked_document_id
+WHERE t.linked_document_id IS NOT NULL
+ORDER BY t.status;
+```
+
+| Task | Status | linked_doc | Doc exists? | lifecycle_status | Valid? |
+|---|---|---|---|---|---|
+| [title] | [status] | [id] | YES/NO | [status] | YES/NO |
+
+Invalid combinations found:
+- Task Open + document ARCHIVED: [list, or "None"]
+- Task Open + document CLEAN: [list — may be stale tasks]
+- Task Done + document REQUIRES_REVIEW: [list]
+
+---
+
+### 4. Lead send_log → Document references
+
+For each lead with non-empty send_log, check all document IDs referenced in documents_sent arrays still exist:
+
+```sql
+SELECT id, name, send_log FROM leads WHERE send_log != '[]'::jsonb;
+```
+
+For each lead, parse the send_log JSONB and check each document_id in documents_sent.
+
+Missing documents: [list lead + missing doc_id, or "None"]
+
+---
+
+### 5. Beliefs with no valid document
+
+```sql
+SELECT br.id, br.name, br.cluster, br.primary_document_id,
+       br.policy_status,
+       d.lifecycle_status
+FROM belief_registry br
+LEFT JOIN documents d ON d.id = br.primary_document_id
+WHERE br.policy_status = 'active'
+AND (
+  br.primary_document_id IS NULL
+  OR d.id IS NULL
+  OR d.lifecycle_status != 'CURRENT'
+);
+```
+
+Beliefs that cannot be recommended (no valid document):
+| Belief | Name | Reason |
+|---|---|---|
+| [id] | [name] | No document mapped / Document not CURRENT |
+
+---
+
+### 6. Relationship integrity verdict
+
+| Relationship | Broken | Stale | Status |
+|---|---|---|---|
+| Belief → Document | [N] | [N] | 🟢/🟡/🔴 |
+| Document belief_targets → Belief | [N] | [N] | 🟢/🟡/🔴 |
+| Task → Document | [N] | [N] | 🟢/🟡/🔴 |
+| Lead send_log → Document | [N] | [N] | 🟢/🟡/🔴 |
+| Beliefs without documents | [N] | — | 🟢/🟡/🔴 |
+
+**Recommendation:** RELATIONSHIPS ARE CLEAN / FIX BROKEN REFERENCES / IMMEDIATE ATTENTION REQUIRED
+
+---
+
+---
+
+# SECTION 5 — COVERAGE GAPS (061)
+
+Identify data and capabilities that exist but are unreachable or invisible
+to the operator.
+
+---
+
+## 061 COVERAGE GAPS OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Tables reviewed:** [count]
+**UI pages reviewed:** [count — list the pages]
+
+---
+
+### 1. Data generated but not surfaced in UI
+
+For each significant field or table, check whether it has a UI representation.
+
+Check specifically:
+- `lead_intelligence` fields: which are displayed on the lead detail page?
+  List every field and mark: DISPLAYED / NOT DISPLAYED
+- `lead_beliefs` fields beyond state: investor_relevance, relevance_rationale,
+  evidence, evidence_source, confidence — are any of these shown?
+- `belief_transitions` table: is the history of belief state changes shown anywhere?
+- `work_queue_sessions` and `work_queue_findings`: beyond the work queue page
+  itself, is any of this data surfaced on documents or task pages?
+- `spin_situation`, `spin_problem`, `spin_implication`, `spin_need_payoff`
+  in lead_intelligence: are these shown anywhere?
+- `notes_legacy` field on leads: visible anywhere?
+- `transcript_text` field on leads: shown anywhere in UI?
+
+For each NOT DISPLAYED field of value:
+
+#### `[Field/table name]`
+**Where it lives:** [table.field]
+**What it contains:** [description]
+**Should it be surfaced?** YES / NO / DEFERRED
+**If YES — where:** [specific page and section]
+**Effort:** LOW / MEDIUM / HIGH
+
+---
+
+### 2. API endpoints with no UI entry point
+
+Review all routes in routes/index.ts and check whether each has a
+corresponding UI trigger (button, page, or automated call):
+
+| Endpoint | What it does | UI entry point | Accessible to operator? |
+|---|---|---|---|
+| [method /path] | [description] | [page/button or "None"] | YES / NO |
+
+Focus on endpoints that operators would want to trigger manually.
+
+---
+
+### 3. High-value invisible fields
+
+Top 5 fields that, if surfaced, would most improve operator decisions:
+
+| Field | Table | Contains | Where to surface | Value |
+|---|---|---|---|---|
+| [field] | [table] | [description] | [page] | [why it matters] |
+
+---
+
+### 4. Coverage gaps verdict
+
+**Recommendation:** ALL VALUE IS SURFACED / MINOR GAPS / SIGNIFICANT VALUE BURIED
+
+**Highest priority gap:** [most impactful invisible capability]
+
+---
+
+---
+
+# SECTION 6 — SEQUENCE INTEGRITY (062)
+
+Assess whether operations have happened in the correct order and whether
+any entity is in a logically impossible state.
+
+---
+
+## 062 SEQUENCE INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Leads checked:** [count]
+**Documents checked:** [count]
+
+---
+
+### 1. Belief hard gate violations
+
+**F0 gate: F1/F2/F3 ESTABLISHED without F0**
+(Already checked in Section 1 Q2 — reference that result here)
+Result: [reference Section 1 Q2 finding]
+
+**U4 gate: risk profile confirmed without U4 ESTABLISHED**
+```sql
+SELECT li.lead_id, lb.state as u4_state,
+       li.open_to_early_stage_risk, li.qualification_status
+FROM lead_intelligence li
+LEFT JOIN lead_beliefs lb ON lb.lead_id = li.lead_id AND lb.belief_id = 'U4'
+WHERE li.open_to_early_stage_risk IS NOT NULL
+AND (lb.state IS NULL OR lb.state != 'ESTABLISHED');
+```
+Violations: [list, or "None"]
+
+---
+
+### 2. Document send sequence violations
+
+**Pack 1 or Pack 2 sent but F0 not established:**
+
+For each lead with a non-empty send_log, parse the documents_sent arrays.
+Check if any entry contains a document with file_code starting '120' or '130'.
+For those leads, check whether F0 is ESTABLISHED.
+
+```sql
+SELECT l.id, l.name, l.send_log,
+       lb.state as f0_state
+FROM leads l
+LEFT JOIN lead_beliefs lb ON lb.lead_id = l.id AND lb.belief_id = 'F0'
+WHERE l.send_log != '[]'::jsonb;
+```
+
+For each lead returned, inspect send_log manually for 120/130 sends.
+
+Violations found: [list lead + document sent + F0 state, or "None / pre-belief-system sends"]
+
+---
+
+### 3. Work queue sequence violations
+
+**Sessions marked COMPLETE with pending findings:**
+```sql
+SELECT wqs.id, wqs.status,
+       COUNT(wqf.id) as pending_findings
+FROM work_queue_sessions wqs
+LEFT JOIN work_queue_findings wqf ON wqf.session_id = wqs.id
+  AND wqf.status = 'PENDING'
+WHERE wqs.status = 'COMPLETE'
+GROUP BY wqs.id, wqs.status
+HAVING COUNT(wqf.id) > 0;
+```
+Violations: [list, or "None"]
+
+**Auto-fix applied but text not found in document:**
+```sql
+SELECT wqf.id, wqf.document_id, wqf.proposed_fix, wqf.original_text,
+       wqf.status
+FROM work_queue_findings wqf
+WHERE wqf.status = 'AUTO_FIXED'
+AND wqf.original_text IS NOT NULL;
+```
+For each row returned, check whether proposed_fix now appears in the document content.
+Violations: [list finding + document where fix wasn't applied, or "None"]
+
+---
+
+### 4. Intelligence generation without basis
+
+```sql
+SELECT l.id, l.name, l.notes, l.transcript_text,
+       li.qualification_status, li.profile_summary
+FROM leads l
+JOIN lead_intelligence li ON li.lead_id = l.id
+WHERE (l.notes IS NULL OR l.notes = '')
+AND (l.transcript_text IS NULL OR l.transcript_text = '');
+```
+Leads with intelligence but no source data: [list, or "None"]
+
+---
+
+### 5. Sequence integrity verdict
+
+| Sequence domain | Violations | Severity |
+|---|---|---|
+| Belief hard gates (F0) | [N] | 🔴/🟡/🟢 |
+| U4 gate | [N] | 🔴/🟡/🟢 |
+| Document send gates | [N] | 🔴/🟡/🟢 |
+| Work queue integrity | [N] | 🔴/🟡/🟢 |
+| Intelligence basis | [N] | 🟡/🟢 |
+
+**Recommendation:** SEQUENCE IS CLEAN / REVIEW VIOLATIONS / IMMEDIATE ATTENTION REQUIRED
+
+---
+
+---
+
+# COMBINED AUDIT SUMMARY
+
+After completing all six sections, produce this summary:
+
+## Priority action list
+
+Order all findings by urgency:
+
+| # | Finding | Section | Severity | Action required |
+|---|---|---|---|---|
+| 1 | [finding] | [056/057/058/059/061/062] | HIGH/MEDIUM/LOW | [specific action] |
+
+## Overall system health
+
+| Dimension | Status | Key finding |
+|---|---|---|
+| Data integrity (056) | 🟢/🟡/🔴 | [one line] |
+| Compliance drift (057) | 🟢/🟡/🔴 | [one line] |
+| Prompt integrity (058) | 🟢/🟡/🔴 | [one line] |
+| Relationship integrity (059) | 🟢/🟡/🔴 | [one line] |
+| Coverage gaps (061) | 🟢/🟡/🔴 | [one line] |
+| Sequence integrity (062) | 🟢/🟡/🔴 | [one line] |
+
+**Single most important fix:** [the one thing that, if left unfixed, poses the greatest risk]
+
+**Safe to keep building:** YES / NO — [one sentence rationale]
