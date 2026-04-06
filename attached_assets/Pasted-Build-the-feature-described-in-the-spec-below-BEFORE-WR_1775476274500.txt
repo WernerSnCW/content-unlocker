@@ -1,0 +1,254 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+3. List the files you plan to change and why
+4. List any questions
+5. Wait for my confirmation before writing code
+
+Only stop for BLOCKERs. State NON-BLOCKING ASSUMPTIONS and proceed.
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Backward compatible — existing data must continue to work
+- Do not implement anything not in the spec
+- CODE PRESERVATION RULE: do not delete code outside planned files
+
+---
+
+# PHASE DOC — Work Queue System (Phase 011a: Schema & Session Model)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-011a
+Effort: 2–3 hours
+Dependencies: RR-2026-04-06-010d
+Risk: LOW
+
+---
+
+## Section 1 — Feature
+
+Adds two new tables (`work_queue_sessions`, `work_queue_findings`) and one polling endpoint (`GET /work-queue/status`). No analysis logic. Schema and polling contract only.
+
+---
+
+## Section 2 — Why this is necessary
+
+The Work Queue frontend needs a persistent session model to show progress, resume after page refresh, and prevent duplicate runs. Persisted findings separate proposed fixes from their application.
+
+---
+
+## Section 3 — Current state
+
+- No work_queue tables exist
+- tasksTable exists with Open/In Progress/Done statuses
+- documentsTable has tier (int), review_state (text), content (text)
+- complianceConstantsTable exists
+- lib/db/src/schema/index.ts is the barrel export — additive only
+- All schema files are in lib/db/src/schema/*.ts
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched: Data (2 new tables), API (1 new endpoint)
+Layer count: 2 | Split required: NO
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — New table: work_queue_sessions
+
+File: `lib/db/src/schema/work-queue-sessions.ts` (create)
+
+```typescript
+export const workQueueSessionsTable = pgTable('work_queue_sessions', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  status: text('status').notNull().default('PENDING'),
+  // PENDING / ANALYSING / READY / COMPLETE / FAILED
+  started_at: timestamp('started_at').defaultNow(),
+  completed_at: timestamp('completed_at'),
+  total_tasks: integer('total_tasks').default(0),
+  analysed_tasks: integer('analysed_tasks').default(0),
+  auto_fixed_count: integer('auto_fixed_count').default(0),
+  cards_total: integer('cards_total').default(0),
+  cards_resolved: integer('cards_resolved').default(0),
+  cards_skipped: integer('cards_skipped').default(0),
+  cascaded_count: integer('cascaded_count').default(0),
+  error_message: text('error_message'),
+});
+
+export const insertWorkQueueSessionSchema = createInsertSchema(workQueueSessionsTable).omit({ id: true });
+export type InsertWorkQueueSession = z.infer<typeof insertWorkQueueSessionSchema>;
+export type WorkQueueSession = typeof workQueueSessionsTable.$inferSelect;
+```
+
+Session status lifecycle: PENDING → ANALYSING → READY → COMPLETE (or FAILED at any point).
+
+---
+
+### 5.2 — New table: work_queue_findings
+
+File: `lib/db/src/schema/work-queue-findings.ts` (create)
+
+```typescript
+export const workQueueFindingsTable = pgTable('work_queue_findings', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  session_id: text('session_id').notNull().references(() => workQueueSessionsTable.id),
+  task_id: text('task_id').notNull(),           // no FK — tasks may be deleted independently
+  document_id: text('document_id').notNull(),   // no FK — documents may be deleted independently
+  document_name: text('document_name').notNull(),
+  document_tier: integer('document_tier').notNull(),
+  finding_type: text('finding_type').notNull(),
+  // auto_fix / decision_card
+  issue_description: text('issue_description').notNull(),
+  proposed_fix: text('proposed_fix'),
+  original_text: text('original_text'),
+  status: text('status').notNull().default('PENDING'),
+  // PENDING / AUTO_FIXED / ACCEPTED / SKIPPED / FAILED
+  skip_reason: text('skip_reason'),
+  sort_order: integer('sort_order').notNull().default(0),
+  created_at: timestamp('created_at').defaultNow(),
+  resolved_at: timestamp('resolved_at'),
+});
+
+export const insertWorkQueueFindingSchema = createInsertSchema(workQueueFindingsTable).omit({ id: true });
+export type InsertWorkQueueFinding = z.infer<typeof insertWorkQueueFindingSchema>;
+export type WorkQueueFinding = typeof workQueueFindingsTable.$inferSelect;
+```
+
+---
+
+### 5.3 — Barrel export
+
+File: `lib/db/src/schema/index.ts` (additive edit)
+
+Add:
+```typescript
+export * from './work-queue-sessions';
+export * from './work-queue-findings';
+```
+
+---
+
+### 5.4 — New router: work-queue
+
+File: `artifacts/api-server/src/routes/work-queue/index.ts` (create)
+
+**GET /work-queue/status**
+
+1. Query `workQueueSessionsTable` for most recent session where status NOT IN ('COMPLETE', 'FAILED'), ordered by started_at DESC, limit 1
+2. If found: return `{ session: WorkQueueSession, findings_ready: boolean }`
+   - `findings_ready`: true if session.status === 'READY' or 'COMPLETE'
+3. If not found: return `{ session: null, findings_ready: false }`
+
+Error: 500 `{ error: 'Failed to fetch queue status' }`
+
+---
+
+### 5.5 — Mount router
+
+File: `artifacts/api-server/src/routes/index.ts` (additive edit)
+
+```typescript
+import workQueueRouter from './work-queue';
+router.use(workQueueRouter);
+```
+
+---
+
+### 5.6 — drizzle-kit push
+
+After schema files created and barrel updated, run `drizzle-kit push`.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. Tables `work_queue_sessions` and `work_queue_findings` exist after push. Verify: `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'work_queue%'` — must return 2 rows.
+
+AC2. `work_queue_sessions` has correct columns including: id, status, started_at, completed_at, total_tasks, analysed_tasks, auto_fixed_count, cards_total, cards_resolved, cards_skipped, cascaded_count, error_message.
+
+AC3. `work_queue_findings` has correct columns including: id, session_id, task_id, document_id, document_name, document_tier, finding_type, issue_description, proposed_fix, original_text, status, skip_reason, sort_order, created_at, resolved_at.
+
+AC4. `GET /api/work-queue/status` returns `{ session: null, findings_ready: false }` on empty DB.
+
+AC5. With ANALYSING session in DB: returns session with `findings_ready: false`.
+
+AC6. With READY session in DB: returns session with `findings_ready: true`.
+
+AC7. COMPLETE and FAILED sessions NOT returned.
+
+AC8. Session data persists across server restarts.
+
+---
+
+## Section 7 — Constraints
+
+- `lib/db/src/schema/index.ts`: additive only
+- No FK on `task_id` or `document_id` in findings
+- `session_id` has FK to sessions table
+- All IDs via `$defaultFn(() => randomUUID())`
+- No analysis logic in this phase
+- `propagateFromDocument()` must not be called
+- No frontend changes
+
+---
+
+## Section 8 — Non-goals
+
+- No analysis engine — Phase 011b
+- No auto-fix or decision card endpoints — Phase 011c
+- No frontend — Phase 011d
+- No POST /work-queue/start — Phase 011b
+
+---
+
+## Section 9 — Assumptions
+
+- `integer`, `notInArray`, `desc` available from drizzle imports
+- `$defaultFn(() => randomUUID())` pattern confirmed from belief state tables
+
+---
+
+## Section 10 — Rollback
+
+Delete two schema files, remove barrel exports, delete router, remove mount, run drizzle-kit push.
+
+---
+
+## Section 11 — What comes next
+
+Phase 011b adds POST /work-queue/start and the background analysis engine.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS: [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings]
+
+---
+
+---
+
+# SCAN REQUEST — Required for Phase 011b spec
+
+After completing the build above, run the following scan and return the output as part of your response. This data is needed to spec Phase 011b and cannot be obtained another way.
+
+Scan these files exactly:
+- `lib/db/src/schema/tasks.ts` — list every column name and type
+- `lib/db/src/schema/compliance-constants.ts` (or equivalent) — list every column name and type
+- `artifacts/api-server/src/routes/work-queue/index.ts` — confirm what was just built
+- `lib/db/src/schema/documents.ts` — list only these columns: id, file_code, name, tier, review_state, content, lifecycle_status (confirm they exist and their types)
+
+Return the scan in this format for each file:
+
+### `[filepath]`
+Columns / fields found:
+- `[column_name]`: [type] [constraints if relevant]
+
+If a file does not exist or cannot be found: state "NOT FOUND" and suggest the likely correct path.

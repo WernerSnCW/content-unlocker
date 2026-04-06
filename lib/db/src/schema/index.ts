@@ -17,3 +17,5 @@ export * from "./belief-registry";
 export * from "./lead-beliefs";
 export * from "./belief-transitions";
 export * from "./lead-intelligence";
+export * from "./work-queue-sessions";
+export * from "./work-queue-findings";

@@ -21,6 +21,7 @@ import sheetSyncRouter from "./sheet-sync";
 import beliefsRouter from "./beliefs";
 import leadBeliefsRouter from "./lead-beliefs";
 import leadIntelligenceRouter from "./lead-intelligence";
+import workQueueRouter from "./work-queue";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use("/sheet-sync", sheetSyncRouter);
 router.use(beliefsRouter);
 router.use(leadBeliefsRouter);
 router.use(leadIntelligenceRouter);
+router.use(workQueueRouter);
 
 export default router;
