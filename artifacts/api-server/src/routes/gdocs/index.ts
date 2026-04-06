@@ -5,6 +5,7 @@ import { db } from "@workspace/db";
 import { documentsTable, changelogTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getGdocsTemplate } from "../../lib/templates/index";
+import { formatContentForGdocs, wrapGdocsHtml } from "../../lib/formatService";
 
 const router: IRouter = Router();
 const connectors = new ReplitConnectors();
@@ -22,17 +23,34 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
   const title = `[Unlock] ${doc.name} (${doc.file_code})`;
 
   try {
-    const formattedHtml = getGdocsTemplate({
-      id: doc.id,
-      file_code: doc.file_code,
+    const formatInput = {
       name: doc.name,
-      description: doc.description || undefined,
+      file_code: doc.file_code,
       content: content,
       tier: doc.tier,
       category: doc.category,
       version: doc.version,
-      last_reviewed: doc.last_reviewed || undefined,
-    });
+      description: doc.description || undefined,
+    };
+
+    let formattedHtml: string;
+    try {
+      const aiBody = await formatContentForGdocs(formatInput);
+      formattedHtml = wrapGdocsHtml(formatInput, aiBody);
+    } catch (aiErr: any) {
+      console.warn("AI formatting failed, falling back to static template:", aiErr.message);
+      formattedHtml = getGdocsTemplate({
+        id: doc.id,
+        file_code: doc.file_code,
+        name: doc.name,
+        description: doc.description || undefined,
+        content: content,
+        tier: doc.tier,
+        category: doc.category,
+        version: doc.version,
+        last_reviewed: doc.last_reviewed || undefined,
+      });
+    }
 
     const existingGdocUrl = (doc as any).gdoc_url;
     const existingGdocId = existingGdocUrl ? extractGdocId(existingGdocUrl) : null;

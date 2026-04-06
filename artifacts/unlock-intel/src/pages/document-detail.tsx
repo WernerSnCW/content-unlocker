@@ -608,6 +608,10 @@ export default function DocumentDetail() {
                   <ExternalLink className="w-3.5 h-3.5" />
                   Open in Google Docs
                 </a>
+                <Button size="sm" variant="outline" className="w-full border-blue-200 text-blue-700 hover:bg-blue-100" onClick={handleExportToGdocs} disabled={exportMutation.isPending}>
+                  <FileUp className={`w-3.5 h-3.5 mr-1.5 ${exportMutation.isPending ? "animate-spin" : ""}`} />
+                  {exportMutation.isPending ? "Formatting & pushing..." : "Push formatted content"}
+                </Button>
                 <Button size="sm" variant="outline" className="w-full border-green-200 text-green-700 hover:bg-green-100" onClick={requestImportFromGdocs} disabled={importMutation.isPending}>
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${importMutation.isPending ? "animate-spin" : ""}`} />
                   {importMutation.isPending ? "Pulling..." : "Pull changes back"}
