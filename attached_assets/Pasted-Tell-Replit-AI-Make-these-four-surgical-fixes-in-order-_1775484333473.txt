@@ -1,0 +1,54 @@
+Tell Replit AI:
+
+Make these four surgical fixes in order. Report after each one.
+Fix 1 — Revert the task completion → CLEAN flow
+In artifacts/api-server/src/routes/tasks/index.ts, find the PATCH endpoint change we made earlier that sets review_state = 'CLEAN' when a Review task is marked Done. Remove that logic entirely. Marking a task Done must never automatically change a document's review_state. Only the Work Queue resolution endpoints should set review_state to CLEAN.
+Verify: marking a task Done via PATCH /tasks/:id no longer changes the linked document's review_state.
+Fix 2 — Work Queue scope: auto-create tasks on start
+In artifacts/api-server/src/routes/work-queue/index.ts, in POST /work-queue/start, add this step BEFORE the existing task fetch:
+typescript// Auto-create Review tasks for REQUIRES_REVIEW documents with no open task
+const requiresReviewDocs = await db.select().from(documentsTable)
+  .where(and(
+    eq(documentsTable.lifecycle_status, 'CURRENT'),
+    eq(documentsTable.review_state, 'REQUIRES_REVIEW')
+  ));
+
+for (const doc of requiresReviewDocs) {
+  const existingTask = await db.select().from(tasksTable)
+    .where(and(
+      eq(tasksTable.linked_document_id, doc.id),
+      eq(tasksTable.type, 'Review'),
+      eq(tasksTable.status, 'Open')
+    )).limit(1);
+
+  if (!existingTask[0]) {
+    await db.insert(tasksTable).values({
+      id: randomUUID(),
+      title: `Review: ${doc.name}`,
+      status: 'Open',
+      type: 'Review',
+      linked_document_id: doc.id,
+    });
+  }
+}
+Verify: after calling POST /work-queue/start, count open Review tasks — should be significantly higher than 2.
+Fix 3 — Reset doc 110 to REQUIRES_REVIEW
+Doc 110 was falsely set to CLEAN. Reset it:
+sqlUPDATE documents SET review_state = 'REQUIRES_REVIEW' WHERE id = '110';
+Or via Drizzle. Also check: does the auto-fix finding for doc 110 still exist in work_queue_findings? If it shows AUTO_FIXED but the text wasn't actually replaced, update that finding's status to FAILED and add a note to issue_description explaining the text mismatch.
+Verify: doc 110 review_state = REQUIRES_REVIEW.
+Fix 4 — Create Review task for Content_Bank (700)
+Document 700 (Content_Bank V4) is Tier 1, contains prohibited values (22p, £99, £249), and has no Review task. Create one:
+typescriptawait db.insert(tasksTable).values({
+  id: randomUUID(),
+  title: 'Review: Content_Bank V4 — prohibited values detected (22p, £99, £249)',
+  status: 'Open',
+  type: 'Review',
+  linked_document_id: '[actual id of document 700]', // check the actual ID
+});
+Verify: open Review task exists for document 700.
+
+After all four fixes, run:
+sqlSELECT COUNT(*) FROM tasks WHERE type = 'Review' AND status = 'Open';
+SELECT COUNT(*) FROM documents WHERE lifecycle_status = 'CURRENT' AND review_state = 'REQUIRES_REVIEW';
+Return both counts. The first number should now be much closer to the second.

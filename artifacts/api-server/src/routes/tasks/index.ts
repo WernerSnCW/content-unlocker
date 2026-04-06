@@ -131,12 +131,6 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
       .where(eq(tasksTable.id, id))
       .returning();
 
-    if (updated.status === "Done" && updated.type === "Review" && updated.linked_document_id) {
-      await db.update(documentsTable)
-        .set({ review_state: "CLEAN" })
-        .where(eq(documentsTable.id, updated.linked_document_id));
-    }
-
     await db.insert(changelogTable).values({
       id: randomUUID(),
       action: "TASK_UPDATED",

@@ -41,6 +41,31 @@ router.post("/work-queue/start", async (_req, res) => {
       return res.status(200).json({ session: existing, already_running: true });
     }
 
+    const requiresReviewDocs = await db.select().from(documentsTable)
+      .where(and(
+        eq(documentsTable.lifecycle_status, "CURRENT"),
+        eq(documentsTable.review_state, "REQUIRES_REVIEW")
+      ));
+
+    for (const doc of requiresReviewDocs) {
+      const existingTask = await db.select().from(tasksTable)
+        .where(and(
+          eq(tasksTable.linked_document_id, doc.id),
+          eq(tasksTable.type, "Review"),
+          eq(tasksTable.status, "Open")
+        )).limit(1);
+
+      if (!existingTask[0]) {
+        await db.insert(tasksTable).values({
+          id: randomUUID(),
+          title: `Review: ${doc.name}`,
+          status: "Open",
+          type: "Review",
+          linked_document_id: doc.id,
+        });
+      }
+    }
+
     const openTasks = await db.select().from(tasksTable)
       .where(and(
         eq(tasksTable.status, "Open"),
