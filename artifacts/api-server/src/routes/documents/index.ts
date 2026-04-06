@@ -10,6 +10,7 @@ import multer from "multer";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, basename } from "path";
+import { generatePdf } from "../../lib/pdfService";
 import {
   ListDocumentsQueryParams,
   GetDocumentParams,
@@ -19,6 +20,7 @@ import {
 } from "@workspace/api-zod";
 
 const PDF_STORAGE_DIR = join(process.cwd(), "documents", "pdfs");
+const PDF_EXPORT_DIR = join(process.cwd(), "artifacts", "exports", "pdf");
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -312,6 +314,97 @@ router.get("/documents/:id", async (req, res): Promise<void> => {
   res.json(formatDoc(doc));
 });
 
+router.post("/documents/:id/generate-pdf", async (req, res): Promise<void> => {
+  try {
+    const docId = req.params.id;
+    const [doc] = await db.select().from(documentsTable).where(eq(documentsTable.id, docId));
+    if (!doc) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    if (!doc.content || doc.content.trim().length === 0) {
+      res.status(400).json({ error: "Document has no content to export" });
+      return;
+    }
+
+    const pdfBuffer = await generatePdf({
+      name: doc.name,
+      file_code: doc.file_code,
+      version: doc.version,
+      tier: doc.tier,
+      category: doc.category,
+      description: doc.description,
+      content: doc.content,
+      last_reviewed: doc.last_reviewed,
+    });
+
+    if (!existsSync(PDF_EXPORT_DIR)) {
+      await mkdir(PDF_EXPORT_DIR, { recursive: true });
+    }
+
+    const safeName = doc.file_code.replace(/[^a-zA-Z0-9_-]/g, "");
+    const pdfFilename = `${safeName}_v${doc.version}_${Date.now()}.pdf`;
+    const pdfPath = join(PDF_EXPORT_DIR, pdfFilename);
+    await writeFile(pdfPath, pdfBuffer);
+
+    const now = new Date();
+    await db
+      .update(documentsTable)
+      .set({
+        pdf_exported_at: now,
+        pdf_file_path: pdfPath,
+      })
+      .where(eq(documentsTable.id, docId));
+
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "PDF_EXPORTED",
+      document_id: docId,
+      details: `PDF generated: ${pdfFilename} (v${doc.version}, ${pdfBuffer.length} bytes)`,
+      triggered_by: "agent",
+    });
+
+    res.json({
+      success: true,
+      pdf_file_path: pdfPath,
+      pdf_filename: pdfFilename,
+      pdf_size_bytes: pdfBuffer.length,
+      pdf_exported_at: now.toISOString(),
+      version: doc.version,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "PDF generation failed", message: err.message });
+  }
+});
+
+router.get("/documents/:id/download-pdf", async (req, res): Promise<void> => {
+  try {
+    const docId = req.params.id;
+    const [doc] = await db.select().from(documentsTable).where(eq(documentsTable.id, docId));
+    if (!doc) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    const pdfPath = doc.pdf_file_path;
+    if (!pdfPath || !existsSync(pdfPath)) {
+      res.status(404).json({ error: "No PDF has been generated for this document. Use POST /documents/:id/generate-pdf first." });
+      return;
+    }
+
+    const pdfBuffer = await readFile(pdfPath);
+    const safeName = doc.name.replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");
+    const filename = `${safeName}_v${doc.version}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: "PDF download failed", message: err.message });
+  }
+});
+
 router.post("/documents/:id/export-pdf", async (req, res): Promise<void> => {
   try {
     const docId = req.params.id;
@@ -546,7 +639,10 @@ router.patch("/documents/:id", async (req, res): Promise<void> => {
   if (parsed.data.version) updates.version = parsed.data.version;
   if (parsed.data.name) updates.name = parsed.data.name;
   if (parsed.data.description !== undefined) updates.description = parsed.data.description;
-  if (parsed.data.content !== undefined) updates.content = parsed.data.content;
+  if (parsed.data.content !== undefined) {
+    updates.content = parsed.data.content;
+    updates.content_updated_at = new Date();
+  }
   if (parsed.data.persona_relevance !== undefined) updates.persona_relevance = parsed.data.persona_relevance;
   if (parsed.data.stage_relevance !== undefined) updates.pipeline_stage_relevance = parsed.data.stage_relevance;
 
@@ -634,6 +730,9 @@ function formatDoc(doc: any) {
     has_source_pdf: !!doc.source_pdf_path,
     source_pdf_filename: doc.source_pdf_filename || null,
     source_pdf_imported_at: doc.source_pdf_imported_at || null,
+    pdf_exported_at: doc.pdf_exported_at || null,
+    content_updated_at: doc.content_updated_at || null,
+    pdf_file_path: doc.pdf_file_path || null,
   };
 }
 

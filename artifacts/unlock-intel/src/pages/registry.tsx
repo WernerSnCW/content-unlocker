@@ -2,7 +2,7 @@ import { useListDocuments } from "@workspace/api-client-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo, useRef } from "react";
-import { Search, FileText, Upload, X, Loader2 } from "lucide-react";
+import { Search, FileText, Upload, X, Loader2, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -212,6 +212,7 @@ export default function Registry() {
                         <TableHead>Status</TableHead>
                         <TableHead>Review</TableHead>
                         <TableHead>Version</TableHead>
+                        <TableHead>PDF</TableHead>
                         <TableHead>Quality</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
@@ -233,6 +234,20 @@ export default function Registry() {
                           <TableCell>{getStatusBadge(doc.lifecycle_status)}</TableCell>
                           <TableCell>{getReviewBadge(doc.review_state)}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">v{doc.version}</TableCell>
+                          <TableCell>
+                            {(doc as any).pdf_exported_at ? (
+                              <div className="flex items-center gap-1">
+                                <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                                {(doc as any).content_updated_at && new Date((doc as any).content_updated_at) > new Date((doc as any).pdf_exported_at) ? (
+                                  <Badge variant="outline" className="text-[10px] border-amber-200 text-amber-600 bg-amber-50 px-1">Stale</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px] border-emerald-200 text-emerald-600 bg-emerald-50 px-1">Current</Badge>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {(() => {
                               const entry = rowScores.get(doc.id);

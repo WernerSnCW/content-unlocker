@@ -205,6 +205,7 @@ router.post("/import/quick-update", (req, res, next) => {
         word_count: wordCount,
         review_state: "REQUIRES_REVIEW",
         last_reviewed: new Date().toISOString().split("T")[0],
+        content_updated_at: new Date(),
       })
       .where(eq(documentsTable.id, documentId));
 

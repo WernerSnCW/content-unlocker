@@ -1,0 +1,756 @@
+# PHASE DOC — Document PDF Export + Format Version Tracking
+
+```
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-013a
+Effort: 1–2 days
+Dependencies: None
+Risk: MEDIUM
+```
+
+---
+
+## SYSTEM REFERENCE — Verify before implementing
+
+**Before writing any code, verify the following canonical values from
+the live system. Do not infer, assume, or use values from this document
+if they conflict with what the live system uses. If any value below
+differs from the live system, use the live system value and note the
+discrepancy.**
+
+### Canonical pipeline stages
+Outreach → Called → Demo Booked → Demo Complete → Decision
+
+### Canonical document statuses (review_state field)
+CLEAN | REQUIRES_REVIEW | BLOCKED
+
+### Canonical lifecycle statuses
+DRAFT | CURRENT | ARCHIVED
+
+### Canonical document tiers
+Tier 1 (foundational) | Tier 2 (supporting) | Tier 3 (tactical)
+
+### Canonical investor archetypes
+Growth Seeker | Preserver | Legacy Builder
+
+### Canonical QC statuses
+PASS | FAIL | MANUAL_REVIEW_REQUIRED
+
+### Canonical generation statuses
+CLEAN | REQUIRES_REVIEW
+
+### Propagation utility
+Location: `artifacts/api-server/src/lib/propagation.ts`
+
+Two functions — use these, do not reimplement propagation logic:
+- `detectPropagationTargets(documentId)` — read-only cascade detection. No DB writes.
+- `propagateFromDocument(documentId)` — detects, flags, and writes changelog entries.
+
+**Critical:** do not call both on the same document in the same operation.
+
+---
+
+## Section 1 — Feature
+
+This build adds Puppeteer-based PDF export for any document in the Registry,
+staleness tracking so the operator can see at a glance whether the current PDF
+reflects the current markdown content, and a version history panel surfacing the
+existing changelog entries per document. Documents are authored as markdown in
+the database; there is currently no way to produce a send-ready, brand-compliant
+PDF output from that content.
+
+---
+
+## Section 2 — Why this is necessary
+
+Without this build:
+- There is no PDF output from the document registry. Investor-facing documents
+  exist only as markdown stored in the database with no way to produce a
+  formatted, send-ready file.
+- There is no signal to the operator that a document has been edited since its
+  last export. A stale PDF could be sent to a lead without any warning.
+- Document version history exists in the changelog table but is invisible — there
+  is no UI surface that shows what changed, when, and at which version.
+
+---
+
+## Section 3 — Current state
+
+- `documentsTable` schema: has `id`, `name`, `file_code`, `tier`, `category`,
+  `content`, `version`, `lifecycle_status`, `review_state`, `updated_at`, and
+  related metadata fields. Does **not** have `pdf_exported_at`,
+  `content_updated_at`, or `pdf_file_path`.
+- `artifacts/api-server/src/routes/documents/` (or equivalent): handles
+  CRUD for documents. The exact router file must be confirmed at Step 1 scan.
+- `POST /import/quick-update`: writes to `content` field — must be updated to
+  set `content_updated_at`.
+- Changelog table: exists and records per-document events. Fields assumed to
+  include `document_id`, `action`, `created_at`, `version`, and `metadata`
+  (jsonb). Version history panel depends on this — Replit AI must verify the
+  actual changelog schema at Step 1 scan.
+- No PDF generation service exists anywhere in the codebase.
+- No Puppeteer or headless browser dependency is currently installed.
+- The document Registry UI exists but has no PDF badge, export button,
+  download button, or version history panel.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data model / type definitions — three new nullable columns on documentsTable
+- [x] API contract changes — two new endpoints; OpenAPI spec must be updated
+- [x] New UI components — PDF badge, Generate button, Download button, version history accordion
+- [x] Additive edits to existing files — documents router, quick-update route, Registry page
+- [x] Database schema or migration — drizzle-kit push for three new columns
+- [x] External service integration — Puppeteer / headless Chromium
+
+**Layer count:** 6
+**Split required:** NO
+
+All six layers are purely additive. No existing behaviour is modified except
+two route handlers that receive an additional `content_updated_at = NOW()` write.
+The Puppeteer integration is the only genuine unknown — it is gated behind Step 1
+environment verification, which must pass before any other code is written. If
+Step 1 fails, the build is blocked and reported immediately; the remaining layers
+are not attempted.
+
+---
+
+## Section 5 — Required behaviour
+
+### Step 1 — Environment: Verify Puppeteer / Chromium launch
+
+**This step must complete before any other code is written.**
+
+Install `puppeteer` as a dependency of `artifacts/api-server`:
+
+```bash
+pnpm --filter api-server add puppeteer
+```
+
+`puppeteer` (not `puppeteer-core`) downloads a compatible Chrome for Testing
+binary on install. This is the primary and supported path. Do not use
+`puppeteer-core` unless the full `puppeteer` install fails, in which case
+attempt `puppeteer-core` with a known `executablePath` from the Replit
+system (e.g. `/usr/bin/chromium-browser`).
+
+Write and run a one-time smoke test script:
+
+```typescript
+// scripts/pdf-smoke-test.ts
+import puppeteer from 'puppeteer';
+const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+const page = await browser.newPage();
+await page.setContent('<h1>Smoke test</h1>');
+await page.pdf({ format: 'A4', path: '/tmp/smoke-test.pdf' });
+await browser.close();
+console.log('PDF smoke test PASSED');
+```
+
+> **GATE: Chromium launch verification**
+> Run the smoke test. If it exits with "PDF smoke test PASSED" and the
+> file exists at `/tmp/smoke-test.pdf`, return "STEP 1 PASS — proceeding"
+> and continue. If it fails for any reason, return the exact error message
+> and "BUILD BLOCKED — Chromium cannot be launched. Do not proceed."
+
+---
+
+### Step 2 — Database: Schema migration
+
+Add three nullable columns to `documentsTable` in
+`lib/db/src/schema/documents.ts` (confirm exact filename at scan):
+
+```typescript
+pdf_exported_at:     timestamp('pdf_exported_at', { withTimezone: true }),
+content_updated_at:  timestamp('content_updated_at', { withTimezone: true }),
+pdf_file_path:       text('pdf_file_path'),
+```
+
+All three are nullable with no default. No existing rows are touched.
+
+Push the schema:
+
+```bash
+pnpm --filter @workspace/db run push
+```
+
+Verify the columns exist on the live table before proceeding.
+
+---
+
+### Step 3 — Backend: PDF service
+
+Create `artifacts/api-server/src/lib/pdfService.ts`.
+
+This file must export one function:
+
+```typescript
+export async function generatePdf(document: {
+  id: string;
+  name: string;
+  file_code: string;
+  tier: string;
+  version: number;
+  content: string;
+}): Promise<{ filePath: string }>
+```
+
+**Behaviour:**
+
+1. Convert `document.content` (markdown) to HTML using `marked`. The `marked`
+   package must be installed: `pnpm --filter api-server add marked`.
+
+2. Wrap the HTML in the Design Bible template (see template spec below).
+
+3. Launch a Puppeteer browser instance with `args: ['--no-sandbox']`. Reuse a
+   module-level browser instance if one is already running; do not launch a new
+   browser per request.
+
+4. Open a new page, set the HTML content, wait for fonts to load
+   (`waitUntil: 'networkidle0'`).
+
+5. Print to PDF:
+   ```typescript
+   await page.pdf({
+     format: 'A4',
+     printBackground: true,
+     margin: { top: '25mm', right: '25mm', bottom: '25mm', left: '25mm' },
+   });
+   ```
+
+6. Write the PDF buffer to disk at:
+   `/artifacts/exports/pdf/{document.id}_{document.version}.pdf`
+
+   Create the directory if it does not exist (`fs.mkdirSync(..., { recursive: true })`).
+   Overwrite any existing file at that path — re-exporting the same version
+   replaces the prior file.
+
+7. Close the page (not the browser).
+
+8. Return `{ filePath }`.
+
+9. On any error: close the page if open, do not write to disk, throw the error
+   so the calling route can return 500.
+
+**Design Bible HTML template:**
+
+The template must be constructed as a single self-contained HTML string with
+all CSS inline or in a `<style>` block. Inter font must be embedded using a
+local `@font-face` declaration — do not load from Google Fonts CDN or any
+external URL. The font files must be bundled with the server at a known path
+(e.g. `artifacts/api-server/src/assets/fonts/Inter-*.woff2`) and referenced
+via absolute path in the `@font-face` src.
+
+If Inter font files are not yet present in the repository, download them from
+the Inter GitHub release (https://github.com/rsms/inter/releases) and add
+them to `artifacts/api-server/src/assets/fonts/`. Do not rely on system fonts
+or CDN for PDF rendering.
+
+CSS values — implement exactly:
+
+```css
+/* Colours */
+--brand-green: #01BC77;
+--text-green: #008655;
+--near-black: #1A1A1A;
+--white: #FFFFFF;
+--light-grey: #E8E8E8;
+--mid-grey: #888888;
+--cream-callout: #F9F9F9;
+
+/* Body */
+body {
+  font-family: 'Inter', sans-serif;
+  font-size: 10.5pt;
+  color: #1A1A1A;
+  text-align: justify;
+  line-height: 1.45;
+  background: #FFFFFF;
+}
+
+/* Headings */
+h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  text-align: left;
+  margin-top: 48pt;
+  margin-bottom: 24pt;
+  border-bottom: 2px solid #01BC77;
+  padding-bottom: 6pt;
+}
+h2 {
+  font-size: 14pt;
+  font-weight: 600;
+  text-align: left;
+  margin-top: 24pt;
+  margin-bottom: 12pt;
+}
+h3 {
+  font-size: 12pt;
+  font-weight: 500;
+  margin-top: 16pt;
+  margin-bottom: 8pt;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16pt 0;
+}
+thead tr {
+  background: #1A1A1A;
+  color: #FFFFFF;
+  font-size: 9pt;
+  font-weight: 600;
+}
+/* First column of thead — Brand Green fill, near-black text */
+thead tr th:first-child {
+  background: #01BC77;
+  color: #1A1A1A;
+}
+tbody tr td {
+  background: #FFFFFF;
+  color: #1A1A1A;
+  border-bottom: 1px solid #E8E8E8;
+  padding: 6pt 8pt;
+  font-size: 10pt;
+}
+/* IMPORTANT: never place white text on #01BC77 — contrast fails WCAG AA */
+
+/* Callout / blockquote */
+blockquote {
+  border-left: 3px solid #01BC77;
+  background: #F9F9F9;
+  color: #1A1A1A;
+  margin: 16pt 0;
+  padding: 12pt 16pt;
+}
+
+/* Horizontal rule */
+hr {
+  border: none;
+  border-top: 1px solid #E8E8E8;
+  margin: 24pt 0;
+}
+```
+
+**Cover page** — inserted before the document body:
+
+```html
+<div class="cover-page" style="
+  page-break-after: always;
+  text-align: center;
+  padding-top: 80mm;
+">
+  <div style="font-size: 12pt; color: #1A1A1A; margin-bottom: 8pt;">
+    {tier} — {file_code}
+  </div>
+  <div style="font-size: 24pt; font-weight: 700; color: #008655; margin-bottom: 12pt;">
+    {name}
+  </div>
+  <div style="font-size: 10pt; color: #888888;">
+    Version {version} — {date}
+  </div>
+</div>
+```
+
+**Footer** — injected via Puppeteer `headerTemplate` / `footerTemplate`:
+
+```html
+<div style="
+  font-size: 8pt;
+  color: #888888;
+  width: 100%;
+  text-align: right;
+  padding-right: 25mm;
+">
+  {file_code} v{version} — {date} &nbsp;&nbsp; <span class="pageNumber"></span>
+</div>
+```
+
+**Supported markdown elements** — the following must render correctly:
+headings (h1–h3), paragraphs, bold, tables, blockquotes, horizontal rules,
+unordered lists, ordered lists, and fenced code blocks. Code blocks use
+`font-family: monospace; background: #F0F0F0; padding: 4pt 8pt; border-radius: 3pt`.
+
+---
+
+### Step 4 — Backend: Export endpoints
+
+Add two routes to the documents router. These must be declared **before** any
+`:id`-parameterised routes within the same router to prevent route swallowing.
+
+Confirm the exact documents router file at Step 1 scan. It is likely
+`artifacts/api-server/src/routes/documents/index.ts`.
+
+**POST /api/documents/:id/export/pdf**
+
+```
+1. Fetch document by id from documentsTable.
+   If not found: return 404 { error: "Document not found" }.
+
+2. Call pdfService.generatePdf(document).
+   If generatePdf throws: return 500 { error: error.message }.
+   Do not update any DB fields on failure.
+
+3. On success:
+   a. Update documentsTable set:
+        pdf_exported_at = NOW()
+        pdf_file_path = filePath
+      where id = document.id
+   b. Write changelog entry:
+        action: 'PDF_EXPORTED'
+        document_id: document.id
+        metadata: { version: document.version, file_path: filePath }
+   c. Return 200 { success: true, file_path: filePath, exported_at: <timestamp> }
+
+Order of writes: file must be written before DB is updated.
+DB must be updated before changelog is written.
+If DB update fails after file write: log the error, return 500.
+The file on disk is the authoritative artifact; a missing DB record is
+repairable by re-exporting.
+```
+
+**GET /api/documents/:id/export/pdf**
+
+```
+1. Fetch document by id from documentsTable.
+   If not found: return 404 { error: "Document not found" }.
+
+2. If pdf_file_path is null: return 404 { error: "No PDF generated yet" }.
+
+3. Check that the file exists at pdf_file_path using fs.existsSync().
+   If file is missing: return 410 { error: "PDF file missing on disk — re-export required" }.
+
+4. Stream the file:
+   Content-Type: application/pdf
+   Content-Disposition: attachment; filename="{file_code}_v{version}.pdf"
+   Use fs.createReadStream(pdf_file_path).pipe(res).
+```
+
+**OpenAPI spec** — add both endpoints to `lib/api-spec/openapi.yaml`.
+Run codegen after: `pnpm --filter @workspace/api-spec run g`.
+
+---
+
+### Step 5 — Backend: content_updated_at writes
+
+Every code path that writes to `documents.content` must also set
+`content_updated_at = NOW()` in the same DB update.
+
+Affected locations — confirm exact files at Step 1 scan:
+
+- `POST /import/quick-update` handler — add `content_updated_at: new Date()`
+  to the update object alongside the content write.
+- `PATCH /documents/:id` handler — if `content` is present in the request
+  body, add `content_updated_at: new Date()` to the update.
+- Any generation route that persists content to documentsTable — add
+  `content_updated_at: new Date()` to those update calls.
+
+**Rule:** `content_updated_at` must never be set by `POST /documents/:id/export/pdf`
+or `GET /documents/:id/export/pdf`. It tracks content changes only.
+
+---
+
+### Step 6 — Frontend: Registry page updates
+
+File: `artifacts/unlock-intel/src/pages/registry.tsx` (confirm at scan).
+
+**PDF status badge**
+
+Compute staleness from the document record fields returned by the existing
+documents list / detail API. Add a badge component to each document row or
+expanded detail panel:
+
+| Condition | Badge |
+|---|---|
+| `pdf_exported_at` is null | Grey — Clock icon — "No PDF" |
+| `pdf_exported_at < content_updated_at` | Amber — AlertTriangle icon — "PDF outdated" |
+| `pdf_exported_at >= content_updated_at` | Green — CheckCircle icon — "PDF current" |
+
+Use Lucide icons: `Clock`, `AlertTriangle`, `CheckCircle2`. Use Shadcn Badge
+component with variant prop. Colour values: grey = `#888888`, amber = `#F59E0B`,
+green = `#008655` (Text Green — passes WCAG AA on white).
+
+**Action buttons**
+
+In the document detail panel or expanded row:
+
+- **Generate PDF** button — always visible for CURRENT documents.
+  On click: `POST /api/documents/:id/export/pdf`.
+  Show loading spinner on the button during the request.
+  On success: invalidate the document query to refresh badge state.
+  On error: show a toast/alert with the error message.
+
+- **Download PDF** button — visible only when `pdf_file_path` is not null.
+  On click: navigate to `GET /api/documents/:id/export/pdf` (browser will
+  handle the file download via Content-Disposition).
+
+Both buttons use Shadcn Button component. "Generate PDF" uses the `FileOutput`
+Lucide icon. "Download PDF" uses the `Download` Lucide icon.
+
+**Version history panel**
+
+Collapsible accordion section below document metadata. On expand, fetch:
+
+```
+GET /api/changelog?document_id={id}&limit=20&order=desc
+```
+
+Confirm the exact changelog endpoint at Step 1 scan — use whatever exists.
+
+Display each changelog entry as a row:
+
+```
+v{version}  |  {action label}  |  {timestamp formatted as "6 Apr 2026, 14:32"}  |  {word_count delta or "—"}
+```
+
+Word count delta: if `metadata.word_count` is present on the changelog entry,
+compute delta from prior entry and show as `+142 words` or `−23 words`. If
+absent, show `—`. Do not crash if metadata is null or malformed.
+
+Maximum 20 entries. No pagination required in this build.
+
+---
+
+## Section 6 — Acceptance criteria
+
+```
+AC1.  POST /api/documents/:id/export/pdf for a CURRENT document returns 200
+      with { success: true, file_path, exported_at }. A PDF file exists at
+      the returned file_path on disk. pdf_exported_at and pdf_file_path are
+      updated on the document record in the DB.
+
+AC2.  Generated PDF is A4 format. Manual visual check required:
+      cover page present; document name in Text Green #008655; body text in
+      Near-black #1A1A1A, Inter font, justified; H1 has Brand Green
+      #01BC77 bottom border; table header row is Near-black #1A1A1A with
+      white text; first column of table header is Brand Green #01BC77 with
+      near-black text; footer shows file_code, version, date, and page number.
+
+AC3.  GET /api/documents/:id/export/pdf responds with Content-Type:
+      application/pdf and Content-Disposition: attachment; filename containing
+      file_code and version. Browser receives the file as a download.
+
+AC4.  GET /api/documents/:id/export/pdf returns 404 { error: "No PDF
+      generated yet" } when pdf_file_path is null on the document record.
+
+AC5.  GET /api/documents/:id/export/pdf returns 410 { error: "PDF file
+      missing on disk — re-export required" } when pdf_file_path is set in
+      the DB but the file does not exist at that path on disk.
+
+AC6.  After a Quick Update to a document's content field, content_updated_at
+      is set to a timestamp later than its prior value. If a PDF had been
+      previously generated, the Registry badge shows "PDF outdated" (amber).
+
+AC7.  A document with pdf_exported_at null shows the "No PDF" (grey) badge.
+
+AC8.  A document where pdf_exported_at >= content_updated_at shows the
+      "PDF current" (green) badge.
+
+AC9.  Re-exporting the same document at the same version overwrites the prior
+      file at the same path. pdf_exported_at and pdf_file_path are updated.
+      The prior file no longer exists at the path before overwrite; after
+      export, exactly one file exists at that path.
+
+AC10. If Puppeteer fails to launch or the render throws: POST /export/pdf
+      returns 500 { error: <message> }. No file is written to disk.
+      pdf_exported_at and pdf_file_path are not updated on the document record.
+
+AC11. The Generate PDF button shows a loading/spinner state during generation
+      and the badge updates to reflect the new state without a full page reload.
+
+AC12. The Download PDF button is visible only when pdf_file_path is not null,
+      and triggers a file download when clicked.
+
+AC13. The Version History accordion shows up to 20 changelog entries for the
+      document, ordered newest-first, each showing version number, action
+      label, and timestamp. Word count delta shows "—" if metadata.word_count
+      is absent.
+
+AC14. Export does not mutate content_updated_at. After running
+      POST /export/pdf, content_updated_at on the document record is
+      unchanged from its pre-export value.
+
+AC15. Browser launch smoke test (Step 1 gate) passes before any application
+      code is written. If it fails, the build is blocked and the exact error
+      is reported.
+```
+
+---
+
+## Section 7 — Constraints
+
+```
+- artifacts/api-server/src/lib/propagation.ts: must not be modified.
+  PDF export does not affect propagation logic.
+
+- artifacts/api-server/src/lib/generationEngine.ts: must not be modified.
+  PDF generation is entirely separate from the LLM generation pipeline.
+
+- lib/api-spec/openapi.yaml: must be updated to include both new endpoints
+  before codegen is run. Do not run codegen without updating the spec first.
+
+- lib/db/src/schema/index.ts: add the barrel export for any new schema
+  file. Do not remove existing exports.
+
+- Route ordering: within the documents router, POST /documents/:id/export/pdf
+  and GET /documents/:id/export/pdf must be declared before any route
+  matching /documents/:id (i.e., before the general PATCH/GET/:id routes)
+  to prevent :id swallowing the /export/pdf path segment.
+
+- content_updated_at: must never be set by the PDF export endpoints.
+  It is set only by routes that write to the content field.
+
+- pdf_exported_at and pdf_file_path: must never be set by routes that
+  write to the content field. Each timestamp tracks a distinct event.
+
+- Backward compatibility: the three new schema columns are nullable with
+  no default. All existing document records will have null in these fields
+  until content is next written or a PDF is exported. No existing behaviour
+  changes. The documents list and detail APIs continue to function unchanged;
+  the new fields are additive to their response shapes.
+
+- Font assets: Inter font files must be bundled with the server at a known
+  path. Do not load fonts from any external CDN at PDF render time.
+
+- Puppeteer browser instance: launch once at the module level and reuse
+  across requests. Do not launch a new browser per PDF export request.
+  Handle browser crash/disconnect by relaunching on next request.
+```
+
+---
+
+## Section 8 — Non-goals
+
+```
+- This build does not generate .docx files — deferred to a future phase.
+- This build does not add a visual diff view between PDF versions — deferred.
+- This build does not email or attach PDFs to lead sends — separate workflow.
+- This build does not add PDF generation to the bulk import flow — deferred.
+- This build does not add PDF generation to the template generation flow —
+  that requires a separate phase doc as template output is not yet persisted
+  to documentsTable.
+- This build does not add password protection or watermarking to PDFs — deferred.
+- This build does not surface PDF status in the Document Health Check
+  (/document-health) — that is a separate audit surface.
+```
+
+---
+
+## Section 9 — Assumptions
+
+```
+- The documents router file is at artifacts/api-server/src/routes/documents/index.ts.
+  Must be confirmed at Step 1 scan. If it is elsewhere, apply changes to
+  the correct file.
+
+- A changelog table exists with fields including document_id, action,
+  created_at, version, and metadata (jsonb). The Version History panel
+  depends on this schema. Replit AI must verify the actual changelog schema
+  at Step 1 scan and adapt the panel query accordingly. If metadata.word_count
+  does not exist, the delta column shows "—" throughout.
+
+- A changelog endpoint exists at GET /api/changelog (or similar) that accepts
+  a document_id filter. Must be confirmed at Step 1 scan. If the endpoint
+  shape differs, the frontend panel query must be adapted.
+
+- The Registry page file is at artifacts/unlock-intel/src/pages/registry.tsx.
+  Must be confirmed at Step 1 scan.
+
+- The quick-update route is at POST /api/import/quick-update. Must be confirmed
+  at Step 1 scan.
+
+- The Replit deployment environment has sufficient disk space to store exported
+  PDFs in /artifacts/exports/pdf/. If disk space is constrained, this path
+  may need to change — flag before proceeding.
+
+- puppeteer (full package) can download Chrome for Testing in the Replit
+  environment. If the download is blocked or disk space is insufficient,
+  the build is blocked at Step 1 and must be escalated.
+```
+
+---
+
+## Section 10 — Rollback
+
+Risk is MEDIUM. Rollback steps:
+
+1. **Schema:** The three new columns (`pdf_exported_at`, `content_updated_at`,
+   `pdf_file_path`) are nullable with no application logic depending on them
+   in existing routes. They can be dropped via a Drizzle migration without
+   affecting any existing data or functionality.
+
+2. **New files:** Delete `artifacts/api-server/src/lib/pdfService.ts` and
+   remove the two export routes from the documents router.
+
+3. **Modified routes:** Revert the `content_updated_at = NOW()` additions
+   to quick-update, PATCH /documents/:id, and any generation routes. These
+   are one-line additions — revert is trivial.
+
+4. **Frontend:** Revert the Registry page to remove badge, buttons, and
+   version history panel. No new pages were added.
+
+5. **Disk:** Delete `/artifacts/exports/pdf/` directory and contents.
+
+6. **OpenAPI + codegen:** Revert openapi.yaml changes and re-run codegen.
+
+7. **Puppeteer:** Uninstall with `pnpm --filter api-server remove puppeteer`.
+   Remove Inter font assets from `artifacts/api-server/src/assets/fonts/`.
+
+No external state (no third-party services, no lead data, no ACU data) is
+affected by this build. Rollback is fully reversible.
+
+---
+
+## Section 11 — What comes next
+
+The next phase for this feature area is `.docx` export, which requires a
+separate approach (likely `docx` npm package or `pandoc` if available in
+the Replit environment) and its own phase doc. Before speccing that phase,
+a Step 1 scan should confirm what Word generation libraries are available
+or installable, and whether the Unlock document templates can be faithfully
+reproduced in `.docx` format given OOXML constraints.
+
+A longer-term enhancement is surfacing PDF status in the Document Health
+Check (`/document-health`) as an eighth dimension — flagging documents that
+have never been exported or whose PDF is outdated. That requires a separate
+health check dimension spec.
+
+---
+
+## Post-doc notes (Step 3 report)
+
+**Inferred:**
+- Documents router path, Registry page path, quick-update route path, and
+  changelog endpoint shape are all assumed from naming conventions and prior
+  build history. All four must be confirmed at Step 1 scan — these are the
+  most likely sources of friction during build execution.
+- Changelog schema (specifically `metadata.word_count`) is assumed to be
+  present in some entries. The panel gracefully degrades to "—" if absent.
+
+**Architecture conflicts resolved:**
+- Font CDN contradiction from original draft (said "no external fonts" then
+  referenced Google Fonts CDN) resolved by bundling Inter locally via
+  `@font-face`. This is the only correct approach for deterministic PDF
+  rendering in a server environment.
+- Puppeteer strategy corrected: `puppeteer` (bundled Chrome for Testing) is
+  primary. `puppeteer-core` with system `executablePath` is fallback only.
+  The original draft had this backwards.
+- Missing `pdf_file_path` column added. The GET endpoint needs an
+  authoritative stored path — computing it from mutable fields (version
+  number) would be brittle on re-export.
+
+**Criteria that required care:**
+- AC2 is a manual visual check — cannot be auto-tested. Marked accordingly.
+- AC9 (overwrite behaviour) required explicit testing steps because the
+  filesystem state before and after must both be verified.
+
+**CTX file status:** CTX_architecture.md is current and provided all needed
+constraints. No missing CTX context for this build.
+
+**Complexity verdict:** 6 layers, single build. All additive. Puppeteer
+environment gate is the only real risk and is handled by the Step 1 hard stop.

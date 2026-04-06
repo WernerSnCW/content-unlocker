@@ -2,7 +2,7 @@ import { useParams, Link } from "wouter";
 import { useGetDocument, useGetComplianceConstants, useUpdateDocument, useExportToGoogleDocs, useImportFromGoogleDocs, useGetGdocsStatus } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, AlertTriangle, ShieldCheck, FileText, Download, Pencil, X, Save, ExternalLink, RefreshCw, FileUp, Lock, Unlock, Shield, Award, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ShieldCheck, FileText, Download, Pencil, X, Save, ExternalLink, RefreshCw, FileUp, Lock, Unlock, Shield, Award, ChevronDown, ChevronRight, Loader2, Printer, CheckCircle, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +93,8 @@ export default function DocumentDetail() {
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<"edit" | "import" | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfGenResult, setPdfGenResult] = useState<{ success: boolean; message?: string } | null>(null);
   const [qualityScore, setQualityScore] = useState<any>(null);
   const [qualityScoring, setQualityScoring] = useState(false);
   const [qualityScoreError, setQualityScoreError] = useState<string | null>(null);
@@ -201,6 +203,47 @@ export default function DocumentDetail() {
       console.error("PDF export failed:", err);
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!document) return;
+    setGeneratingPdf(true);
+    setPdfGenResult(null);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.origin}/api`;
+      const resp = await fetch(`${baseUrl}/documents/${document.id}/generate-pdf`, {
+        method: "POST",
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.message || err.error || "Generation failed");
+      }
+      setPdfGenResult({ success: true });
+      refetch();
+    } catch (err: any) {
+      setPdfGenResult({ success: false, message: err.message });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!document) return;
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || `${window.location.origin}/api`;
+      const resp = await fetch(`${baseUrl}/documents/${document.id}/download-pdf`);
+      if (!resp.ok) throw new Error("Download failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement("a");
+      a.href = url;
+      const safeName = document.name.replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");
+      a.download = `${safeName}_v${document.version}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF download failed:", err);
     }
   };
 
@@ -577,6 +620,55 @@ export default function DocumentDetail() {
               </CardContent>
             </Card>
           )}
+
+          <Card className="border-emerald-200 bg-emerald-50/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2 text-emerald-800">
+                <Printer className="w-4 h-4" />
+                PDF Export
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {document.pdf_exported_at ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span className="text-green-700 font-medium">PDF Available</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>Generated: {new Date(document.pdf_exported_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+                    {document.content_updated_at && new Date(document.content_updated_at) > new Date(document.pdf_exported_at) && (
+                      <div className="flex items-center gap-1 text-amber-600">
+                        <Clock className="w-3 h-3" />
+                        Content updated since last export
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-100" onClick={handleDownloadPdf}>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      Download
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={handleGeneratePdf} disabled={generatingPdf}>
+                      {generatingPdf ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generating...</> : <><RefreshCw className="w-3.5 h-3.5 mr-1.5" />Regenerate</>}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">No PDF has been generated yet.</p>
+                  <Button size="sm" variant="outline" className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-100" onClick={handleGeneratePdf} disabled={generatingPdf || !document.content}>
+                    {generatingPdf ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generating...</> : <><Printer className="w-3.5 h-3.5 mr-1.5" />Generate PDF</>}
+                  </Button>
+                </div>
+              )}
+              {pdfGenResult && (
+                <div className={`text-xs p-2 rounded ${pdfGenResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                  {pdfGenResult.success ? "PDF generated successfully." : `Error: ${pdfGenResult.message}`}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -39,6 +39,9 @@ export const documentsTable = pgTable("documents", {
   word_count: integer("word_count"),
   branch_condition: text("branch_condition"),
   belief_targets: jsonb("belief_targets").default([]),
+  pdf_exported_at: timestamp("pdf_exported_at", { withTimezone: true }),
+  content_updated_at: timestamp("content_updated_at", { withTimezone: true }),
+  pdf_file_path: text("pdf_file_path"),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable);
