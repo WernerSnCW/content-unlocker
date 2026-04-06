@@ -1,0 +1,380 @@
+# PHASE DOC — Investor Intelligence & Belief State System (Phase 010a: Schema)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-010a
+Effort: 3–4 hours
+Dependencies: RR-2026-04-06-009a (leadsTable and documentsTable must be stable)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds the database foundation for the investor intelligence and belief state system. Four new tables are created (belief_registry, lead_beliefs, belief_transitions, lead_intelligence), the documents table gains a `belief_targets` column, and the leads table `notes` field is migrated from jsonb to a plain text field. The 22 beliefs are seeded into the registry on server startup.
+
+---
+
+## Section 2 — Why this is necessary
+
+Without this schema, no belief state can be tracked per lead, no intelligence record can be persisted, and no document can be mapped to the beliefs it targets. All subsequent phases (010b–010d) depend on these tables existing and the 22 beliefs being seeded. The current `notes` field on leads is JSONB but unused — converting it to text now avoids a more complex migration later when the frontend starts writing to it.
+
+---
+
+## Section 3 — Current state
+
+From the Step 1 scan:
+
+- `lib/db/src/schema/leads.ts`: `leadsTable` has `notes: jsonb, notNull, default []`. No belief-related columns exist.
+- `lib/db/src/schema/index.ts`: barrel exports 19 tables. No belief or intelligence tables exist.
+- `artifacts/api-server/src/lib/dataManager.ts`: `seedDatabase()` runs at startup with insert-if-not-exists pattern. Currently seeds leads, documents, ACUs, channels, templates, prompts, compliance constants.
+- `lib/db/src/schema/documents.ts`: `documentsTable` has no `belief_targets` column.
+- No `belief_registry`, `lead_beliefs`, `belief_transitions`, or `lead_intelligence` tables exist anywhere in the codebase.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Database schema — 4 new tables, 1 new column on documentsTable, 1 column type change on leadsTable
+- [x] Domain logic — dataManager.ts seed addition
+- [ ] API — none in this phase
+- [ ] UI — none in this phase
+
+Layer count: 2 (Data, Domain)
+Split required: NO — this is Phase 010a of 5. Schema-only pass, coherent for a single agent build.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Notes field migration on leadsTable
+
+File: `lib/db/src/schema/leads.ts` (edit)
+
+**Strategy: Option A — rename existing field, add new field.**
+
+Step 1: Rename the existing `notes` jsonb column to `notes_legacy`:
+```typescript
+notes_legacy: jsonb('notes_legacy').default([]),
+```
+
+Step 2: Add a new `notes` text column (nullable):
+```typescript
+notes: text('notes'),
+```
+
+Rationale: preserves any existing jsonb data in `notes_legacy` while giving the new feature a clean text field. The existing API returns `notes` — after this change, the old jsonb data is in `notes_legacy` and the new text field is `notes`. Phase 010b will update the API response to return the new text `notes` field.
+
+Run `drizzle-kit push` after this change.
+
+---
+
+### 5.2 — New table: belief_registry
+
+File: `lib/db/src/schema/belief-registry.ts` (create new file)
+
+```typescript
+export const beliefRegistryTable = pgTable('belief_registry', {
+  id: text('id').primaryKey(),                          // U1-U4, G1-G3, P1-P3, L1-L3, C1-C6, F0-F3
+  cluster: text('cluster').notNull(),                   // universal / growth_seeker / preserver / legacy_builder / company_conviction / founding_round
+  cluster_display_name: text('cluster_display_name'),   // "Growth Seeker" etc
+  cluster_tagline: text('cluster_tagline'),              // "Live Well" / "Stay Safe" / "Leave Wealth"
+  name: text('name').notNull(),
+  description: text('description'),
+  belief_type: text('belief_type').notNull(),            // correctable / developmental
+  policy_status: text('policy_status').default('active'), // active / blocked_pending_legal
+  gates: jsonb('gates').default([]),                    // what this belief gates access to
+  prerequisite_beliefs: jsonb('prerequisite_beliefs').default([]),
+  is_hard_gate: boolean('is_hard_gate').default(false), // true for U4 and F0 only
+  primary_document_id: text('primary_document_id'),     // maps to documentsTable file_code
+  supporting_document_ids: jsonb('supporting_document_ids').default([]),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
+export const insertBeliefRegistrySchema = createInsertSchema(beliefRegistryTable);
+export type InsertBeliefRegistry = z.infer<typeof insertBeliefRegistrySchema>;
+export type BeliefRegistry = typeof beliefRegistryTable.$inferSelect;
+```
+
+---
+
+### 5.3 — New table: lead_beliefs
+
+File: `lib/db/src/schema/lead-beliefs.ts` (create new file)
+
+```typescript
+export const leadBeliefsTable = pgTable('lead_beliefs', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  lead_id: text('lead_id').notNull().references(() => leadsTable.id),
+  belief_id: text('belief_id').notNull().references(() => beliefRegistryTable.id),
+  state: text('state').notNull().default('UNKNOWN'),
+  // Canonical values: UNKNOWN / ABSENT / PARTIAL / ESTABLISHED / BLOCKED
+  investor_relevance: text('investor_relevance').default('standard'),
+  // high / standard / low / not_applicable
+  relevance_rationale: text('relevance_rationale'),
+  established_date: text('established_date'),
+  evidence: text('evidence'),
+  evidence_source: text('evidence_source'),
+  // call_transcript / document_engagement / explicit_statement / agent_assessment
+  confidence: text('confidence'),                       // HIGH / MEDIUM / LOW
+  last_updated: timestamp('last_updated').defaultNow(),
+  updated_by: text('updated_by'),
+}, (table) => ({
+  unique_lead_belief: unique().on(table.lead_id, table.belief_id),
+}));
+
+export const insertLeadBeliefsSchema = createInsertSchema(leadBeliefsTable).omit({ id: true });
+export type InsertLeadBelief = z.infer<typeof insertLeadBeliefsSchema>;
+export type LeadBelief = typeof leadBeliefsTable.$inferSelect;
+```
+
+---
+
+### 5.4 — New table: belief_transitions
+
+File: `lib/db/src/schema/belief-transitions.ts` (create new file)
+
+```typescript
+export const beliefTransitionsTable = pgTable('belief_transitions', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  lead_id: text('lead_id').notNull(),
+  belief_id: text('belief_id').notNull(),
+  from_state: text('from_state').notNull(),
+  to_state: text('to_state').notNull(),
+  transition_date: timestamp('transition_date').defaultNow(),
+  triggered_by: text('triggered_by'),                   // agent_assessment / claude_analysis / manual
+  notes: text('notes'),
+});
+
+export const insertBeliefTransitionsSchema = createInsertSchema(beliefTransitionsTable).omit({ id: true });
+export type InsertBeliefTransition = z.infer<typeof insertBeliefTransitionsSchema>;
+export type BeliefTransition = typeof beliefTransitionsTable.$inferSelect;
+```
+
+---
+
+### 5.5 — New table: lead_intelligence
+
+File: `lib/db/src/schema/lead-intelligence.ts` (create new file)
+
+```typescript
+export const leadIntelligenceTable = pgTable('lead_intelligence', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  lead_id: text('lead_id').notNull().unique().references(() => leadsTable.id),
+  // One row per lead — upsert on generate
+
+  // Layer 1: Qualification
+  qualification_status: text('qualification_status').default('INSUFFICIENT_DATA'),
+  // QUALIFIED / DISQUALIFIED / INSUFFICIENT_DATA
+  higher_rate_taxpayer: boolean('higher_rate_taxpayer'),
+  capital_available: boolean('capital_available'),
+  self_directed: boolean('self_directed'),
+  open_to_early_stage_risk: boolean('open_to_early_stage_risk'),
+  qualification_notes: text('qualification_notes'),
+
+  // Layer 2: Profile
+  cluster: text('cluster'),                             // growth_seeker / preserver / legacy_builder
+  ifa_involved: boolean('ifa_involved'),
+  already_done_eis: boolean('already_done_eis'),
+  estate_above_2m: boolean('estate_above_2m'),
+  assets_abroad: boolean('assets_abroad'),
+  vct_aim_experience: boolean('vct_aim_experience'),
+
+  // Layer 3: Problem/Motivation
+  hot_button: text('hot_button'),
+  // family_security / freedom / legacy / relief / significance
+  hot_button_confirmed: boolean('hot_button_confirmed').default(false),
+  hot_button_quote: text('hot_button_quote'),
+  spin_situation: text('spin_situation'),
+  spin_problem: text('spin_problem'),
+  spin_implication: text('spin_implication'),
+  spin_need_payoff: text('spin_need_payoff'),
+
+  // Layer 5: Readiness
+  readiness_status: text('readiness_status'),
+  // READY_TO_CLOSE / OBJECTION_TO_RESOLVE / INFORMATION_GAP / NEEDS_NURTURING
+  primary_blocker: text('primary_blocker'),
+  blocker_type: text('blocker_type'),                   // dispositional / correctable_misconception
+  recommended_action: text('recommended_action'),
+
+  // Generated summary (stored for display)
+  profile_summary: text('profile_summary'),             // Claude-generated plain-text summary
+
+  last_updated: timestamp('last_updated').defaultNow(),
+});
+
+export const insertLeadIntelligenceSchema = createInsertSchema(leadIntelligenceTable).omit({ id: true });
+export type InsertLeadIntelligence = z.infer<typeof insertLeadIntelligenceSchema>;
+export type LeadIntelligence = typeof leadIntelligenceTable.$inferSelect;
+```
+
+Note: Layer 4 is not defined in the belief state spec — column space is reserved implicitly. Do not add a Layer 4 section.
+
+---
+
+### 5.6 — belief_targets column on documentsTable
+
+File: `lib/db/src/schema/documents.ts` (additive edit)
+
+Add one nullable jsonb column to `documentsTable`:
+```typescript
+belief_targets: jsonb('belief_targets').default([]),
+// Array of: { belief_id: string, state_from: string, state_to: string }
+```
+
+No other changes to `documents.ts`.
+
+---
+
+### 5.7 — Barrel export
+
+File: `lib/db/src/schema/index.ts` (additive edit)
+
+Add four exports:
+```typescript
+export * from './belief-registry';
+export * from './lead-beliefs';
+export * from './belief-transitions';
+export * from './lead-intelligence';
+```
+
+---
+
+### 5.8 — Seed: 22 beliefs in dataManager.ts
+
+File: `artifacts/api-server/src/lib/dataManager.ts` (additive edit)
+
+Add a `seedBeliefRegistry()` function following the insert-if-not-exists pattern. Call it from `seedDatabase()` in the incremental seeds section (where `seedComplianceConstants()` and others are called).
+
+The function checks if any rows exist in `beliefRegistryTable`. If rows exist, skip. If empty, insert all 22 beliefs.
+
+Insert all 22 beliefs exactly as specified below. Use `db.insert(beliefRegistryTable).values([...])` in a single call:
+
+```typescript
+const BELIEF_SEED = [
+  { id: 'U1', cluster: 'universal', name: 'The Practical Advice Gap', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', gates: ['G3', 'any_unlock_product_claim'], primary_document_id: '140', description: 'Most IFAs practically cannot advise on individual EIS companies. The advice effectively stops at the fund level.' },
+  { id: 'U2', cluster: 'universal', name: 'Hidden Correlation Risk', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', gates: ['P3', 'iran_effect_content'], primary_document_id: '190' },
+  { id: 'U3', cluster: 'universal', name: 'Structural Independence as the Moat', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', gates: ['F0', 'any_platform_claim'], primary_document_id: '120' },
+  { id: 'U4', cluster: 'universal', name: 'EIS Risk Is Manageable', belief_type: 'correctable', is_hard_gate: true, policy_status: 'active', gates: ['risk_appetite_question', 'any_risk_framing'], primary_document_id: '150', description: 'Maximum effective loss after all reliefs is ~38.5p per pound (EIS) or ~27.5p (SEIS).' },
+  { id: 'G1', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Asymmetric Upside in Early-Stage Tech', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '160' },
+  { id: 'G2', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Direct EIS vs Fund Fee Drag', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '140' },
+  { id: 'G3', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Infrastructure Required for Direct EIS', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['U1'], primary_document_id: '140' },
+  { id: 'P1', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'The January 2027 Head Start', belief_type: 'correctable', is_hard_gate: false, policy_status: 'blocked_pending_legal', description: 'BLOCKED — legal sign-off required on ASA two-year structure.' },
+  { id: 'P2', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'Reassessing Risk (38.5p not gross)', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '150' },
+  { id: 'P3', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'Unlock More Valuable in a Correction', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['U2'], primary_document_id: '190' },
+  { id: 'L1', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'April 2027 Broke the Estate Plan', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '170' },
+  { id: 'L2', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'Rolling EIS as BPR Replacement', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['L1'], primary_document_id: '170' },
+  { id: 'L3', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'The Two-Year Window', belief_type: 'correctable', is_hard_gate: false, policy_status: 'blocked_pending_legal', description: 'BLOCKED — legal sign-off required.' },
+  { id: 'C1', cluster: 'company_conviction', name: 'The Market Is Large Enough', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '130' },
+  { id: 'C2', cluster: 'company_conviction', name: 'The Team Can Build This', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Tom King 15 years EIS/investment strategy. Werner — electronic banking + integrations. Tony Vine-Lott — strategic advisor, former Chairman Barclays Stockbroking.' },
+  { id: 'C3', cluster: 'company_conviction', name: 'The Product Is Real, Not a Pitch', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Five founding investors actively using. Platform evolved from DD tool through real usage.' },
+  { id: 'C4', cluster: 'company_conviction', name: 'The Timing Is Right', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '196', description: 'April 6 2026 VCT relief reduced. April 2027 pension IHT. Regulatory environment creating demand.' },
+  { id: 'C5', cluster: 'company_conviction', name: 'The Business Model Holds', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Subscription only. No commission, no AUM fee, no trail. Independence built into revenue model.' },
+  { id: 'C6', cluster: 'company_conviction', name: 'The Exit Path Is Credible', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '130', description: 'PitchBook/Morningstar, Bureau van Dijk/Moody\'s, Refinitiv/LSEG. Confirmed acquirer category.' },
+  { id: 'F0', cluster: 'founding_round', name: 'Unlock Will Become Structurally Essential', belief_type: 'developmental', is_hard_gate: true, policy_status: 'active', prerequisite_beliefs: ['C2', 'C3'], gates: ['F1', 'F2', 'F3', 'pack_1', 'pack_2', 'investment_ask'], primary_document_id: '120', description: 'Must be established before any founding round content.' },
+  { id: 'F1', cluster: 'founding_round', name: 'Founding Round Terms Are Attractive', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0', 'C1', 'C4', 'C5'], primary_document_id: '120' },
+  { id: 'F2', cluster: 'founding_round', name: 'HMRC Co-Invests via EIS', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0'], primary_document_id: '150' },
+  { id: 'F3', cluster: 'founding_round', name: 'The Exit Path Is Clear', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0', 'C6'], primary_document_id: '130' },
+];
+```
+
+Required imports to add to dataManager.ts:
+```typescript
+import { beliefRegistryTable } from '@workspace/db';
+```
+
+---
+
+### 5.9 — drizzle-kit push
+
+After all schema files are created and edited, run:
+```
+drizzle-kit push
+```
+
+This will: create 4 new tables, add `belief_targets` column to documents table, and handle the `notes` → `notes_legacy` rename + new `notes` text column on leads table.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. The database contains four new tables after `drizzle-kit push`: `belief_registry`, `lead_beliefs`, `belief_transitions`, `lead_intelligence`. Manual test required: run `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'` and confirm all four are present.
+
+AC2. `belief_registry` contains exactly 22 rows after server startup. Manual test required: run `SELECT COUNT(*) FROM belief_registry` — must return 22.
+
+AC3. All 22 belief IDs exist in the registry: U1, U2, U3, U4, G1, G2, G3, P1, P2, P3, L1, L2, L3, C1, C2, C3, C4, C5, C6, F0, F1, F2, F3. Manual test required: run `SELECT id FROM belief_registry ORDER BY id` and confirm all 22 are present.
+
+AC4. `belief_registry` rows for U4 and F0 have `is_hard_gate = true`. All other rows have `is_hard_gate = false`. Manual test required: run `SELECT id, is_hard_gate FROM belief_registry WHERE is_hard_gate = true` — must return exactly 2 rows: U4 and F0.
+
+AC5. `belief_registry` rows for P1 and L3 have `policy_status = 'blocked_pending_legal'`. Manual test required: run `SELECT id, policy_status FROM belief_registry WHERE policy_status = 'blocked_pending_legal'` — must return exactly 2 rows.
+
+AC6. `leadsTable` has a `notes` column of type `text` (nullable) and a `notes_legacy` column of type `jsonb`. Manual test required: run `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'leads' AND column_name IN ('notes', 'notes_legacy')` — must return two rows with correct types.
+
+AC7. Existing lead records have their original jsonb `notes` data preserved in `notes_legacy`. The new `notes` text column is null for all existing leads. Manual test required: run `SELECT id, notes, notes_legacy FROM leads LIMIT 5` and confirm `notes_legacy` contains the original jsonb data and `notes` is null.
+
+AC8. `documentsTable` has a `belief_targets` column of type `jsonb` with default `[]`. Manual test required: run `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'documents' AND column_name = 'belief_targets'` — must return one row.
+
+AC9. Restarting the server a second time does not insert duplicate beliefs. Manual test required: restart the server, then run `SELECT COUNT(*) FROM belief_registry` — must still return 22.
+
+AC10. `lead_beliefs` table has a unique constraint on `(lead_id, belief_id)`. Manual test required: attempt to insert two rows with the same lead_id and belief_id — must fail with a unique constraint violation.
+
+---
+
+## Section 7 — Constraints
+
+- `lib/db/src/schema/index.ts`: additive exports only — no existing exports removed or modified.
+- `lib/db/src/schema/leads.ts`: the existing `notes` jsonb column must be renamed to `notes_legacy` — do not drop it. The new `notes` text column is nullable.
+- `lib/db/src/schema/documents.ts`: additive only — `belief_targets` column added, no other changes.
+- `artifacts/api-server/src/lib/dataManager.ts`: `seedBeliefRegistry()` must follow the insert-if-not-exists pattern — check if any rows exist in `beliefRegistryTable` before inserting. Do not use `ON CONFLICT` with a bare insert — use the existence check pattern consistent with existing seed functions.
+- All new table IDs: `belief_registry.id` is a natural key (U1–F3) set explicitly. `lead_beliefs.id`, `belief_transitions.id`, `lead_intelligence.id` use `randomUUID()` via `$defaultFn`.
+- `propagateFromDocument()` must not be called anywhere in this build.
+- No API endpoints are added in this phase — schema only.
+- No frontend changes in this phase.
+- Backward compatibility: all existing tables and data unaffected. `notes_legacy` preserves existing jsonb data. `belief_targets` defaults to `[]` on existing documents.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add any API endpoints — that is Phase 010b1.
+- This build does not add any frontend changes — that is Phase 010d.
+- This build does not seed `belief_targets` on existing documents — that is a future data migration.
+- This build does not add Layer 4 to `lead_intelligence` — Layer 4 is not defined in the spec.
+- This build does not populate `lead_beliefs` or `lead_intelligence` records — those are created by API calls in Phase 010b.
+- This build does not remove the inline fuzzy match duplicate in `recommendation/index.ts`.
+
+---
+
+## Section 9 — Assumptions
+
+- `drizzle-kit push` handles the column rename from `notes` to `notes_legacy` by adding a new column and preserving the old one — if Drizzle does not support rename natively via push, the agent must add `notes_legacy` as a new column and copy existing data in a migration step. Flag this as a BLOCKER if drizzle-kit push cannot handle the rename safely.
+- The `$defaultFn(() => randomUUID())` pattern is available in the installed version of Drizzle — consistent with the pattern used in `tasksTable`.
+- `createInsertSchema` and `z` are already imported in schema files via drizzle-zod and zod — consistent with all existing schema files.
+- `pgTable`, `text`, `boolean`, `jsonb`, `timestamp`, `unique` are available from `drizzle-orm/pg-core` — consistent with existing schema files.
+- The `leadsTable` import in `lead-beliefs.ts` and `lead-intelligence.ts` uses `@workspace/db` — same pattern as all existing route files.
+- Server startup runs `seedDatabase()` every time — confirmed from current state scan.
+
+---
+
+## Section 10 — Rollback
+
+Risk is MEDIUM. Rollback procedure:
+
+1. Delete `lib/db/src/schema/belief-registry.ts`
+2. Delete `lib/db/src/schema/lead-beliefs.ts`
+3. Delete `lib/db/src/schema/belief-transitions.ts`
+4. Delete `lib/db/src/schema/lead-intelligence.ts`
+5. Remove four barrel exports from `lib/db/src/schema/index.ts`
+6. Remove `belief_targets` column from `lib/db/src/schema/documents.ts`
+7. Restore `notes` as jsonb and remove `notes_legacy` and new `notes` text from `lib/db/src/schema/leads.ts`
+8. Remove `seedBeliefRegistry()` from `dataManager.ts`
+9. Run `drizzle-kit push` to drop new tables and revert column changes
+10. Copy `notes_legacy` data back to `notes` if needed (data was preserved in `notes_legacy`)
+
+No external state is affected.
+
+---
+
+## Section 11 — What comes next
+
+Phase 010b1 (RR-2026-04-06-010b1) adds the CRUD and read-path API endpoints: updating GET /leads/:id to expose `transcript_text` and `notes`, adding PATCH /leads/:id/notes, GET /api/beliefs (registry), and GET/PATCH endpoints for lead_beliefs and lead_intelligence. Requires a Step 1 rescan of `leads/index.ts` and `routes/index.ts` after this phase ships to confirm the exact insertion points.
