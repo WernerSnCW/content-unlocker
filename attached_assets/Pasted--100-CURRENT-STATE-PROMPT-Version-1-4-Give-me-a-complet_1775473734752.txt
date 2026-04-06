@@ -1,0 +1,101 @@
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+---
+
+Give me a complete overview of this codebase. Complete the template below
+exactly. Do not add prose before or after it. Replace every placeholder
+in square brackets.
+
+SCOPE: Scope this scan to the following files only:
+- artifacts/unlock-intel/src/pages/lead-detail.tsx
+- artifacts/unlock-intel/src/App.tsx (routes section only — list all defined routes)
+
+For lead-detail.tsx describe:
+- The full component structure (what sections/cards are rendered)
+- All state variables declared
+- All API calls made (hooks and manual fetch calls)
+- The exact layout (left column / right column split, what's in each)
+- All imports
+- Any existing tabs or tab-like UI structures
+
+---
+
+SIGNIFICANCE RULE:
+A file is significant if it defines business logic, routing, persistence,
+validation, shared types, UI composition, tests, configuration, migrations,
+or integration code. When uncertain: include it. Do not omit a significant
+file because it seems repetitive or similar to another.
+
+ANTI-INFERENCE RULE:
+Describe only files and structures that actually exist in this codebase.
+If a file's purpose is unclear from code inspection, write: "Purpose unclear
+from scan." Do not infer intent from filenames or directory structure. Do not
+describe functions that cannot be found in the file.
+
+SCAN COVERAGE RULE:
+If the codebase is too large to describe every significant file in full, state
+this explicitly. List which directories were fully scanned, which were
+summarised at directory level, and which were not reached. Do not produce a
+scan that appears complete but is not.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** scoped to listed files
+**Fully scanned:** [list]
+**Summarised at directory level:** none
+**Could not reach:** none
+**Limitations:** [any known gaps]
+
+---
+
+### 1. Key files
+
+#### `[path/to/file.tsx]`
+**What it does:** [one sentence]
+**Key functions, variables, data structures:** [specific names and what they do]
+
+---
+
+### 2. Data model
+
+- **[Type or interface name]:** [fields and types]
+
+---
+
+### 3. Data flow
+
+- **[Step in the flow]:** [what happens]
+
+---
+
+### 4. Dependencies between files
+
+- **[File or function]:** depends on [what] for [reason]
+
+---
+
+### 5. Test coverage
+
+No tests currently exist.
+
+---
+
+### 6. External services
+
+- **[Service]:** [how used]
+
+---
+
+### 7. Patterns and conventions
+
+- [pattern]
+
+---
+
+### 8. Inconsistencies and flags
+
+- [flag, or "None identified"]
