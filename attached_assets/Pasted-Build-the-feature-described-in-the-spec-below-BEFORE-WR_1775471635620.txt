@@ -1,0 +1,475 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+GATE RULE:
+This build is Risk: HIGH. The feature flag is `belief_intelligence_v2: boolean`.
+If the recommendation/analyze extension causes any test failures or regressions,
+wrap the new belief context injection block in a feature flag check before
+reporting complete.
+
+---
+
+# PHASE DOC — Investor Intelligence & Belief State System (Phase 010b2: LLM API)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-010b2
+Effort: 1 day
+Dependencies: RR-2026-04-06-010b1
+Risk: HIGH
+Feature flag: belief_intelligence_v2: boolean
+
+---
+
+## Section 1 — Feature
+
+Adds four LLM-backed endpoints to the belief state system and injects belief context into the existing transcript analysis flow. The new endpoints are: `POST /leads/:leadId/beliefs/analyze` (detect belief signals from transcript), `GET /leads/:leadId/beliefs/next` (next belief gap + recommended document), `GET /leads/:leadId/beliefs/gates` (gate status), and `POST /leads/:leadId/intelligence/generate` (generate full intelligence profile from notes + transcript). The existing `POST /recommendation/analyze` endpoint is surgically extended to inject belief states and intelligence summary into the Claude prompt when a `lead_id` is provided.
+
+---
+
+## Section 2 — Why this is necessary
+
+The belief tables and CRUD endpoints from 010a/010b1 are scaffolding only. Without the LLM analysis endpoint, belief states must be set manually. Without the gates endpoint, the recommendation engine cannot enforce hard gates. Without `intelligence/generate`, the profile intelligence feature has no intelligence layer. Without the analyze context injection, the recommendation engine ignores everything learned about the investor.
+
+---
+
+## Section 3 — Current state
+
+From the Phase 010b2 Step 1 scan:
+
+**`artifacts/api-server/src/routes/recommendation/index.ts` (analyze endpoint):**
+- `POST /recommendation/analyze` accepts `transcript` and optional `lead_id`
+- When `lead_id` provided: fetches lead from `leadsTable`, builds `sendHistorySummary` from `send_log`
+- Claude prompt has 6 sections in this order: TRANSCRIPT ANALYSIS INSTRUCTIONS, TRANSCRIPT, LEAD CONTEXT, CALL CHECKLIST STATUS, PERSONA REFERENCE, PIPELINE STAGES, PRIMARY ISSUE CATEGORIES, JSON schema
+- Lead context currently uses send history only — does NOT fetch `lead_intelligence` or `lead_beliefs`
+- Model: `claude-sonnet-4-6`, max_tokens: 8192
+
+**`artifacts/api-server/src/routes/lead-beliefs/index.ts`:**
+- `VALID_STATES = ["UNKNOWN", "ABSENT", "PARTIAL", "ESTABLISHED", "BLOCKED"]`
+- PATCH endpoint: upsert with transition logging on state change
+- No `/next`, `/analyze`, or `/gates` endpoints exist yet
+
+**`artifacts/api-server/src/routes/lead-intelligence/index.ts`:**
+- PATCH endpoint: upsert with ALLOWED_FIELDS allowlist (24 fields)
+- No `/generate` endpoint exists yet
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Domain/API — 4 new endpoints in existing routers
+- [x] Additive edits to existing files — surgical extension of recommendation/analyze
+- [x] External service — Claude API calls
+
+Layer count: 3
+Split required: NO
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — New endpoints in lead-beliefs/index.ts
+
+File: `artifacts/api-server/src/routes/lead-beliefs/index.ts` (additive — three new endpoints)
+
+All three new routes must be declared BEFORE `PATCH /leads/:leadId/beliefs/:beliefId`.
+
+**GET /leads/:leadId/beliefs/next**
+
+Logic:
+1. Fetch all 23 beliefs from `beliefRegistryTable`
+2. Fetch all `lead_beliefs` rows for this lead
+3. Build state map: belief_id → current state (default `'UNKNOWN'` if no row)
+4. Filter to `policy_status = 'active'` beliefs only
+5. Skip beliefs where a `lead_beliefs` row exists with `investor_relevance = 'not_applicable'`
+6. Find highest-priority gap: state is `'UNKNOWN'` or `'ABSENT'`
+7. Priority order: universal (U1→U4), then lead's cluster beliefs (from `leadIntelligenceTable.cluster` if set), then company_conviction, then founding_round
+8. Return: `{ next_belief: BeliefRegistry | null, current_state: string | null, recommended_document_id: string | null }`
+   - `next_belief`: full belief registry row for highest-priority gap, or null if all active beliefs are PARTIAL/ESTABLISHED/BLOCKED
+   - `recommended_document_id`: `primary_document_id` from belief registry (direct lookup only)
+
+Error: 500 `{ error: 'Failed to fetch next belief' }`
+
+---
+
+**POST /leads/:leadId/beliefs/analyze**
+
+Logic:
+1. Body: `{ transcript: string }` — required. If missing or empty: 400 `{ error: 'transcript is required' }`
+2. Fetch all beliefs from `beliefRegistryTable` where `policy_status = 'active'`
+3. Fetch `leadIntelligenceTable` for this lead to determine cluster
+4. Select relevant beliefs: all universal + cluster beliefs (if known) + company_conviction + founding_round. If cluster unknown, include all active.
+5. Call Claude:
+
+```
+You are analysing a sales call transcript to detect investor belief signals.
+
+For each belief listed below, determine from the transcript whether the investor showed evidence of holding it, actively rejected it, or showed no signal.
+
+BELIEFS TO ANALYSE:
+[For each belief: "ID: [id] | Name: [name] | Description: [description if present, else name]"]
+
+TRANSCRIPT:
+[transcript text]
+
+Return a JSON array only — no other text. Each element:
+{
+  "belief_id": "[ID]",
+  "signal": "ESTABLISHED | PARTIAL | ABSENT | BLOCKED | UNKNOWN",
+  "evidence_quote": "[exact quote max 2 sentences — omit field if no direct quote]",
+  "confidence": "HIGH | MEDIUM | LOW"
+}
+
+Rules:
+- Do not infer. If no signal in the transcript: return UNKNOWN.
+- A question about a topic does NOT establish the belief — it suggests ABSENT or PARTIAL.
+- Engagement with a topic is PARTIAL. Explicit statement of understanding is ESTABLISHED.
+- An objection that cannot change with information is BLOCKED (dispositional).
+- An objection that could change with the right information is ABSENT (correctable).
+- Return exactly one object per belief in the input list.
+```
+
+Model: `claude-sonnet-4-6`, max_tokens: 8192
+
+6. Parse: regex extract JSON array, then JSON.parse. If fails: 500 `{ error: 'Failed to parse Claude response' }`
+
+7. For each result:
+   - If `confidence = 'HIGH'` or `'MEDIUM'` AND `signal !== 'UNKNOWN'`: upsert `lead_beliefs` row (same logic as PATCH — write transition if state changes), set `evidence_source: 'call_transcript'`, `confidence`, `evidence: evidence_quote`, `updated_by: 'claude_analysis'`
+   - If `confidence = 'LOW'`: do NOT update DB — include in response as preview only
+
+8. Return:
+```json
+{
+  "results": [
+    {
+      "belief_id": "U1",
+      "belief_name": "The Practical Advice Gap",
+      "signal": "PARTIAL",
+      "confidence": "HIGH",
+      "evidence_quote": "...",
+      "updated": true
+    }
+  ],
+  "updated_count": 3,
+  "preview_count": 2
+}
+```
+
+Error: 500 `{ error: 'Failed to analyze beliefs' }`
+
+---
+
+**GET /leads/:leadId/beliefs/gates**
+
+Logic:
+1. Fetch `lead_beliefs` rows for this lead
+2. Build state map: belief_id → state
+3. Evaluate:
+   - `U4_established = state_map['U4'] === 'ESTABLISHED'`
+   - `F0_established = state_map['F0'] === 'ESTABLISHED'`
+   - `F1_established = state_map['F1'] === 'ESTABLISHED'`
+   - `F2_established = state_map['F2'] === 'ESTABLISHED'`
+
+4. Return:
+```json
+{
+  "gates": {
+    "can_ask_risk_appetite_question": { "open": true/false, "reason": "U4 established" / "U4 not yet established" },
+    "can_recommend_pack_1": { "open": true/false, "reason": "F0 established" / "F0 not yet established" },
+    "can_recommend_pack_2": { "open": true/false, "reason": "F0 established" / "F0 not yet established" },
+    "can_make_investment_ask": { "open": true/false, "reason": "..." }
+  },
+  "belief_states": {
+    "U4": "[state or UNKNOWN]",
+    "F0": "[state or UNKNOWN]",
+    "F1": "[state or UNKNOWN]",
+    "F2": "[state or UNKNOWN]"
+  }
+}
+```
+
+`can_make_investment_ask` requires F0 AND F1 AND F2 all ESTABLISHED.
+Reason for `can_make_investment_ask`: "F0, F1, F2 established" if open, "F0 not yet established" if F0 not established, "F0 established but F1 or F2 not yet established" if F0 established but F1 or F2 not.
+
+Error: 500 `{ error: 'Failed to fetch gate status' }`
+
+---
+
+### 5.2 — New endpoint in lead-intelligence/index.ts
+
+File: `artifacts/api-server/src/routes/lead-intelligence/index.ts` (additive — one new endpoint)
+
+Declare BEFORE `PATCH /leads/:leadId/intelligence`.
+
+**POST /leads/:leadId/intelligence/generate**
+
+Logic:
+1. Fetch lead from `leadsTable`. If not found: 404 `{ error: 'Lead not found' }`
+2. Get `notes = lead.notes` and `transcript_text = lead.transcript_text`
+3. If both null or empty string: 400 `{ error: 'Lead has no notes or transcript to analyse' }`
+4. Call Claude:
+
+```
+You are analysing investor profile information to produce a structured intelligence record.
+
+INVESTOR NAME: [lead.name]
+
+[If notes present and non-empty:]
+OPERATOR NOTES:
+[notes]
+
+[If transcript_text present and non-empty:]
+CALL TRANSCRIPT:
+[transcript_text]
+
+Produce a structured JSON intelligence profile. Return JSON only — no other text.
+
+{
+  "qualification_status": "QUALIFIED | DISQUALIFIED | INSUFFICIENT_DATA",
+  "higher_rate_taxpayer": true | false | null,
+  "capital_available": true | false | null,
+  "self_directed": true | false | null,
+  "open_to_early_stage_risk": true | false | null,
+  "qualification_notes": "string | null",
+  "cluster": "growth_seeker | preserver | legacy_builder | null",
+  "ifa_involved": true | false | null,
+  "already_done_eis": true | false | null,
+  "estate_above_2m": true | false | null,
+  "assets_abroad": true | false | null,
+  "vct_aim_experience": true | false | null,
+  "hot_button": "family_security | freedom | legacy | relief | significance | null",
+  "hot_button_confirmed": false,
+  "hot_button_quote": "exact quote from transcript if detected | null",
+  "spin_situation": "their current situation in one sentence | null",
+  "spin_problem": "the core problem they face | null",
+  "spin_implication": "what happens if they don't act | null",
+  "spin_need_payoff": "what success looks like for them | null",
+  "readiness_status": "READY_TO_CLOSE | OBJECTION_TO_RESOLVE | INFORMATION_GAP | NEEDS_NURTURING | null",
+  "primary_blocker": "description of main blocker if any | null",
+  "blocker_type": "dispositional | correctable_misconception | null",
+  "recommended_action": "specific recommended next action | null",
+  "profile_summary": "2-3 sentence plain English summary of this investor's profile, motivations, and recommended approach"
+}
+
+Rules:
+- Use null for any field where you have insufficient information.
+- qualification_status: QUALIFIED = higher rate taxpayer, capital available, self-directed, open to risk. DISQUALIFIED = clear disqualifier present. INSUFFICIENT_DATA = not enough info.
+- cluster: growth_seeker = focused on upside and returns. preserver = focused on capital protection and risk. legacy_builder = focused on IHT, estate, family wealth.
+- hot_button: the emotional driver. family_security = protecting family. freedom = financial independence. legacy = leaving something behind. relief = reducing tax burden. significance = making an impact.
+- profile_summary: write in plain English, third person, as if briefing a colleague before a call.
+```
+
+Model: `claude-sonnet-4-6`, max_tokens: 8192
+
+5. Parse: regex extract JSON object, then JSON.parse. If fails: 500 `{ error: 'Failed to parse Claude response' }`
+
+6. Upsert into `lead_intelligence` (same upsert logic as PATCH). Set `last_updated: new Date()`.
+
+7. Write changelog: `action: 'INTELLIGENCE_GENERATED'`, `lead_id: leadId`, `details: 'Intelligence profile generated by Claude'`, `triggered_by: 'claude_analysis'`
+
+8. Return 200: `{ intelligence: LeadIntelligence }`
+
+Error: 500 `{ error: 'Failed to generate intelligence' }`
+
+---
+
+### 5.3 — Extend recommendation/analyze with belief context
+
+File: `artifacts/api-server/src/routes/recommendation/index.ts` (surgical additive edit only)
+
+DO NOT rewrite, restructure, or change any other part of this file. This is a targeted addition of approximately 30 lines inside one existing handler.
+
+**Where:** Inside `POST /recommendation/analyze`, in the block that runs when `lead_id` is provided. Insert immediately AFTER the `sendHistorySummary` construction and BEFORE the Claude prompt assembly.
+
+**What to add — two new DB fetches:**
+```typescript
+// Fetch belief intelligence context
+const intelligenceRows = await db.select().from(leadIntelligenceTable)
+  .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+const intelligence = intelligenceRows[0] || null;
+
+const beliefRows = await db.select({
+  belief_id: leadBeliefsTable.belief_id,
+  state: leadBeliefsTable.state,
+  belief_name: beliefRegistryTable.name,
+}).from(leadBeliefsTable)
+  .leftJoin(beliefRegistryTable, eq(leadBeliefsTable.belief_id, beliefRegistryTable.id))
+  .where(eq(leadBeliefsTable.lead_id, lead_id));
+```
+
+**What to add — two context strings:**
+```typescript
+const intelligenceContext = intelligence ? `
+INVESTOR INTELLIGENCE PROFILE:
+- Cluster: ${intelligence.cluster || 'unknown'}
+- Qualification: ${intelligence.qualification_status}
+- Hot button: ${intelligence.hot_button || 'not identified'}
+- Already done EIS: ${intelligence.already_done_eis ?? 'unknown'}
+- IFA involved: ${intelligence.ifa_involved ?? 'unknown'}
+- Readiness: ${intelligence.readiness_status || 'unknown'}
+- Primary blocker: ${intelligence.primary_blocker || 'none identified'}
+- Profile summary: ${intelligence.profile_summary || 'not available'}
+` : 'No intelligence profile available for this lead.';
+
+const beliefContext = beliefRows.length > 0 ? `
+BELIEF STATES (what this investor currently understands):
+${beliefRows.map(b => `- ${b.belief_name} (${b.belief_id}): ${b.state}`).join('\n')}
+` : 'No belief states recorded for this lead.';
+```
+
+**Where to inject into the Claude prompt:**
+In the existing user message string, add `intelligenceContext` and `beliefContext` as two new sections AFTER the LEAD CONTEXT section and BEFORE the CALL CHECKLIST STATUS section. The existing sections must remain unchanged — only these two sections are inserted between them.
+
+**Required new imports — add to the existing `@workspace/db` import:**
+```typescript
+import { ..., leadIntelligenceTable, leadBeliefsTable, beliefRegistryTable } from '@workspace/db';
+```
+Add the three new table names alongside whatever is already imported from `@workspace/db` in this file.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `GET /api/leads/:leadId/beliefs/next` returns `{ next_belief, current_state, recommended_document_id }` for a lead with no belief records — `next_belief` is a universal belief. Manual test required.
+
+AC2. `GET /api/leads/:leadId/beliefs/next` returns `{ next_belief: null, ... }` when all active beliefs are PARTIAL/ESTABLISHED/BLOCKED. Manual test required.
+
+AC3. `GET /api/leads/:leadId/beliefs/next` returns a cluster belief before company_conviction when intelligence cluster is set. Manual test required.
+
+AC4. `POST /api/leads/:leadId/beliefs/analyze` with a transcript containing EIS loss relief discussion returns U4 as PARTIAL or ESTABLISHED with HIGH/MEDIUM confidence, and updates the `lead_beliefs` row. Manual test required.
+
+AC5. `POST /api/leads/:leadId/beliefs/analyze` with LOW confidence signals does NOT update `lead_beliefs`. Result in response has `updated: false`. Manual test required.
+
+AC6. `POST /api/leads/:leadId/beliefs/analyze` with missing transcript returns 400 `{ error: 'transcript is required' }`.
+
+AC7. `GET /api/leads/:leadId/beliefs/gates` for a lead with no belief records returns all four gates with `open: false`. Manual test required.
+
+AC8. `GET /api/leads/:leadId/beliefs/gates` returns `can_ask_risk_appetite_question: { open: true }` after U4 is ESTABLISHED. Manual test required.
+
+AC9. `GET /api/leads/:leadId/beliefs/gates` returns `can_make_investment_ask: { open: true }` only when F0, F1, and F2 are all ESTABLISHED. Manual test required.
+
+AC10. `POST /api/leads/:leadId/intelligence/generate` with a real transcript returns intelligence with `cluster`, `hot_button`, `qualification_status`, and `profile_summary` populated. Manual test required.
+
+AC11. `POST /api/leads/:leadId/intelligence/generate` called twice produces only one row in `lead_intelligence`. Manual test required.
+
+AC12. `POST /api/leads/:leadId/intelligence/generate` with no notes and no transcript_text returns 400 `{ error: 'Lead has no notes or transcript to analyse' }`.
+
+AC13. `POST /api/leads/:leadId/intelligence/generate` writes changelog with `action = 'INTELLIGENCE_GENERATED'`, `triggered_by = 'claude_analysis'`. Manual test required.
+
+AC14. `POST /api/recommendation/analyze` with a `lead_id` that has intelligence and belief records produces a response that reflects that context. Manual test required.
+
+AC15. `POST /api/recommendation/analyze` with a `lead_id` that has NO intelligence/beliefs produces the same response shape as before — no regression. Manual test required.
+
+AC16. All three new belief endpoints (`/next`, `/analyze`, `/gates`) are accessible — not captured by `/:beliefId`. Manual test required.
+
+---
+
+## Section 7 — Constraints
+
+- `recommendation/index.ts`: surgical addition only — ~30 lines added inside one handler, three new imports. No other changes.
+- `lead-beliefs/index.ts`: three new endpoints before `PATCH /:beliefId`.
+- `lead-intelligence/index.ts`: one new endpoint before `PATCH`.
+- LLM: `claude-sonnet-4-6`, `@workspace/integrations-anthropic-ai`, max_tokens 8192.
+- Regex extract JSON before JSON.parse on all Claude responses.
+- Belief state values: `'UNKNOWN'`, `'ABSENT'`, `'PARTIAL'`, `'ESTABLISHED'`, `'BLOCKED'`.
+- `belief_transitions` only on state change.
+- Changelog inline. No shared helper. No Orval codegen. No propagation.
+- Feature flag `belief_intelligence_v2: boolean` — wrap recommendation context injection if regression detected.
+
+---
+
+## Section 8 — Non-goals
+
+- No document ranking changes — Phase 010c.
+- No frontend changes — Phase 010d.
+- No fix to `questions_answered` Zod bypass.
+- No error logging addition.
+- No lead existence validation before belief/intelligence upserts.
+- No `belief_targeted`/`state_after_send`/`gate_it_unlocks` in rank response — Phase 010c.
+
+---
+
+## Section 9 — Assumptions
+
+- `leadIntelligenceTable`, `leadBeliefsTable`, `beliefRegistryTable` importable from `@workspace/db`.
+- The `sendHistorySummary` construction in analyze is clearly identifiable — new fetches and context strings inserted immediately after.
+- Claude produces valid JSON arrays/objects — fallback to 500 on parse failure acceptable.
+- Empty string for notes/transcript_text treated same as null for the 400 guard.
+
+---
+
+## Section 10 — Rollback
+
+Feature flag: `belief_intelligence_v2: boolean`. If recommendation/analyze extension causes regressions, wrap the belief context injection block in a flag check.
+
+Full rollback: remove three endpoints from lead-beliefs, one from lead-intelligence, revert recommendation/analyze surgical addition.
+
+---
+
+## Section 11 — What comes next
+
+Phase 010c extends `POST /recommendation/rank` to apply hard gate exclusions and add belief context to rank response. Requires Step 1 rescan of recommendation/index.ts (rank endpoint only).
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [none expected]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, risks]
+
+PHASE DOC FINAL:
+[paste here]

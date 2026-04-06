@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, leadsTable, documentsTable, changelogTable, videosTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, videosTable, leadIntelligenceTable, leadBeliefsTable, beliefRegistryTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -449,6 +449,44 @@ router.post("/recommendation/analyze", async (req, res): Promise<void> => {
     }
   }
 
+  let intelligenceContext = "No intelligence profile available for this lead.";
+  let beliefContext = "No belief states recorded for this lead.";
+
+  if (lead_id) {
+    const intelligenceRows = await db.select().from(leadIntelligenceTable)
+      .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
+    const intelligence = intelligenceRows[0] || null;
+
+    const beliefRows = await db.select({
+      belief_id: leadBeliefsTable.belief_id,
+      state: leadBeliefsTable.state,
+      belief_name: beliefRegistryTable.name,
+    }).from(leadBeliefsTable)
+      .leftJoin(beliefRegistryTable, eq(leadBeliefsTable.belief_id, beliefRegistryTable.id))
+      .where(eq(leadBeliefsTable.lead_id, lead_id));
+
+    if (intelligence) {
+      intelligenceContext = `
+INVESTOR INTELLIGENCE PROFILE:
+- Cluster: ${intelligence.cluster || 'unknown'}
+- Qualification: ${intelligence.qualification_status}
+- Hot button: ${intelligence.hot_button || 'not identified'}
+- Already done EIS: ${intelligence.already_done_eis ?? 'unknown'}
+- IFA involved: ${intelligence.ifa_involved ?? 'unknown'}
+- Readiness: ${intelligence.readiness_status || 'unknown'}
+- Primary blocker: ${intelligence.primary_blocker || 'none identified'}
+- Profile summary: ${intelligence.profile_summary || 'not available'}
+`;
+    }
+
+    if (beliefRows.length > 0) {
+      beliefContext = `
+BELIEF STATES (what this investor currently understands):
+${beliefRows.map(b => `- ${b.belief_name} (${b.belief_id}): ${b.state}`).join('\n')}
+`;
+    }
+  }
+
   const compactPersonaRef = personaGuide.slice(0, 6000);
 
   const questionsContext = questions_answered
@@ -482,6 +520,8 @@ ${transcript}
 
 LEAD CONTEXT:
 ${sendHistorySummary}
+${intelligenceContext}
+${beliefContext}
 ${questionsContext}
 PERSONA REFERENCE (compact):
 ${compactPersonaRef}
