@@ -1,0 +1,477 @@
+# DOCUMENT INTELLIGENCE HEALTH CHECK
+Version: 1.0 | April 2026
+
+Run this prompt in Replit AI against the Unlock Intel codebase.
+It audits every document in the registry across all dimensions
+that matter for content delivery to investors.
+
+---
+
+## WHAT THIS CHECKS
+
+For every CURRENT document in the system:
+
+1. **Identity** — does the document know what it is?
+   Tier, category, name, file_code, lifecycle_status — all populated correctly?
+
+2. **Targeting** — does the document know who it's for?
+   persona_relevance, pipeline_stage_relevance — populated and correct?
+
+3. **Belief alignment** — does the document know what it builds?
+   belief_targets — mapped to the right beliefs with correct state transitions?
+
+4. **Compliance** — is the document clean?
+   review_state, quality_score, any prohibited values in content?
+
+5. **Propagation integrity** — does the document sit correctly in the cascade?
+   upstream_dependencies, tier hierarchy — connected correctly?
+
+6. **Pipeline stage fit** — is it being recommended at the right moment?
+   pipeline_stage_relevance vs where leads actually receive it (send_log data)?
+
+7. **Content completeness** — does it have content to deliver?
+   content field populated, not empty, not a stub?
+
+8. **Delivery record** — has it ever been sent? To whom?
+   send_log analysis across all leads — is it being used?
+
+---
+
+## HOW TO RUN
+
+Work through each section in order. For each section:
+- Run the queries specified
+- Inspect results
+- Report findings using the output template
+- Flag anomalies specifically — name the document and the issue
+
+Do not summarise generically. Every finding must name a specific document.
+
+---
+
+## DOCUMENT INTELLIGENCE HEALTH CHECK OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Total documents in registry:** [count — all lifecycle_status values]
+**CURRENT documents:** [count]
+**DRAFT documents:** [count]
+**ARCHIVED documents:** [count]
+
+---
+
+### 1. IDENTITY COMPLETENESS
+
+Every document must have: id, file_code, name, tier (1/2/3), category,
+lifecycle_status, review_state.
+
+```sql
+SELECT
+  id,
+  file_code,
+  name,
+  tier,
+  category,
+  lifecycle_status,
+  review_state,
+  CASE
+    WHEN tier IS NULL THEN 'MISSING TIER'
+    WHEN category IS NULL OR category = '' THEN 'MISSING CATEGORY'
+    WHEN name IS NULL OR name = '' THEN 'MISSING NAME'
+    WHEN file_code IS NULL OR file_code = '' THEN 'MISSING FILE_CODE'
+    ELSE 'OK'
+  END as identity_status
+FROM documents
+WHERE lifecycle_status = 'CURRENT'
+ORDER BY tier, name;
+```
+
+**Identity gaps found:**
+
+| Document | ID | Issue |
+|---|---|---|
+| [name] | [id] | [what is missing] |
+
+If none: "All CURRENT documents have complete identity fields."
+
+**Tier distribution:**
+| Tier | Count |
+|---|---|
+| Tier 1 | [N] |
+| Tier 2 | [N] |
+| Tier 3 | [N] |
+| No tier | [N] |
+
+---
+
+### 2. TARGETING COMPLETENESS
+
+Every CURRENT document should target at least one persona archetype
+and at least one pipeline stage.
+
+```sql
+SELECT
+  id,
+  name,
+  tier,
+  persona_relevance,
+  pipeline_stage_relevance,
+  CASE
+    WHEN persona_relevance IS NULL OR persona_relevance = '[]'::jsonb
+      THEN 'NO PERSONA'
+    ELSE 'OK'
+  END as persona_status,
+  CASE
+    WHEN pipeline_stage_relevance IS NULL OR pipeline_stage_relevance = '[]'::jsonb
+      THEN 'NO STAGE'
+    ELSE 'OK'
+  END as stage_status
+FROM documents
+WHERE lifecycle_status = 'CURRENT'
+ORDER BY tier, name;
+```
+
+**Targeting gaps:**
+
+| Document | Tier | Issue |
+|---|---|---|
+| [name] | [tier] | No persona / No stage / Both missing |
+
+**Coverage matrix — which persona × stage combinations have documents:**
+For each archetype (Growth Seeker, Preserver, Legacy Builder) × each pipeline stage
+(Outreach, Called, Demo Booked, Demo Complete, Decision):
+Count how many CURRENT documents cover each combination.
+
+```sql
+-- Agent: build this coverage matrix by parsing the jsonb arrays
+-- persona_relevance and pipeline_stage_relevance on each document
+-- Show count per archetype × stage combination
+-- Flag any combination with 0 documents as a gap
+```
+
+**Coverage matrix:**
+
+| | Outreach | Called | Demo Booked | Demo Complete | Decision |
+|---|---|---|---|---|---|
+| Growth Seeker | [N] | [N] | [N] | [N] | [N] |
+| Preserver | [N] | [N] | [N] | [N] | [N] |
+| Legacy Builder | [N] | [N] | [N] | [N] | [N] |
+| All archetypes | [N] | [N] | [N] | [N] | [N] |
+
+**Gaps (0 documents):** [list combinations with no coverage, or "None"]
+
+---
+
+### 3. BELIEF ALIGNMENT
+
+Every document that targets investors should map to at least one belief
+it is designed to build. Check belief_targets on each document.
+
+```sql
+SELECT
+  id,
+  name,
+  tier,
+  belief_targets,
+  CASE
+    WHEN belief_targets IS NULL OR belief_targets = '[]'::jsonb
+      THEN 'NO BELIEF MAPPING'
+    ELSE 'MAPPED'
+  END as belief_status
+FROM documents
+WHERE lifecycle_status = 'CURRENT'
+ORDER BY tier, name;
+```
+
+**Documents with no belief mapping:**
+
+| Document | Tier | Category | Impact |
+|---|---|---|---|
+| [name] | [tier] | [category] | Cannot contribute to belief progression |
+
+**Belief coverage — which beliefs have at least one document targeting them:**
+```sql
+-- Agent: parse all belief_targets arrays across all CURRENT documents
+-- For each belief_id found, count how many documents target it
+-- Cross-reference against all 23 beliefs in belief_registry
+-- Flag beliefs with no targeting document
+```
+
+| Belief ID | Belief Name | Documents targeting it | State transition |
+|---|---|---|---|
+| U1 | The Practical Advice Gap | [N] | [state_from → state_to if N>0, or "NONE"] |
+| U2 | Hidden Correlation Risk | [N] | [transitions] |
+| [etc for all 23 beliefs] | | | |
+
+**Beliefs with no document:** [list, or "None — all beliefs have at least one document"]
+
+**Belief → Document mismatches:**
+Check that the belief_registry.primary_document_id for each belief
+points to a document that actually has that belief in its belief_targets:
+```sql
+-- Agent: for each belief in belief_registry where primary_document_id is set,
+-- check that the referenced document includes that belief_id in its belief_targets
+-- Flag any where the primary document doesn't declare the belief it's supposed to target
+```
+
+Mismatches: [list belief_id + document_id + issue, or "None"]
+
+---
+
+### 4. COMPLIANCE STATUS
+
+Check the compliance health of every CURRENT document.
+
+```sql
+SELECT
+  d.id,
+  d.name,
+  d.tier,
+  d.review_state,
+  d.quality_score,
+  d.quality_score_detail,
+  COUNT(t.id) FILTER (WHERE t.status = 'Open' AND t.type = 'Review') as open_review_tasks,
+  COUNT(t.id) FILTER (WHERE t.status = 'Done' AND t.type = 'Review') as done_review_tasks
+FROM documents d
+LEFT JOIN tasks t ON t.linked_document_id = d.id
+WHERE d.lifecycle_status = 'CURRENT'
+GROUP BY d.id, d.name, d.tier, d.review_state, d.quality_score, d.quality_score_detail
+ORDER BY d.tier, d.review_state DESC, d.name;
+```
+
+**Documents requiring review:**
+| Document | Tier | Review State | Open Tasks | Quality Score |
+|---|---|---|---|---|
+| [name] | [tier] | REQUIRES_REVIEW | [N] | [score or null] |
+
+**Documents with low quality scores (below 70):**
+| Document | Tier | Quality Score | Key issues |
+|---|---|---|---|
+| [name] | [tier] | [score] | [from quality_score_detail] |
+
+**Compliance scan — check content for prohibited values:**
+```sql
+-- Fetch all active prohibited values from compliance_constants
+-- For each CURRENT document with content, scan for prohibited strings
+-- Report: document name, tier, exact prohibited text found
+```
+
+Prohibited values found in CURRENT documents:
+| Document | Tier | Prohibited text | Should be |
+|---|---|---|---|
+| [name] | [tier] | "[text]" | "[correct value]" |
+
+If none: "No prohibited values found in CURRENT documents."
+
+---
+
+### 5. PROPAGATION INTEGRITY
+
+The propagation system cascades changes from Tier 1 → Tier 2 → Tier 3.
+Check that the dependency graph is correctly wired.
+
+```sql
+SELECT
+  id,
+  name,
+  tier,
+  upstream_dependencies,
+  CASE
+    WHEN tier = 1 AND (upstream_dependencies IS NULL OR upstream_dependencies = '[]'::jsonb)
+      THEN 'CORRECT — Tier 1 has no upstream deps'
+    WHEN tier = 2 AND (upstream_dependencies IS NULL OR upstream_dependencies = '[]'::jsonb)
+      THEN 'WARNING — Tier 2 has no upstream deps (may not cascade from Tier 1)'
+    WHEN tier = 3 AND (upstream_dependencies IS NULL OR upstream_dependencies = '[]'::jsonb)
+      THEN 'WARNING — Tier 3 has no upstream deps (may not cascade)'
+    ELSE 'HAS DEPENDENCIES'
+  END as propagation_status
+FROM documents
+WHERE lifecycle_status = 'CURRENT'
+ORDER BY tier, name;
+```
+
+**Propagation gaps:**
+| Document | Tier | Issue |
+|---|---|---|
+| [name] | [tier] | No upstream dependencies — changes to Tier 1 won't cascade to this document |
+
+**Upstream dependency validity:**
+```sql
+-- For each document with upstream_dependencies, check that all referenced
+-- document IDs exist and are CURRENT
+-- Flag broken upstream references
+```
+
+Broken upstream references:
+| Document | References | Issue |
+|---|---|---|
+| [name] | [doc_id in upstream_dependencies] | Does not exist / is ARCHIVED |
+
+If none: "All upstream dependencies point to valid CURRENT documents."
+
+**Tier 1 cascade reach:**
+Simulate what happens when each Tier 1 document changes.
+Which Tier 2 and Tier 3 documents would be flagged for review?
+
+```sql
+-- Agent: for each Tier 1 document, find all Tier 2 documents that list it
+-- in their upstream_dependencies, then find all Tier 3 documents that list
+-- those Tier 2 documents in their upstream_dependencies
+-- Show the full cascade tree
+```
+
+| Tier 1 Document | Direct cascade (Tier 2) | Second-order (Tier 3) | Total reach |
+|---|---|---|---|
+| [name] | [N docs] | [N docs] | [N total] |
+
+Tier 1 documents with zero cascade reach:
+| Document | Issue |
+|---|---|
+| [name] | No Tier 2 or Tier 3 documents depend on this |
+
+---
+
+### 6. PIPELINE STAGE FIT
+
+Are documents being recommended and sent at the right stage?
+Compare declared pipeline_stage_relevance against actual send data.
+
+```sql
+-- Analyse send_log across all leads
+-- For each document that has been sent, identify the pipeline_stage
+-- of the lead at the time of send (from stage_history if available,
+-- or current pipeline_stage as a proxy)
+-- Compare against the document's declared pipeline_stage_relevance
+-- Flag documents sent outside their declared stage relevance
+SELECT
+  d.id,
+  d.name,
+  d.tier,
+  d.pipeline_stage_relevance,
+  COUNT(*) as times_sent
+FROM documents d
+JOIN leads l ON l.send_log::text LIKE '%' || d.id || '%'
+WHERE d.lifecycle_status = 'CURRENT'
+GROUP BY d.id, d.name, d.tier, d.pipeline_stage_relevance
+ORDER BY times_sent DESC;
+```
+
+**Stage fit analysis:**
+
+| Document | Declared stages | Times sent | Sent at correct stage? |
+|---|---|---|---|
+| [name] | [stages] | [N] | YES / NO / UNKNOWN |
+
+Documents sent at wrong stage (sent outside declared pipeline_stage_relevance):
+| Document | Declared stages | Actual stage when sent | Lead |
+|---|---|---|---|
+| [name] | [stages] | [actual stage] | [lead_id] |
+
+If none: "All sends were at appropriate pipeline stages, or stage data unavailable."
+
+---
+
+### 7. CONTENT COMPLETENESS
+
+Is there actual content to deliver?
+
+```sql
+SELECT
+  id,
+  name,
+  tier,
+  lifecycle_status,
+  CASE
+    WHEN content IS NULL THEN 'NULL CONTENT'
+    WHEN LENGTH(content) < 100 THEN 'STUB — under 100 chars'
+    WHEN LENGTH(content) < 500 THEN 'THIN — under 500 chars'
+    ELSE 'OK — ' || LENGTH(content) || ' chars'
+  END as content_status,
+  LENGTH(content) as content_length
+FROM documents
+WHERE lifecycle_status = 'CURRENT'
+ORDER BY content_length ASC NULLS FIRST;
+```
+
+**Content issues:**
+| Document | Tier | Status | Length |
+|---|---|---|---|
+| [name] | [tier] | NULL / STUB / THIN | [N chars] |
+
+If none: "All CURRENT documents have substantive content."
+
+---
+
+### 8. DELIVERY RECORD
+
+Has each document been sent? Is it being used?
+
+```sql
+-- For each CURRENT document, count how many leads have received it
+-- by parsing send_log arrays across all leads
+-- Show: document, times sent, unique leads sent to, last sent date
+```
+
+**Delivery analysis:**
+
+| Document | Tier | Times sent | Unique leads | Last sent | Status |
+|---|---|---|---|---|---|
+| [name] | [tier] | [N] | [N] | [date or "Never"] | ACTIVE / UNUSED |
+
+**Never-sent documents (CURRENT but no delivery record):**
+| Document | Tier | Category | Possible reason |
+|---|---|---|---|
+| [name] | [tier] | [category] | [No persona match / No stage match / New / Not yet recommended] |
+
+**Most-sent documents:**
+| Document | Tier | Times sent | Unique leads |
+|---|---|---|---|
+| [name] | [tier] | [N] | [N] |
+
+---
+
+### 9. OVERALL DOCUMENT HEALTH SCORECARD
+
+For each CURRENT document, produce a single health row:
+
+```sql
+-- Agent: combine all checks above into one summary row per document
+-- Score each dimension: ✓ (passing) / ⚠ (warning) / ✗ (failing)
+```
+
+| Document | Tier | Identity | Targeting | Belief | Compliance | Propagation | Content | Delivery |
+|---|---|---|---|---|---|---|---|---|
+| [name] | [1/2/3] | ✓/⚠/✗ | ✓/⚠/✗ | ✓/⚠/✗ | ✓/⚠/✗ | ✓/⚠/✗ | ✓/⚠/✗ | ✓/⚠/✗ |
+
+**Scoring:**
+✓ = passing (no issues on this dimension)
+⚠ = warning (minor issue, still functional)
+✗ = failing (issue that breaks this dimension's purpose)
+
+---
+
+### 10. PRIORITY ACTION LIST
+
+All findings ordered by urgency:
+
+| # | Document | Dimension | Finding | Action |
+|---|---|---|---|---|
+| 1 | [name] | [Identity/Targeting/Belief/Compliance/Propagation/Stage/Content/Delivery] | [specific issue] | [specific fix] |
+
+---
+
+### 11. SYSTEM-LEVEL FINDINGS
+
+Beyond individual documents — patterns across the document library:
+
+**Belief gaps:** [beliefs with no targeting document — the system cannot build these beliefs via sends]
+
+**Stage gaps:** [persona × stage combinations with no document coverage]
+
+**Propagation orphans:** [Tier 2/3 documents not connected to Tier 1 cascade]
+
+**Dead content:** [CURRENT documents never sent and unlikely to be recommended]
+
+**Recommendation:** DOCUMENT LIBRARY IS HEALTHY / GAPS TO ADDRESS / SIGNIFICANT STRUCTURAL ISSUES
+
+**Single most important fix:** [the one document issue that most degrades content delivery quality]

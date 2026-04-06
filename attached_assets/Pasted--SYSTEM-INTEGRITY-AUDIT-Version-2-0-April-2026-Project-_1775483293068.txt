@@ -1,0 +1,745 @@
+# SYSTEM INTEGRITY AUDIT
+Version: 2.0 | April 2026
+Project-agnostic. Fill in the PROJECT CONTEXT block before running.
+
+---
+
+## HOW TO USE THIS PROMPT
+
+1. Fill in the PROJECT CONTEXT block below — takes 5 minutes
+2. Paste the entire document into Replit AI
+3. Replit AI completes all six sections in one pass
+4. Review the combined summary at the end
+
+This audit covers:
+- 056: Data Integrity — semantically wrong data
+- 057: Compliance Drift — documents non-compliant since last rule change
+- 058: Prompt Integrity — LLM prompts that are stale or ignore available context
+- 059: Relationship Integrity — broken references between entities
+- 061: Coverage Gaps — data generated but invisible to the operator
+- 062: Sequence Integrity — operations in wrong order, impossible states
+
+---
+
+## PROJECT CONTEXT
+Fill in this block before running. Be specific — the more detail here,
+the more useful the audit output.
+
+```
+PROJECT NAME: [e.g. Unlock Intel / BDF / Decumulation Planner]
+
+TECH STACK:
+- Database: [e.g. PostgreSQL via Drizzle ORM]
+- Backend: [e.g. Express 5 / Node.js]
+- Frontend: [e.g. React 18 / Wouter]
+
+PRIMARY ENTITIES:
+List the main business objects in the system and their DB table names.
+Example: Leads (leads), Documents (documents), Tasks (tasks)
+- [Entity name] ([table_name])
+- [Entity name] ([table_name])
+
+STATE FIELDS:
+List fields that drive downstream decisions — their table, field name,
+and the canonical values they can hold.
+Example: documents.review_state — CLEAN / REQUIRES_REVIEW / BLOCKED
+- [table.field] — [value1 / value2 / value3]
+- [table.field] — [value1 / value2 / value3]
+
+KEY RELATIONSHIPS:
+List the important references between entities.
+Example: tasks.linked_document_id → documents.id
+- [table.field] → [table.field]
+- [table.field] → [table.field]
+
+COMPLIANCE / RULES SYSTEM:
+Does the project have a table of locked rules, constants, or
+compliance values that documents or outputs must conform to?
+- Table name: [e.g. compliance_constants]
+- Prohibited values field: [e.g. is_prohibited: boolean]
+- Canonical values: [e.g. key + value columns]
+- If no compliance system: write "None"
+
+CONTENT / DOCUMENT SYSTEM:
+Does the project have documents, articles, or generated content
+that must stay compliant over time?
+- Table name: [e.g. documents]
+- Content field: [e.g. content: text]
+- Status field: [e.g. lifecycle_status: CURRENT / DRAFT / ARCHIVED]
+- Review state field: [e.g. review_state: CLEAN / REQUIRES_REVIEW]
+- Tier or priority field: [e.g. tier: integer 1/2/3, or "None"]
+- If no document system: write "None"
+
+LLM PROMPTS IN THE CODEBASE:
+List every endpoint or function that makes a Claude/LLM API call
+and what it's supposed to produce.
+Example: POST /recommendation/analyze — transcript analysis for persona detection
+- [endpoint or function] — [purpose]
+- [endpoint or function] — [purpose]
+
+HARD RULES / GATES:
+List any rules that must always be true — prerequisite states,
+ordering constraints, or values that should never appear together.
+Example: Belief F1 cannot be ESTABLISHED unless F0 is ESTABLISHED
+- [rule description]
+- [rule description]
+
+RECENTLY ADDED FEATURES (last 30 days):
+List features added recently that existing functions may not yet use.
+Example: Belief state system added — existing recommendation engine
+may not be using belief data
+- [feature] — [which existing functions might not use it yet]
+- [feature] — [which existing functions might not use it yet]
+
+UI PAGES:
+List all pages/routes in the frontend.
+- [route] — [what it shows]
+- [route] — [what it shows]
+```
+
+---
+
+---
+
+# SECTION 1 — DATA INTEGRITY (056)
+
+Assess whether the data is semantically consistent — not just structurally
+valid (the DB won't catch these), but internally coherent.
+
+A data integrity failure is when two fields on the same record contradict
+each other, a record's state is logically impossible, or related records
+have drifted out of sync.
+
+---
+
+## 056 DATA INTEGRITY OUTPUT
+
+### 0. Scope
+**Project:** [from context]
+**Date:** [today]
+**Tables checked:** [list all tables checked]
+**Total records checked:** [count]
+
+---
+
+### 1. State field violations
+
+For each STATE FIELD listed in the project context:
+
+#### `[table.field]`
+**Canonical values:** [list from context]
+**Rule checked:** [what combination is impossible or contradictory]
+
+Query to run:
+```sql
+-- Agent: write the appropriate query for this state field
+-- based on the rules defined in the project context
+-- Look for: impossible value combinations, contradicting sibling fields,
+-- records whose state implies prerequisites that aren't met
+```
+
+Violations found:
+- [record id]: [what the violation is]
+
+If none: "None found."
+**Severity:** HIGH / MEDIUM / LOW
+
+[repeat for each state field]
+
+---
+
+### 2. Cross-table consistency
+
+For each KEY RELATIONSHIP listed in the project context:
+
+#### `[table_a.field] → [table_b.field]`
+**Rule:** [what should be consistent between them]
+
+Query to run:
+```sql
+-- Agent: write a query that checks for semantic drift between
+-- the two tables — not just whether the FK exists, but whether
+-- the referenced record's current state makes the reference valid
+```
+
+Violations found:
+- [record id]: [description]
+
+If none: "None found."
+
+---
+
+### 3. Impossible state combinations
+
+Based on the HARD RULES listed in the project context:
+
+For each rule, write and run a query to find violations:
+
+#### `[Rule description]`
+```sql
+-- Agent: write the query to detect violations of this specific rule
+```
+
+Violations found:
+- [record id]: [description]
+
+If none: "None found."
+
+---
+
+### 4. Data integrity verdict
+
+| Check | Violations | Severity |
+|---|---|---|
+| [state field check] | [N] | HIGH/MEDIUM/LOW |
+| [cross-table check] | [N] | HIGH/MEDIUM/LOW |
+| [hard rule check] | [N] | HIGH/MEDIUM/LOW |
+
+**Data health:** 🟢 CLEAN / 🟡 MINOR ISSUES / 🔴 ACTIVE VIOLATIONS
+
+---
+
+---
+
+# SECTION 2 — COMPLIANCE DRIFT (057)
+
+Proactively scan all active content for compliance violations —
+regardless of current review state.
+
+Only run this section if the project has a COMPLIANCE / RULES SYSTEM
+and a CONTENT / DOCUMENT SYSTEM defined in the project context.
+If neither exists: write "NOT APPLICABLE — no compliance or document system."
+
+---
+
+## 057 COMPLIANCE DRIFT OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Content records scanned:** [count of active/current records]
+**Rules loaded:** [count from compliance table]
+
+---
+
+### 1. Load current rules
+
+Fetch and display all active rules from the compliance table:
+
+```sql
+-- Agent: query the compliance table defined in project context
+-- Separate prohibited values from canonical values
+-- Show: key, label, value, prohibited_reason (if applicable)
+```
+
+**Prohibited values:**
+- [value]: [reason it must never appear]
+
+**Canonical values (correct versions):**
+- [key]: [correct value]
+
+---
+
+### 2. Content scan
+
+For each active/current content record, scan the content field for:
+- Every prohibited value (case-insensitive, also check common variants)
+- Incorrect canonical values in context
+
+Exclude internal/governance content that is not user-facing.
+
+For each violation:
+
+#### `[Content record name]` ([tier/priority if applicable], ID: [id])
+**Current review state:** [value]
+**Open review task exists:** YES / NO
+**Violations:**
+- Found: "[exact text]"
+  Issue: [prohibited / wrong canonical value]
+  Should be: "[correct value]"
+
+If no violations: "No violations found."
+
+---
+
+### 3. Content with violations but no review task
+
+| Record | Priority | Violation | Task exists |
+|---|---|---|---|
+| [name] | [tier] | [description] | NO |
+
+If none: "All violations have existing review tasks."
+
+---
+
+### 4. Compliance health summary
+
+| Metric | Value |
+|---|---|
+| Records scanned | [N] |
+| Records with violations | [N] |
+| Violations with no review task | [N] |
+| Highest-priority records with violations | [N] |
+
+**Compliance health:** 🟢 CLEAN / 🟡 MINOR DRIFT / 🔴 ACTIVE VIOLATIONS
+
+**Immediate action required:** [list records needing urgent attention, or "None"]
+
+---
+
+---
+
+# SECTION 3 — PROMPT INTEGRITY (058)
+
+Assess whether LLM prompts are still fit for purpose — using current data,
+producing correct output schemas, and genuinely context-sensitive.
+
+Only run this section if the project has LLM PROMPTS listed in the
+project context. If none: write "NOT APPLICABLE — no LLM prompts."
+
+A prompt integrity failure is when:
+- A prompt was written before new data was added and doesn't use it
+- A prompt's output schema no longer matches what the code expects
+- A prompt produces the same output regardless of its inputs (hollow)
+- A prompt contains hardcoded values that should come from the DB
+
+---
+
+## 058 PROMPT INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Prompts assessed:** [count from project context]
+
+---
+
+### 1. Prompt assessments
+
+For each LLM prompt listed in the project context:
+
+#### `[Endpoint or function name]`
+**File:** [path, approximate line]
+**Purpose:** [from project context]
+
+**Data injected at runtime:**
+- [list every variable passed into the prompt — be specific]
+
+**Data available in the system but NOT injected:**
+Based on the RECENTLY ADDED FEATURES in the project context —
+what new data exists that this prompt doesn't use?
+- [table/field being ignored]
+
+**Hardcoded values that should come from DB:**
+- [value in prompt text that exists in a DB table]
+  Should come from: [table.field]
+  Risk if they drift: HIGH / MEDIUM / LOW
+
+**Output schema — prompt instructs model to return:**
+- [fields]
+
+**Output schema — calling code expects:**
+- [fields parsed from response]
+
+**Schema match:** MATCHES / MISMATCH
+If mismatch: [describe the gap]
+
+**Context sensitivity test:**
+Call this endpoint twice — once with a rich context (record with lots
+of data) and once with minimal context (new/empty record).
+- Rich context output: [summary of what was different/specific]
+- Minimal context output: [summary]
+- Sensitivity: SENSITIVE / PARTIALLY SENSITIVE / INSENSITIVE
+
+**Status:** CURRENT / STALE / PARTIALLY STALE
+- CURRENT: uses available context, schema matches, output is context-sensitive
+- STALE: ignores significant available context OR schema mismatch
+- PARTIALLY STALE: works but misses one or more relevant data sources
+
+**Impact:** [what the user gets or doesn't get because of this]
+
+[repeat for each prompt]
+
+---
+
+### 2. Hardcoded values summary
+
+| Prompt | Hardcoded value | Should come from | Risk |
+|---|---|---|---|
+| [name] | [value] | [table.field] | HIGH/MEDIUM/LOW |
+
+If none: "None identified."
+
+---
+
+### 3. Prompt integrity verdict
+
+| Prompt | Status | Priority to fix |
+|---|---|---|
+| [name] | CURRENT / STALE / PARTIALLY STALE | HIGH/MEDIUM/LOW |
+
+**Recommendation:** PROMPTS ARE CURRENT / UPDATE STALE PROMPTS / IMMEDIATE REVISION REQUIRED
+
+---
+
+---
+
+# SECTION 4 — RELATIONSHIP INTEGRITY (059)
+
+Assess whether references between entities are still valid.
+
+A relationship integrity failure is when a reference points to something
+that no longer exists, or exists but in a state that makes the reference
+invalid (e.g. referencing an archived record from an active one).
+
+---
+
+## 059 RELATIONSHIP INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Relationships checked:** [count from project context]
+**Total references checked:** [count]
+
+---
+
+### 1. Reference checks
+
+For each KEY RELATIONSHIP listed in the project context:
+
+#### `[table_a.field] → [table_b.field]`
+**Type:** HARD (FK constraint exists) / SOFT (no constraint, manually maintained)
+
+Query to run:
+```sql
+-- Agent: write a LEFT JOIN query that finds:
+-- 1. Records in table_a where the referenced record in table_b does not exist
+-- 2. Records where the referenced record exists but is in a state that
+--    makes the reference invalid (e.g. ARCHIVED, DELETED, BLOCKED)
+```
+
+Broken references (referenced record does not exist):
+- [record id]: references [other_table].[id] which does not exist
+
+Stale references (referenced record exists but reference is no longer valid):
+- [record id]: references [other_table].[id] which is now [status]
+
+If none: "None found."
+
+[repeat for each relationship]
+
+---
+
+### 2. Orphaned records
+
+Records that exist but have no parent or owner:
+
+```sql
+-- Agent: for each entity that should have a parent (e.g. tasks should
+-- have a linked document, findings should have a session), find records
+-- where the parent reference is null when it shouldn't be, or where
+-- the parent no longer exists
+```
+
+Orphaned records found:
+- [table].[id]: [why it's orphaned]
+
+If none: "None found."
+
+---
+
+### 3. Content without valid rules coverage
+
+Based on the CONTENT / DOCUMENT SYSTEM in the project context —
+are there content records that reference rules, types, or categories
+that no longer exist in the rules system?
+
+```sql
+-- Agent: check any foreign references from content records to rules tables
+```
+
+If not applicable: "Not applicable — no rules→content references."
+
+---
+
+### 4. Entities that cannot complete their purpose
+
+Based on the KEY RELATIONSHIPS — are there entities that exist but
+can never achieve their goal because a required reference is missing?
+
+Example: a belief with no primary document can never be recommended.
+Example: a task with no linked document can never be resolved.
+
+```sql
+-- Agent: identify records where a required reference is null or broken
+-- Focus on records where the missing reference blocks the entity's purpose
+```
+
+Blocked entities:
+- [table].[id]: [why it cannot achieve its purpose]
+
+If none: "None found."
+
+---
+
+### 5. Relationship integrity verdict
+
+| Relationship | Broken | Stale | Status |
+|---|---|---|---|
+| [relationship] | [N] | [N] | 🟢/🟡/🔴 |
+
+**Recommendation:** RELATIONSHIPS ARE CLEAN / FIX BROKEN REFERENCES / IMMEDIATE ATTENTION REQUIRED
+
+---
+
+---
+
+# SECTION 5 — COVERAGE GAPS (061)
+
+Identify data and capabilities that exist but are unreachable —
+invisible to the operator or generated but never surfaced.
+
+A coverage gap is when a field is generated and stored but never
+displayed, a workflow produces data that feeds into nothing, or
+the operator would make better decisions if they could see X and
+X exists in the DB but there's no way to see it.
+
+---
+
+## 061 COVERAGE GAPS OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Tables reviewed:** [list]
+**UI pages reviewed:** [list from project context]
+
+---
+
+### 1. Data generated but not surfaced
+
+For each table that stores generated or computed data (not just
+user-entered data), check whether its fields have UI representation.
+
+#### `[Table name]`
+
+Check every significant field:
+
+| Field | Generated by | Displayed in UI? | Page/component |
+|---|---|---|---|
+| [field] | [what generates it] | YES / NO | [where, or "Nowhere"] |
+
+For each NOT DISPLAYED field that would be valuable to the operator:
+
+**Field:** [field name]
+**Contains:** [what data is stored here]
+**Should it be surfaced?** YES / NO / DEFERRED
+- YES: operator would benefit from seeing this routinely
+- NO: internal/technical, not user-relevant
+- DEFERRED: intentionally deferred in a prior phase doc
+**If YES — where:** [specific page and section]
+**Effort:** LOW / MEDIUM / HIGH
+
+[repeat for each table with generated data]
+
+---
+
+### 2. API endpoints with no UI entry point
+
+Review all routes and check whether each has a UI trigger:
+
+| Endpoint | Purpose | UI entry point | Accessible? |
+|---|---|---|---|
+| [method /path] | [description] | [page/button or "None"] | YES / NO |
+
+Focus on endpoints an operator would want to trigger manually.
+
+---
+
+### 3. Workflows that produce unreachable output
+
+Processes that run and generate results, but results go nowhere:
+
+#### `[Workflow name]`
+**What it does:** [description]
+**Output stored:** [where]
+**Operator can see it:** YES / NO / PARTIALLY
+**Effect of not seeing it:** [what operator misses]
+
+If none: "None identified."
+
+---
+
+### 4. High-value invisible fields
+
+Top fields that, if surfaced, would most improve operator decisions:
+
+| Field | Table | Contains | Best location | Why it matters |
+|---|---|---|---|---|
+| [field] | [table] | [description] | [page/section] | [impact] |
+
+---
+
+### 5. Coverage gaps verdict
+
+**Recommendation:** ALL VALUE IS SURFACED / MINOR GAPS / SIGNIFICANT VALUE BURIED
+
+**Highest priority gap:** [most impactful invisible capability — specific]
+
+---
+
+---
+
+# SECTION 6 — SEQUENCE INTEGRITY (062)
+
+Assess whether operations have happened in the correct order and
+whether any entity is in a logically impossible state.
+
+A sequence integrity failure is when operations were taken out of
+order, prerequisites weren't met before dependent actions were taken,
+or a record is in a state that's logically impossible given the
+system's rules.
+
+---
+
+## 062 SEQUENCE INTEGRITY OUTPUT
+
+### 0. Scope
+**Date:** [today]
+**Entities checked:** [list primary entities checked]
+
+---
+
+### 1. Hard rule violations
+
+For each HARD RULE listed in the project context:
+
+#### `[Rule description]`
+
+```sql
+-- Agent: write a query to find records that violate this rule
+-- Be specific — name the exact fields and the impossible combination
+```
+
+Violations found:
+- [record id]: [what the violation is — exact field values]
+
+If none: "None found."
+**Pre-system note:** If the system was built incrementally, some violations
+may predate the rule. Flag these as "historical — predates rule implementation"
+rather than active violations.
+
+[repeat for each hard rule]
+
+---
+
+### 2. State transition violations
+
+Based on the STATE FIELDS in the project context — are there records
+whose current state is impossible given the transitions that should
+have led to it?
+
+#### `[table.field]`
+```sql
+-- Agent: look for records whose state implies a history that
+-- contradicts other fields on the same or related records
+-- Example: status = Done but linked record still shows active/open state
+-- Example: generated output exists but no input was ever provided
+```
+
+Violations found:
+- [record id]: [what makes this state impossible]
+
+If none: "None found."
+
+---
+
+### 3. Output without valid input
+
+Records where generated output exists but the input that should
+have produced it is absent:
+
+```sql
+-- Agent: for each entity that is generated from inputs (LLM outputs,
+-- computed fields, processed results), check whether the source inputs
+-- still exist and were non-empty at the time of generation
+-- This catches: generated profiles with no source data,
+-- analysis results with no input document, etc.
+```
+
+Suspicious records:
+- [record id]: [has output X but input Y is null/missing]
+
+If none: "None found."
+
+---
+
+### 4. Process integrity
+
+Based on the RECENTLY ADDED FEATURES in the project context —
+are there cases where new rules or gates should have prevented
+an action that was taken before the feature existed?
+
+For each recently added feature:
+
+#### `[Feature name]`
+**Gate or rule it introduced:** [description]
+**Actions taken before it existed:** [what should be checked]
+**Historical violations found:** [count and description, or "None / predates feature"]
+
+---
+
+### 5. Sequence integrity verdict
+
+| Rule / sequence | Violations | Historical | Status |
+|---|---|---|---|
+| [rule] | [N active] | [N historical] | 🟢/🟡/🔴 |
+
+🔴 = active violations (post-feature-launch)
+🟡 = historical violations only (pre-feature-launch)
+🟢 = no violations
+
+**Recommendation:** SEQUENCE IS CLEAN / REVIEW VIOLATIONS / IMMEDIATE ATTENTION REQUIRED
+
+---
+
+---
+
+# COMBINED AUDIT SUMMARY
+
+After completing all six sections above, produce this summary:
+
+## Priority action list
+
+Order all findings by urgency across all six sections:
+
+| # | Finding | Section | Severity | Action required |
+|---|---|---|---|---|
+| 1 | [finding] | 056/057/058/059/061/062 | HIGH/MEDIUM/LOW | [specific action] |
+
+## Overall system health
+
+| Dimension | Status | Key finding |
+|---|---|---|
+| Data integrity (056) | 🟢/🟡/🔴 | [one line] |
+| Compliance drift (057) | 🟢/🟡/🔴 | [one line] |
+| Prompt integrity (058) | 🟢/🟡/🔴 | [one line] |
+| Relationship integrity (059) | 🟢/🟡/🔴 | [one line] |
+| Coverage gaps (061) | 🟢/🟡/🔴 | [one line] |
+| Sequence integrity (062) | 🟢/🟡/🔴 | [one line] |
+
+**Single most important fix:** [the one thing that, if left unfixed,
+poses the greatest risk to the operator or the data]
+
+**Safe to keep building:** YES / NO — [one sentence rationale]
+
+---
+
+## SCHEDULING GUIDANCE
+
+Run this audit:
+- After any major feature that adds new tables or generates new data
+- After any compliance rule change
+- Before any product demo or investor meeting
+- When a feature appears to work but produces generic or unhelpful output
+- Monthly as a routine system health check
+
+Outputs are advisory. All findings must go through Step 2 before being
+built — do not patch directly without a phase doc.
