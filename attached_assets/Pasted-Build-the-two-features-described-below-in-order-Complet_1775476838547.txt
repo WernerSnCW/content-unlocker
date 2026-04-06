@@ -1,0 +1,690 @@
+Build the two features described below in order. Complete Phase 011b fully before starting Phase 011c.
+
+BEFORE WRITING ANY CODE:
+1. Read both phase docs from top to bottom
+2. Confirm receipt: "I see two phase docs, each with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+3. List all files you plan to change across both phases and why
+4. List any questions (BLOCKERs only — state NON-BLOCKING ASSUMPTIONS and proceed)
+5. Wait for confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Backward compatible — existing data must continue to work
+- Do not implement anything not in the spec
+- CODE PRESERVATION RULE: do not delete code outside planned files
+- SIDE EFFECT RULE: stop and report before modifying any shared function used by files outside your change plan
+- SPEC-CONSTRAINT CONFLICT RULE: stop immediately if implementing a requirement would violate a constraint
+- PATCH LOOP RULE: if build fails significantly, stop and report — do not patch in place
+
+Complete Phase 011b first. Return a partial build report for 011b, then proceed to 011c without waiting.
+
+---
+
+# PHASE DOC — Work Queue System (Phase 011b: Analysis Engine)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-011b
+Effort: 4–5 hours
+Dependencies: RR-2026-04-06-011a (work_queue_sessions and work_queue_findings tables must exist)
+Risk: HIGH
+Feature flag: work_queue_v1: boolean
+
+---
+
+## Section 1 — Feature
+
+Adds the background analysis engine for the Work Queue. One new endpoint: `POST /work-queue/start`. When called, it creates a session, fetches all open Review tasks, looks up their linked documents, fetches compliance constants from the DB, and calls Claude to analyse each document. Findings are classified as `auto_fix` (objective compliance violations) or `decision_card` (content quality issues) and persisted to `work_queue_findings`. Session progress is updated after each document. Only one active session at a time — a second POST /start while ANALYSING or PENDING returns the existing session.
+
+---
+
+## Section 2 — Why this is necessary
+
+Without the analysis engine, the work queue session model has no data. The frontend polling endpoint returns PENDING forever. This phase is what populates findings so Phase 011c can serve them.
+
+---
+
+## Section 3 — Current state
+
+From the Phase 011b scan:
+
+**tasksTable columns:**
+- id, title, status (Open/In Progress/Done), type (Review/Build/Import/General), linked_document_id (nullable text), created_at, updated_at
+
+**complianceConstantsTable columns:**
+- id, key, label, value, value_type, status (ACTIVE), is_prohibited (boolean), prohibited_reason, subject_to_qualifier, qualifier_text, category, notes, superseded_by, override_reason, actor, source, activated_at, created_at
+
+**documentsTable relevant columns:**
+- id, file_code, name, tier, review_state, content (nullable text), lifecycle_status
+
+**work_queue_sessions:** exists with PENDING/ANALYSING/READY/COMPLETE/FAILED lifecycle
+**work_queue_findings:** exists, empty
+**GET /work-queue/status:** exists, returns active session
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] API — new endpoint
+- [x] Domain — analysis logic, compliance constant lookup
+- [x] External — Claude API call per document
+
+Layer count: 3
+Split required: NO — single endpoint, contained logic
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — POST /work-queue/start
+
+File: `artifacts/api-server/src/routes/work-queue/index.ts` (additive — new endpoint)
+
+Declare BEFORE any future parameterised routes. This is a static route.
+
+**Logic:**
+
+**Step 1 — Concurrency guard**
+Check for an existing active session (status IN ('PENDING', 'ANALYSING', 'READY')):
+```typescript
+const existing = await db.select().from(workQueueSessionsTable)
+  .where(inArray(workQueueSessionsTable.status, ['PENDING', 'ANALYSING', 'READY']))
+  .limit(1);
+
+if (existing[0]) {
+  return res.status(200).json({ session: existing[0], already_running: true });
+}
+```
+
+**Step 2 — Fetch open Review tasks with linked documents**
+```typescript
+const openTasks = await db.select().from(tasksTable)
+  .where(and(
+    eq(tasksTable.status, 'Open'),
+    eq(tasksTable.type, 'Review'),
+    isNotNull(tasksTable.linked_document_id)
+  ));
+```
+
+If no open Review tasks with linked documents: create a session with status COMPLETE, total_tasks: 0, return it.
+
+**Step 3 — Fetch documents for those tasks**
+```typescript
+const documentIds = [...new Set(openTasks.map(t => t.linked_document_id as string))];
+const documents = await db.select().from(documentsTable)
+  .where(inArray(documentsTable.id, documentIds));
+```
+
+Filter to documents where `lifecycle_status = 'CURRENT'` and `review_state = 'REQUIRES_REVIEW'`. If a task's linked document is not found or doesn't meet these criteria, skip the task (do not create a finding for it).
+
+**Step 4 — Fetch compliance constants**
+```typescript
+const constants = await db.select().from(complianceConstantsTable)
+  .where(eq(complianceConstantsTable.status, 'ACTIVE'));
+```
+
+Build two lookup structures:
+```typescript
+// Prohibited values — things that must NEVER appear
+const prohibitedValues = constants.filter(c => c.is_prohibited);
+
+// Canonical replacements — correct values keyed by key
+const canonicalValues: Record<string, string> = {};
+constants.forEach(c => {
+  if (!c.is_prohibited) canonicalValues[c.key] = c.value;
+});
+```
+
+**Step 5 — Create session**
+```typescript
+const session = await db.insert(workQueueSessionsTable).values({
+  status: 'ANALYSING',
+  total_tasks: eligibleDocs.length,
+  analysed_tasks: 0,
+}).returning();
+const sessionId = session[0].id;
+```
+
+Return the session immediately (202 Accepted):
+```typescript
+res.status(202).json({ session: session[0], already_running: false });
+```
+
+**Step 6 — Run analysis in background (after response is sent)**
+
+Use `setImmediate` or `process.nextTick` to run analysis after the response:
+
+```typescript
+setImmediate(async () => {
+  try {
+    await runAnalysis(sessionId, eligibleDocs, eligibleTasks, prohibitedValues, canonicalValues);
+  } catch (err) {
+    await db.update(workQueueSessionsTable)
+      .set({ status: 'FAILED', error_message: String(err), completed_at: new Date() })
+      .where(eq(workQueueSessionsTable.id, sessionId));
+  }
+});
+```
+
+---
+
+### 5.2 — runAnalysis function
+
+Define as a standalone async function in the same file (not inside the route handler):
+
+```typescript
+async function runAnalysis(
+  sessionId: string,
+  documents: Array<typeof documentsTable.$inferSelect>,
+  tasks: Array<typeof tasksTable.$inferSelect>,
+  prohibitedValues: typeof complianceConstantsTable.$inferSelect[],
+  canonicalValues: Record<string, string>
+): Promise<void>
+```
+
+For each document (processed sequentially — not in parallel, to avoid rate limits):
+
+**5.2a — Build compliance context string for Claude**
+
+```typescript
+const prohibitedList = prohibitedValues
+  .map(p => `- PROHIBITED: "${p.value}" (${p.label}) — ${p.prohibited_reason || 'must not appear'}`)
+  .join('\n');
+
+const canonicalList = Object.entries(canonicalValues)
+  .map(([key, val]) => `- ${key}: correct value is "${val}"`)
+  .join('\n');
+```
+
+**5.2b — Call Claude to analyse the document**
+
+If `document.content` is null or empty: skip Claude call, create one finding of type `decision_card` with issue: "Document has no content — cannot be analysed."
+
+Otherwise call Claude:
+
+```typescript
+const prompt = `You are reviewing an investor document for compliance violations and content quality issues.
+
+DOCUMENT NAME: ${document.name}
+DOCUMENT TIER: ${document.tier}
+
+PROHIBITED VALUES (must never appear in any investor-facing document):
+${prohibitedList}
+
+CANONICAL VALUES (correct values that must be used):
+${canonicalList}
+
+DOCUMENT CONTENT:
+${document.content}
+
+Analyse this document and return a JSON array of findings. Return JSON only — no other text.
+
+Each finding must be:
+{
+  "finding_type": "auto_fix" | "decision_card",
+  "issue_description": "specific description of the problem",
+  "original_text": "the exact text that contains the problem (max 100 chars)",
+  "proposed_fix": "the exact replacement text or specific suggestion",
+  "severity": "HIGH" | "MEDIUM" | "LOW"
+}
+
+Rules for classification:
+- "auto_fix": the document contains a prohibited value or an incorrect canonical figure that has a known correct replacement. The fix is a direct text substitution. No judgement required.
+- "decision_card": a content quality issue that requires operator judgement — missing framing, structural gaps, tone problems, outdated arguments, missing belief alignment.
+
+Rules for findings:
+- Only report real issues. If the document is compliant and high quality, return an empty array [].
+- For auto_fix: original_text must be the exact string to replace. proposed_fix must be the exact replacement string.
+- For decision_card: proposed_fix must be a specific, short, actionable suggestion — not a vague comment.
+- Do not invent issues. Do not report issues not supported by the document content.
+- Maximum 10 findings per document.
+- Order findings: auto_fix first, then decision_card by severity (HIGH → MEDIUM → LOW).`;
+
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-6',
+  max_tokens: 8192,
+  messages: [{ role: 'user', content: prompt }],
+});
+
+const rawText = response.content
+  .filter(b => b.type === 'text')
+  .map(b => b.text)
+  .join('');
+
+const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+if (!jsonMatch) throw new Error('No JSON array found in Claude response');
+const findings = JSON.parse(jsonMatch[0]) as Array<{
+  finding_type: string;
+  issue_description: string;
+  original_text?: string;
+  proposed_fix?: string;
+  severity: string;
+}>;
+```
+
+**5.2c — Persist findings**
+
+Find the task for this document:
+```typescript
+const task = tasks.find(t => t.linked_document_id === document.id);
+if (!task) continue; // should not happen but guard anyway
+```
+
+Calculate sort_order: `(document.tier * 100) + index` — Tier 1 docs get sort_order 100–199, Tier 2 get 200–299, Tier 3 get 300–399.
+
+Insert findings:
+```typescript
+if (findings.length > 0) {
+  await db.insert(workQueueFindingsTable).values(
+    findings.map((f, i) => ({
+      session_id: sessionId,
+      task_id: task.id,
+      document_id: document.id,
+      document_name: document.name,
+      document_tier: document.tier,
+      finding_type: f.finding_type,
+      issue_description: f.issue_description,
+      original_text: f.original_text || null,
+      proposed_fix: f.proposed_fix || null,
+      status: 'PENDING',
+      sort_order: (document.tier * 100) + i,
+    }))
+  );
+}
+```
+
+If findings is empty array: no findings inserted for this document. Task is implicitly clean.
+
+**5.2d — Update session progress**
+```typescript
+await db.update(workQueueSessionsTable)
+  .set({ analysed_tasks: sql`analysed_tasks + 1` })
+  .where(eq(workQueueSessionsTable.id, sessionId));
+```
+
+**5.2e — After all documents processed**
+
+Count totals:
+```typescript
+const allFindings = await db.select().from(workQueueFindingsTable)
+  .where(eq(workQueueFindingsTable.session_id, sessionId));
+
+const autoFixCount = allFindings.filter(f => f.finding_type === 'auto_fix').length;
+const cardCount = allFindings.filter(f => f.finding_type === 'decision_card').length;
+```
+
+Update session to READY:
+```typescript
+await db.update(workQueueSessionsTable)
+  .set({
+    status: 'READY',
+    cards_total: cardCount,
+    auto_fixed_count: 0, // auto_fix findings exist but haven't been applied yet
+    completed_at: new Date(),
+  })
+  .where(eq(workQueueSessionsTable.id, sessionId));
+```
+
+Note: `auto_fixed_count` in the session tracks *applied* auto-fixes, not *found* ones. Found auto-fixes are in the findings table with status PENDING.
+
+---
+
+### 5.3 — Required new imports for work-queue/index.ts
+
+Add to existing imports:
+```typescript
+import { tasksTable, documentsTable, complianceConstantsTable, workQueueFindingsTable } from '@workspace/db';
+import { inArray, isNotNull, and, sql } from 'drizzle-orm';
+import { anthropic } from '@workspace/integrations-anthropic-ai';
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `POST /api/work-queue/start` with no open Review tasks returns `{ session: { status: 'COMPLETE', total_tasks: 0 }, already_running: false }`. Manual test: ensure no open Review tasks exist, call endpoint.
+
+AC2. `POST /api/work-queue/start` creates a session with status `ANALYSING` and returns 202 immediately — before analysis completes. Manual test: call endpoint and confirm response arrives before 2 seconds.
+
+AC3. After analysis completes, `GET /api/work-queue/status` returns `{ session: { status: 'READY' }, findings_ready: true }`. Manual test: call start, poll status until READY.
+
+AC4. `work_queue_findings` contains rows for each document that had issues. Each row has correct session_id, task_id, document_id, finding_type (auto_fix or decision_card), issue_description, and sort_order. Manual test: inspect findings table after a run.
+
+AC5. Tier 1 documents have lower sort_order values than Tier 2 documents in findings. Manual test: compare sort_order values across tiers in the findings table.
+
+AC6. `POST /api/work-queue/start` called while a session is ANALYSING returns the existing session with `already_running: true` — does not create a duplicate session. Manual test: call start twice rapidly, confirm only one session row exists.
+
+AC7. A document with null or empty content produces a decision_card finding with issue: "Document has no content — cannot be analysed." Manual test: set a document's content to null, link a task to it, run the queue.
+
+AC8. Session `analysed_tasks` increments after each document is processed. Inspect DB mid-run if possible, or verify final value equals `total_tasks`. Manual test.
+
+AC9. If Claude returns an empty findings array for a document, no findings are inserted for that document. The session still completes successfully. Manual test: verify clean documents don't produce findings.
+
+AC10. Session status transitions correctly: ANALYSING → READY on success, ANALYSING → FAILED on unrecoverable error. Manual test: verify READY status after a clean run.
+
+---
+
+## Section 7 — Constraints
+
+- `POST /work-queue/start` returns 202 immediately — analysis runs in background via setImmediate
+- Documents processed sequentially — NOT in parallel (avoid Claude rate limits)
+- Compliance constants fetched from DB — never hardcoded
+- LLM: claude-sonnet-4-6, @workspace/integrations-anthropic-ai, max_tokens 8192
+- Regex extract JSON array before JSON.parse — use `/\[[\s\S]*\]/` pattern
+- `auto_fixed_count` in session tracks applied fixes, not found ones — starts at 0
+- Only tasks with type 'Review', status 'Open', and a non-null linked_document_id are included
+- Only documents with lifecycle_status 'CURRENT' and review_state 'REQUIRES_REVIEW' are included
+- propagateFromDocument() must NOT be called in this phase — that happens in 011c on resolution
+- No frontend changes in this phase
+- One active session at a time — PENDING, ANALYSING, or READY sessions block new starts
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not apply auto-fixes — Phase 011c
+- This build does not serve decision cards — Phase 011c
+- This build does not accept or skip findings — Phase 011c
+- This build does not trigger propagation — Phase 011c
+- This build does not add frontend — Phase 011d
+
+---
+
+## Section 9 — Assumptions
+
+- `sql` tagged template from drizzle-orm supports `sql\`analysed_tasks + 1\`` for atomic increments
+- `setImmediate` is available in the Node.js environment — confirmed (Express 5 + Node.js)
+- `anthropic.messages.create` is the correct API call shape — consistent with existing LLM usage
+- `inArray`, `isNotNull`, `and`, `sql` are all available from `drizzle-orm`
+- A document may be linked to multiple tasks — use the first matching task only
+
+---
+
+## Section 10 — Rollback
+
+Risk is HIGH. If background analysis corrupts session state:
+1. DELETE FROM work_queue_findings WHERE session_id = [id]
+2. DELETE FROM work_queue_sessions WHERE id = [id]
+No document content is modified in this phase — rollback is clean.
+
+---
+
+---
+
+# PHASE DOC — Work Queue System (Phase 011c: Resolution API)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-011c
+Effort: 4–5 hours
+Dependencies: RR-2026-04-06-011b (findings must exist in the DB to resolve)
+Risk: HIGH
+Feature flag: work_queue_v1: boolean
+
+---
+
+## Section 1 — Feature
+
+Adds the resolution layer for the Work Queue. Four new endpoints: `GET /work-queue/cards` (returns pending decision cards in order), `POST /work-queue/auto-fix` (applies all pending auto_fix findings for the current session), `POST /work-queue/cards/:findingId/accept` (applies a decision card fix, resolves the task, triggers propagation), `POST /work-queue/cards/:findingId/skip` (skips a finding with a reason). Also adds `GET /work-queue/summary` for the session summary screen.
+
+---
+
+## Section 2 — Why this is necessary
+
+The analysis engine from 011b produces findings but cannot act on them. This phase is the action layer — it turns findings into resolved tasks, applied document fixes, and propagation cascades.
+
+---
+
+## Section 3 — Current state
+
+From Phase 011b:
+- `work_queue_findings` contains PENDING findings classified as auto_fix or decision_card
+- `work_queue_sessions` tracks the active session with progress counts
+- No resolution endpoints exist yet
+- `propagation.ts` has `propagateFromDocument()` and `detectPropagationTargets()`
+- `taskHelpers.ts` has `createReviewTasksForPropagation()`
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] API — 5 new endpoints
+- [x] Domain — document content patching, task resolution, propagation
+- [x] External — propagation cascade
+
+Layer count: 3
+Split required: NO — all endpoints operate on the same session/findings model
+
+---
+
+## Section 5 — Required behaviour
+
+All endpoints in this phase are added to `artifacts/api-server/src/routes/work-queue/index.ts`.
+
+Static routes must be declared before parameterised routes. Order:
+1. GET /work-queue/status (existing)
+2. POST /work-queue/start (011b)
+3. GET /work-queue/cards (new)
+4. POST /work-queue/auto-fix (new)
+5. GET /work-queue/summary (new)
+6. POST /work-queue/cards/:findingId/accept (new — parameterised)
+7. POST /work-queue/cards/:findingId/skip (new — parameterised)
+
+---
+
+### 5.1 — GET /work-queue/cards
+
+Returns pending decision_card findings for the current READY session, ordered by sort_order ascending.
+
+Logic:
+1. Find current READY session (same query as GET /status)
+2. If no READY session: return `{ cards: [], session: null }`
+3. Query findings: `finding_type = 'decision_card'` AND `status = 'PENDING'` AND `session_id = session.id`, ordered by `sort_order ASC`
+4. Return `{ cards: WorkQueueFinding[], session: WorkQueueSession, total_remaining: number }`
+
+Error: 500 `{ error: 'Failed to fetch cards' }`
+
+---
+
+### 5.2 — POST /work-queue/auto-fix
+
+Applies all pending auto_fix findings for the current READY session.
+
+Logic:
+1. Find current READY session. If none: 404 `{ error: 'No active session' }`
+2. Fetch all findings where `finding_type = 'auto_fix'` AND `status = 'PENDING'` AND `session_id = session.id`
+3. If none: return `{ applied: 0, message: 'No auto-fixes pending' }`
+4. For each auto_fix finding:
+
+   a. Fetch the document from `documentsTable`
+   b. If `original_text` and `proposed_fix` are both set AND `document.content` contains `original_text`:
+      - Replace first occurrence of `original_text` with `proposed_fix` in `document.content`
+      - Update `documentsTable` set `content = newContent`, `review_state = 'CLEAN'`
+      - Mark the linked task as Done: `db.update(tasksTable).set({ status: 'Done' })`
+      - Write changelog: `action: 'AUTO_FIX_APPLIED'`, `triggered_by: 'agent'`, details: finding.issue_description
+      - Call `propagateFromDocument(document.id)` then `createReviewTasksForPropagation(result.targets)`
+      - Update cascaded_count on session: `sql\`cascaded_count + result.targets.length\``
+      - Mark finding: `status = 'AUTO_FIXED'`, `resolved_at = new Date()`
+   
+   c. If `original_text` not found in document content OR `original_text`/`proposed_fix` null:
+      - Mark finding as `status = 'FAILED'`, add note to issue_description
+      - Do NOT mark the task as Done
+      - Do NOT trigger propagation
+
+5. Update session: `auto_fixed_count = number of successfully applied fixes`
+6. Return `{ applied: N, failed: M, session: updatedSession }`
+
+Error: 500 `{ error: 'Failed to apply auto-fixes' }`
+
+---
+
+### 5.3 — POST /work-queue/cards/:findingId/accept
+
+Applies a single decision card fix and resolves the task.
+
+Logic:
+1. Fetch finding by `findingId`. If not found: 404
+2. If finding.status !== 'PENDING': 400 `{ error: 'Finding already resolved' }`
+3. Fetch the document from `documentsTable`
+4. If `proposed_fix` is set AND `original_text` is set AND document.content contains `original_text`:
+   - Replace first occurrence of `original_text` with `proposed_fix` in document.content
+   - Update document: `content = newContent`, `review_state = 'CLEAN'`
+5. If `original_text` is null (structural issue, no direct text replacement):
+   - Update document: `review_state = 'CLEAN'` only (no content change — operator acknowledged the issue)
+6. Mark task as Done: `db.update(tasksTable).set({ status: 'Done' }).where(eq(tasksTable.id, finding.task_id))`
+7. Write changelog: `action: 'CARD_ACCEPTED'`, `triggered_by: 'operator'`
+8. Call `propagateFromDocument(document.id)` then `createReviewTasksForPropagation(result.targets)`
+9. Update session: `cards_resolved = sql\`cards_resolved + 1\``, `cascaded_count = sql\`cascaded_count + result.targets.length\``
+10. Mark finding: `status = 'ACCEPTED'`, `resolved_at = new Date()`
+11. Return `{ finding: updatedFinding, cascaded: result.targets.length, session: updatedSession }`
+
+Error: 500 `{ error: 'Failed to accept card' }`
+
+---
+
+### 5.4 — POST /work-queue/cards/:findingId/skip
+
+Skips a finding with a reason.
+
+Logic:
+1. Fetch finding by `findingId`. If not found: 404
+2. If finding.status !== 'PENDING': 400 `{ error: 'Finding already resolved' }`
+3. Body: `{ reason: string }` — must be one of: `'Not relevant'`, `'Needs more context'`, `'Defer'`. If invalid: 400 `{ error: 'Invalid skip reason' }`
+4. Mark finding: `status = 'SKIPPED'`, `skip_reason = reason`, `resolved_at = new Date()`
+5. Update session: `cards_skipped = sql\`cards_skipped + 1\``
+6. Do NOT mark the task as Done. Do NOT trigger propagation. Task remains Open.
+7. Return `{ finding: updatedFinding, session: updatedSession }`
+
+Error: 500 `{ error: 'Failed to skip card' }`
+
+---
+
+### 5.5 — GET /work-queue/summary
+
+Returns the session summary for the completed session.
+
+Logic:
+1. Find the most recent session (any status), ordered by started_at DESC, limit 1
+2. If none: return `{ summary: null }`
+3. Count findings by status for that session
+4. Return:
+```json
+{
+  "summary": {
+    "session": WorkQueueSession,
+    "auto_fixed": number,
+    "cards_accepted": number,
+    "cards_skipped": number,
+    "cascaded": number,
+    "still_open": number
+  }
+}
+```
+Where `still_open` = count of findings with status PENDING or FAILED for this session.
+
+Error: 500 `{ error: 'Failed to fetch summary' }`
+
+---
+
+### 5.6 — Session completion
+
+After each accept or skip action: check if all findings for the session are resolved (no PENDING findings remain). If so: update session status to COMPLETE.
+
+```typescript
+const pendingCount = await db.select({ count: sql<number>`count(*)` })
+  .from(workQueueFindingsTable)
+  .where(and(
+    eq(workQueueFindingsTable.session_id, finding.session_id),
+    eq(workQueueFindingsTable.status, 'PENDING')
+  ));
+
+if (pendingCount[0].count === 0) {
+  await db.update(workQueueSessionsTable)
+    .set({ status: 'COMPLETE', completed_at: new Date() })
+    .where(eq(workQueueSessionsTable.id, finding.session_id));
+}
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `GET /api/work-queue/cards` returns pending decision_card findings ordered by sort_order when a READY session exists. Manual test: run analysis on a document with issues, call cards endpoint.
+
+AC2. `GET /api/work-queue/cards` returns `{ cards: [], session: null }` when no READY session exists. Manual test.
+
+AC3. `POST /api/work-queue/auto-fix` applies all auto_fix findings — document content is updated, tasks marked Done, propagation triggered. Manual test: inspect document content and task status after auto-fix.
+
+AC4. `POST /api/work-queue/auto-fix` where `original_text` is not found in document content: finding marked FAILED, task NOT marked Done, propagation NOT triggered. Manual test.
+
+AC5. `POST /api/work-queue/cards/:findingId/accept` updates document content (if original_text and proposed_fix set), marks task Done, triggers propagation, marks finding ACCEPTED. Manual test.
+
+AC6. `POST /api/work-queue/cards/:findingId/accept` where original_text is null: marks document CLEAN and task Done without changing content. Manual test.
+
+AC7. `POST /api/work-queue/cards/:findingId/skip` with valid reason marks finding SKIPPED, task remains Open, no propagation. Manual test.
+
+AC8. `POST /api/work-queue/cards/:findingId/skip` with invalid reason returns 400. Automated test.
+
+AC9. When all findings are resolved (accepted/skipped/auto-fixed), session status transitions to COMPLETE. Manual test.
+
+AC10. `GET /api/work-queue/summary` returns correct counts for fixed, accepted, skipped, cascaded, still_open. Manual test after a full run.
+
+AC11. `propagateFromDocument()` and `createReviewTasksForPropagation()` are always called together in both auto-fix and accept flows. Code review: verify both calls exist in both handlers.
+
+AC12. Changelog entries written for AUTO_FIX_APPLIED and CARD_ACCEPTED actions. Manual test: inspect changelog after resolution.
+
+---
+
+## Section 7 — Constraints
+
+- `propagateFromDocument()` and `createReviewTasksForPropagation()` must always be called together — never one without the other
+- Text replacement: replace FIRST occurrence only — never global replace
+- Skipped tasks remain Open — do not mark Done on skip
+- `auto_fixed_count` in session = number of successfully applied auto-fixes (not found ones)
+- All IDs via `randomUUID()` from crypto
+- Changelog entries inline — no shared helper
+- Feature flag: `work_queue_v1: boolean` — if issues arise, wrap new endpoint logic in flag check
+- No frontend changes in this phase
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not re-run analysis on already-processed documents
+- This build does not allow editing the proposed_fix before accepting
+- This build does not support bulk accept/skip
+- This build does not add the frontend — Phase 011d
+- This build does not send notifications on completion
+
+---
+
+## Section 9 — Assumptions
+
+- `propagateFromDocument` returns `{ targets: string[] }` — consistent with existing usage in propagation.ts
+- `createReviewTasksForPropagation` accepts `result.targets` — consistent with taskHelpers.ts
+- `sql<number>\`count(*)\`` returns a number via Drizzle — consistent with existing usage
+- The changelog table has: id, action, lead_id (nullable), details, triggered_by — consistent with existing writes. For document actions, lead_id may be null.
+
+---
+
+## Section 10 — Rollback
+
+Feature flag: `work_queue_v1: boolean`. Wrap all new endpoint logic in flag check if regressions occur.
+
+Full rollback: remove 5 new endpoint handlers from work-queue/index.ts. No schema changes. Any applied auto-fixes to document content cannot be automatically reversed — manual review needed if rollback is required.
+
+---
+
+AFTER BUILDING BOTH PHASES — return one combined report:
+
+PHASE 011b:
+FILES CHANGED: [list]
+FILES CREATED: [list]
+ACCEPTANCE CRITERIA STATUS: [each AC]
+
+PHASE 011c:
+FILES CHANGED: [list]
+FILES CREATED: [list]
+ACCEPTANCE CRITERIA STATUS: [each AC]
+
+COMBINED — ANYTHING I SHOULD KNOW: [unexpected findings, risks, deviations]
