@@ -23,22 +23,37 @@ router.post("/gdocs/export/:id", async (req, res): Promise<void> => {
   const title = `[Unlock] ${doc.name} (${doc.file_code})`;
 
   try {
-    const formatInput = {
-      name: doc.name,
-      file_code: doc.file_code,
-      content: content,
-      tier: doc.tier,
-      category: doc.category,
-      version: doc.version,
-      description: doc.description || undefined,
-    };
+    const useAi = req.query.format === "ai";
 
     let formattedHtml: string;
-    try {
-      const aiBody = await formatContentForGdocs(formatInput);
-      formattedHtml = wrapGdocsHtml(formatInput, aiBody);
-    } catch (aiErr: any) {
-      console.warn("AI formatting failed, falling back to static template:", aiErr.message);
+    if (useAi) {
+      try {
+        const formatInput = {
+          name: doc.name,
+          file_code: doc.file_code,
+          content: content,
+          tier: doc.tier,
+          category: doc.category,
+          version: doc.version,
+          description: doc.description || undefined,
+        };
+        const aiBody = await formatContentForGdocs(formatInput);
+        formattedHtml = wrapGdocsHtml(formatInput, aiBody);
+      } catch (aiErr: any) {
+        console.warn("AI formatting failed, falling back to static template:", aiErr.message);
+        formattedHtml = getGdocsTemplate({
+          id: doc.id,
+          file_code: doc.file_code,
+          name: doc.name,
+          description: doc.description || undefined,
+          content: content,
+          tier: doc.tier,
+          category: doc.category,
+          version: doc.version,
+          last_reviewed: doc.last_reviewed || undefined,
+        });
+      }
+    } else {
       formattedHtml = getGdocsTemplate({
         id: doc.id,
         file_code: doc.file_code,

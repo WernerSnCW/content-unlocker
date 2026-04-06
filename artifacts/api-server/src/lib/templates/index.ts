@@ -433,44 +433,51 @@ function buildBriefing(doc: DocumentRecord): string {
 }
 
 export function getGdocsTemplate(document: DocumentRecord): string {
-  const { colours } = BRAND;
   const content = document.content || '';
-  const bodyHtml = markdownToGdocsHtml(content, colours);
+  const bodyHtml = markdownToGdocsHtml(content);
   const date = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
   });
 
-  return `<html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;color:#1A1A2E;">
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20pt;"><tr>
-  <td style="vertical-align:bottom;">
-    <span style="font-size:20pt;font-weight:bold;color:${colours.darkNavy};">${escapeHtml(document.name)}</span><br>
-    <span style="font-size:9pt;color:#888888;">${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}</span>
+  return `<html><head>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #1A1A2E; line-height: 1.5; }
+  h1 { font-size: 20pt; color: #0F1629; margin-top: 24pt; margin-bottom: 12pt; }
+  h2 { font-size: 16pt; color: #0F1629; margin-top: 18pt; margin-bottom: 8pt; }
+  h3 { font-size: 13pt; color: #2D2D3F; margin-top: 14pt; margin-bottom: 6pt; }
+  h4 { font-size: 11pt; color: #2D2D3F; margin-top: 12pt; margin-bottom: 4pt; }
+  p { font-size: 11pt; margin-bottom: 6pt; }
+  li { font-size: 11pt; margin-bottom: 3pt; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0; }
+  td, th { padding: 6pt 10pt; font-size: 10pt; border: 1px solid #E0E0E0; }
+</style>
+</head><body>
+<table width="100%" style="border:none;margin-bottom:16pt;"><tr>
+  <td style="border:none;vertical-align:bottom;padding:0;">
+    <p style="font-size:20pt;margin:0;"><b>${escapeHtml(document.name)}</b></p>
+    <p style="font-size:9pt;color:#888888;margin:4pt 0 0 0;">${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}</p>
   </td>
-  <td style="text-align:right;vertical-align:top;width:180pt;">
-    <table cellpadding="0" cellspacing="0" style="margin-left:auto;"><tr>
-      <td style="background-color:#01BC77;width:6pt;height:32pt;">&nbsp;</td>
-      <td style="padding-left:8pt;font-size:20pt;font-weight:bold;color:${colours.darkNavy};letter-spacing:3pt;font-family:Arial,Helvetica,sans-serif;">UNLOCK</td>
+  <td style="border:none;text-align:right;vertical-align:top;width:160pt;padding:0;">
+    <table style="margin-left:auto;border:none;"><tr>
+      <td bgcolor="#01BC77" style="width:6pt;border:none;padding:0;">&nbsp;</td>
+      <td style="padding-left:8pt;border:none;"><b><font size="5" color="#0F1629">UNLOCK</font></b></td>
     </tr></table>
   </td>
 </tr></table>
 <hr>
 ${bodyHtml}
-<br><hr>
+<hr>
 <p style="font-size:8pt;color:#888888;">${escapeHtml(document.file_code)} | ${escapeHtml(document.name)} | ${date}</p>
 </body></html>`;
 }
 
-function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): string {
+function markdownToGdocsHtml(content: string): string {
   let html = content;
 
-  html = html.replace(/^#{4}\s+(.+)$/gm, (_, t) =>
-    `<h4 style="font-size:12pt;font-weight:bold;color:${colours.charcoal};">${t}</h4>`);
-  html = html.replace(/^#{3}\s+(.+)$/gm, (_, t) =>
-    `<h3 style="font-size:14pt;font-weight:bold;color:${colours.charcoal};">${t}</h3>`);
-  html = html.replace(/^#{2}\s+(.+)$/gm, (_, t) =>
-    `<h2 style="font-size:16pt;font-weight:bold;color:${colours.darkNavy};">${t}</h2>`);
-  html = html.replace(/^#{1}\s+(.+)$/gm, (_, t) =>
-    `<h1 style="font-size:20pt;font-weight:bold;color:${colours.darkNavy};">${t}</h1>`);
+  html = html.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>');
 
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -492,7 +499,7 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
       continue;
     } else if (inTable) {
       inTable = false;
-      result.push(renderGdocsTable(tableRows, colours));
+      result.push(renderGdocsTable(tableRows));
       tableRows = [];
     }
 
@@ -502,7 +509,7 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
         result.push('<ul>');
         inList = true; listType = 'ul';
       }
-      result.push(`<li style="font-size:11pt;color:${colours.black};">${trimmed.replace(/^[-*]\s+/, '')}</li>`);
+      result.push(`<li>${trimmed.replace(/^[-*]\s+/, '')}</li>`);
       continue;
     }
 
@@ -512,7 +519,7 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
         result.push('<ol>');
         inList = true; listType = 'ol';
       }
-      result.push(`<li style="font-size:11pt;color:${colours.black};">${trimmed.replace(/^\d+\.\s+/, '')}</li>`);
+      result.push(`<li>${trimmed.replace(/^\d+\.\s+/, '')}</li>`);
       continue;
     }
 
@@ -527,38 +534,37 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
     }
 
     if (trimmed === '') {
-      result.push('<p style="font-size:11pt;">&nbsp;</p>');
       continue;
     }
 
     if (!trimmed.startsWith('<')) {
-      result.push(`<p style="font-size:11pt;line-height:1.5;color:${colours.black};">${trimmed}</p>`);
+      result.push(`<p>${trimmed}</p>`);
     } else {
       result.push(trimmed);
     }
   }
 
   if (inList) result.push(listType === 'ol' ? '</ol>' : '</ul>');
-  if (inTable) result.push(renderGdocsTable(tableRows, colours));
+  if (inTable) result.push(renderGdocsTable(tableRows));
 
   return result.join('\n');
 }
 
-function renderGdocsTable(rows: string[], colours: typeof BRAND.colours): string {
+function renderGdocsTable(rows: string[]): string {
   if (rows.length === 0) return '';
   const headerCells = rows[0].split('|').filter(c => c.trim() !== '');
-  let html = '<table style="width:100%;border-collapse:collapse;">';
+  let html = '<table>';
   html += '<tr>';
   for (const cell of headerCells) {
-    html += `<td style="background-color:${colours.darkNavy};color:white;padding:6pt 10pt;font-weight:bold;font-size:9pt;">${cell.trim()}</td>`;
+    html += `<td bgcolor="#0F1629"><font color="#FFFFFF"><b>${cell.trim()}</b></font></td>`;
   }
   html += '</tr>';
   for (let i = 1; i < rows.length; i++) {
     const cells = rows[i].split('|').filter(c => c.trim() !== '');
-    const bg = i % 2 === 0 ? '#F5F5F5' : 'white';
+    const bg = i % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
     html += '<tr>';
     for (const cell of cells) {
-      html += `<td style="padding:5pt 10pt;border-bottom:1px solid #E0E0E0;background-color:${bg};font-size:10pt;">${cell.trim()}</td>`;
+      html += `<td bgcolor="${bg}">${cell.trim()}</td>`;
     }
     html += '</tr>';
   }
