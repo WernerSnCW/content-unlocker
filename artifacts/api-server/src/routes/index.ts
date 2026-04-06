@@ -22,6 +22,7 @@ import beliefsRouter from "./beliefs";
 import leadBeliefsRouter from "./lead-beliefs";
 import leadIntelligenceRouter from "./lead-intelligence";
 import workQueueRouter from "./work-queue";
+import documentHealthRouter from "./document-health";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(beliefsRouter);
 router.use(leadBeliefsRouter);
 router.use(leadIntelligenceRouter);
 router.use(workQueueRouter);
+router.use(documentHealthRouter);
 
 export default router;

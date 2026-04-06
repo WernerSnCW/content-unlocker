@@ -21,6 +21,7 @@ import {
   Upload,
   CheckSquare,
   Zap,
+  FileSearch,
 } from "lucide-react";
 
 const API_BASE =
@@ -63,6 +64,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
         { href: "/generate", label: "Content Generation", icon: FileText },
         { href: "/registry", label: "Document Registry", icon: FileText },
+        { href: "/document-health", label: "Document Health", icon: FileSearch },
         { href: "/import", label: "Import Content", icon: Upload },
         { href: "/feature-updates", label: "Feature Updates", icon: RefreshCw },
       ],

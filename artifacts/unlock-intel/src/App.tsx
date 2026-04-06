@@ -25,6 +25,7 @@ import ComplianceConstants from "./pages/compliance-constants";
 import ImportPage from "./pages/import";
 import TasksPage from "./pages/tasks";
 import WorkQueue from "./pages/work-queue";
+import DocumentHealth from "./pages/document-health";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +60,7 @@ function Router() {
         <Route path="/import" component={ImportPage} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/work-queue" component={WorkQueue} />
+        <Route path="/document-health" component={DocumentHealth} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

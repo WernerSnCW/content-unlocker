@@ -1,0 +1,709 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+3. List all files you plan to change and why
+4. List any questions (BLOCKERs only — state NON-BLOCKING ASSUMPTIONS and proceed)
+5. Wait for confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Shadcn UI and Lucide icons only — no new UI libraries
+- Manual fetch() for all API calls — no Orval
+- API_BASE pattern: (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api"
+- CODE PRESERVATION RULE: do not delete code outside planned files
+- PATCH LOOP RULE: if build fails significantly, stop and report
+
+---
+
+# PHASE DOC — Document Health Check (Phase 012c)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-012c
+Effort: 1 day
+Dependencies: RR-2026-04-06-012a (document-first queue scope must be correct)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds a Document Health Check page at `/document-health` under the
+CONTENT section of the sidebar. The operator clicks "Run Health Check"
+and the system analyses every CURRENT document across eight dimensions:
+identity completeness, targeting, belief alignment, compliance,
+propagation integrity, pipeline stage fit, content completeness, and
+delivery record. Results persist to a `document_health_sessions` table.
+The UI shows a scorecard — one row per document with ✓/⚠/✗ per
+dimension — with expandable rows for detail and direct fix actions.
+
+---
+
+## Section 2 — Why this is necessary
+
+The document library has no systematic quality assurance beyond the
+Work Queue (which only catches compliance violations). There is no way
+to see at a glance which documents are missing persona targeting, have
+no belief mapping, are disconnected from the propagation cascade, or
+have never been sent. The health check surfaces all of these gaps in
+one view so the operator can prioritise fixes.
+
+---
+
+## Section 3 — Current state
+
+From the scan:
+
+**documentsTable key columns for health check:**
+- id, file_code, name, tier, category, lifecycle_status, review_state
+- pipeline_stage_relevance (jsonb), persona_relevance (jsonb)
+- upstream_dependencies (jsonb), downstream_dependents (jsonb)
+- belief_targets (jsonb), content (text, nullable)
+- word_count (integer, nullable), qc_history (jsonb)
+- is_generated (boolean)
+
+**tasksTable:** id, title, status, type, linked_document_id, context, created_at, updated_at
+
+**Other tables available:**
+- belief_registry: id, name, cluster, policy_status, primary_document_id, is_hard_gate
+- compliance_constants: key, value, is_prohibited, status
+- leads: send_log (jsonb array of {send_id, date, documents_sent[], transcript_summary})
+- lead_beliefs: lead_id, belief_id, state
+
+**Sidebar — CONTENT section currently has:**
+/content-bank, /gaps, /generate, /registry, /import, /feature-updates
+
+**Router mounts:** workQueueRouter is last — add documentHealthRouter after it.
+
+**No document_health_sessions table exists yet.**
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data — 2 new tables (sessions + document scores)
+- [x] API — new router with 2 endpoints
+- [x] Domain — analysis logic across 8 dimensions
+- [x] UI — new page, sidebar update
+
+Layer count: 4
+Split required: NO — coherent single feature, all analysis is read-only
+(no document mutations in this phase)
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — New tables
+
+File: `lib/db/src/schema/document-health-sessions.ts` (create)
+
+```typescript
+export const documentHealthSessionsTable = pgTable('document_health_sessions', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  status: text('status').notNull().default('RUNNING'),
+  // RUNNING / COMPLETE / FAILED
+  started_at: timestamp('started_at').defaultNow(),
+  completed_at: timestamp('completed_at'),
+  documents_checked: integer('documents_checked').default(0),
+  documents_healthy: integer('documents_healthy').default(0),
+  documents_warning: integer('documents_warning').default(0),
+  documents_failing: integer('documents_failing').default(0),
+  error_message: text('error_message'),
+});
+```
+
+File: `lib/db/src/schema/document-health-scores.ts` (create)
+
+```typescript
+export const documentHealthScoresTable = pgTable('document_health_scores', {
+  id: text('id').primaryKey().$defaultFn(() => randomUUID()),
+  session_id: text('session_id').notNull().references(() => documentHealthSessionsTable.id),
+  document_id: text('document_id').notNull(),
+  document_name: text('document_name').notNull(),
+  document_tier: integer('document_tier').notNull(),
+  document_file_code: text('document_file_code').notNull(),
+
+  // Dimension scores: PASS / WARN / FAIL
+  identity_status: text('identity_status').notNull().default('PASS'),
+  identity_issues: jsonb('identity_issues').default([]),
+
+  targeting_status: text('targeting_status').notNull().default('PASS'),
+  targeting_issues: jsonb('targeting_issues').default([]),
+
+  belief_status: text('belief_status').notNull().default('PASS'),
+  belief_issues: jsonb('belief_issues').default([]),
+
+  compliance_status: text('compliance_status').notNull().default('PASS'),
+  compliance_issues: jsonb('compliance_issues').default([]),
+
+  propagation_status: text('propagation_status').notNull().default('PASS'),
+  propagation_issues: jsonb('propagation_issues').default([]),
+
+  content_status: text('content_status').notNull().default('PASS'),
+  content_issues: jsonb('content_issues').default([]),
+
+  delivery_status: text('delivery_status').notNull().default('PASS'),
+  delivery_issues: jsonb('delivery_issues').default([]),
+
+  // Overall
+  overall_status: text('overall_status').notNull().default('PASS'),
+  // PASS (all green), WARN (at least one ⚠), FAIL (at least one ✗)
+
+  created_at: timestamp('created_at').defaultNow(),
+});
+```
+
+Add barrel exports to `lib/db/src/schema/index.ts`:
+```typescript
+export * from './document-health-sessions';
+export * from './document-health-scores';
+```
+
+Run `drizzle-kit push`.
+
+---
+
+### 5.2 — New router: document-health
+
+File: `artifacts/api-server/src/routes/document-health/index.ts` (create)
+
+Two endpoints:
+
+---
+
+**POST /document-health/run**
+
+Starts a health check run. Returns 202 immediately.
+Runs analysis in background via setImmediate.
+
+Concurrency guard: if a session with status RUNNING exists, return it
+with `{ session, already_running: true }`.
+
+Logic (synchronous, before setImmediate):
+1. Create session with status RUNNING
+2. Return 202 `{ session, already_running: false }`
+
+Logic (background, in setImmediate):
+3. Fetch all CURRENT documents
+4. Fetch all active compliance constants (split into prohibited/canonical)
+5. Fetch all belief_registry rows
+6. Fetch all lead send_logs (parse documents_sent arrays)
+7. Fetch all open Review tasks (for compliance dimension)
+8. For each document, run all 8 dimension checks (see 5.3)
+9. Insert a document_health_scores row per document
+10. Update session: status COMPLETE, counts, completed_at
+
+Error handling: on any unrecovered error, set session status FAILED
+with error_message.
+
+---
+
+**GET /document-health/latest**
+
+Returns the most recent session and all its scores.
+
+```typescript
+// Find most recent session
+const session = await db.select().from(documentHealthSessionsTable)
+  .orderBy(desc(documentHealthSessionsTable.started_at))
+  .limit(1);
+
+if (!session[0]) return res.json({ session: null, scores: [] });
+
+// Fetch scores for that session
+const scores = await db.select().from(documentHealthScoresTable)
+  .where(eq(documentHealthScoresTable.session_id, session[0].id))
+  .orderBy(
+    asc(documentHealthScoresTable.document_tier),
+    asc(documentHealthScoresTable.document_name)
+  );
+
+return res.json({ session: session[0], scores });
+```
+
+---
+
+### 5.3 — Eight dimension checks
+
+Run these checks per document inside the background analysis.
+Each check produces a status (PASS/WARN/FAIL) and an issues array.
+
+Status rules:
+- PASS: no issues
+- WARN: minor issue — document still functional but suboptimal
+- FAIL: document cannot fulfil its purpose on this dimension
+
+Overall document status:
+- PASS: all dimensions PASS
+- WARN: at least one WARN, no FAIL
+- FAIL: at least one FAIL
+
+---
+
+**Dimension 1 — Identity**
+
+Check: tier, category, name, file_code, description all populated.
+
+```typescript
+const issues = [];
+if (!doc.tier) issues.push({ field: 'tier', message: 'Missing tier' });
+if (!doc.category) issues.push({ field: 'category', message: 'Missing category' });
+if (!doc.description || doc.description.trim() === '') issues.push({ field: 'description', message: 'Missing description' });
+if (!doc.file_code) issues.push({ field: 'file_code', message: 'Missing file_code' });
+
+const status = issues.length === 0 ? 'PASS' : issues.length <= 1 ? 'WARN' : 'FAIL';
+```
+
+---
+
+**Dimension 2 — Targeting**
+
+Check: persona_relevance and pipeline_stage_relevance both non-empty.
+
+```typescript
+const issues = [];
+const personas = doc.persona_relevance as string[] || [];
+const stages = doc.pipeline_stage_relevance as string[] || [];
+
+if (personas.length === 0) issues.push({ field: 'persona_relevance', message: 'No persona targeting — document will never be recommended' });
+if (stages.length === 0) issues.push({ field: 'pipeline_stage_relevance', message: 'No stage targeting — document will never be recommended' });
+
+const status = issues.length === 0 ? 'PASS' : issues.some(i => i.field === 'persona_relevance' && i.field === 'pipeline_stage_relevance') ? 'FAIL' : 'WARN';
+// FAIL if both missing, WARN if one missing
+const status = issues.length === 0 ? 'PASS' : issues.length === 2 ? 'FAIL' : 'WARN';
+```
+
+---
+
+**Dimension 3 — Belief Alignment**
+
+Check: belief_targets non-empty. Check each belief_id in belief_targets
+exists in beliefRegistry.
+
+```typescript
+const issues = [];
+const targets = doc.belief_targets as Array<{belief_id: string, state_from: string, state_to: string}> || [];
+
+if (targets.length === 0) {
+  issues.push({ field: 'belief_targets', message: 'No belief mapping — document cannot contribute to belief progression' });
+} else {
+  for (const target of targets) {
+    const belief = beliefRegistry.find(b => b.id === target.belief_id);
+    if (!belief) issues.push({ field: 'belief_targets', message: `References non-existent belief: ${target.belief_id}` });
+    if (belief && belief.policy_status === 'blocked_pending_legal') {
+      issues.push({ field: 'belief_targets', message: `Targets legally blocked belief: ${target.belief_id}` });
+    }
+  }
+}
+
+const status = issues.length === 0 ? 'PASS' :
+  issues.some(i => i.message.includes('non-existent')) ? 'FAIL' : 'WARN';
+```
+
+---
+
+**Dimension 4 — Compliance**
+
+Check: review_state, and scan content for prohibited values.
+
+```typescript
+const issues = [];
+
+if (doc.review_state === 'REQUIRES_REVIEW') {
+  const hasOpenTask = openReviewTasks.some(t => t.linked_document_id === doc.id);
+  issues.push({
+    field: 'review_state',
+    message: `Flagged for review${hasOpenTask ? ' (task exists)' : ' (NO open task — invisible to Work Queue)'}`,
+    has_task: hasOpenTask,
+  });
+}
+
+// Scan content for prohibited values
+if (doc.content) {
+  for (const prohibited of prohibitedValues) {
+    if (doc.content.toLowerCase().includes(prohibited.value.toLowerCase())) {
+      issues.push({
+        field: 'content',
+        message: `Contains prohibited value: "${prohibited.value}" — ${prohibited.prohibited_reason || 'must not appear'}`,
+        prohibited_value: prohibited.value,
+      });
+    }
+  }
+}
+
+const status = issues.length === 0 ? 'PASS' :
+  issues.some(i => i.field === 'content') ? 'FAIL' :
+  'WARN';
+```
+
+---
+
+**Dimension 5 — Propagation**
+
+Check: Tier 2/3 documents should have upstream_dependencies.
+Check: upstream_dependencies reference CURRENT documents.
+
+```typescript
+const issues = [];
+const upstreamIds = doc.upstream_dependencies as string[] || [];
+
+if (doc.tier > 1 && upstreamIds.length === 0) {
+  issues.push({
+    field: 'upstream_dependencies',
+    message: `Tier ${doc.tier} document has no upstream dependencies — changes to Tier 1 documents will not cascade to this document`,
+  });
+}
+
+for (const upId of upstreamIds) {
+  const upDoc = allDocs.find(d => d.id === upId);
+  if (!upDoc) {
+    issues.push({ field: 'upstream_dependencies', message: `References non-existent document: ${upId}` });
+  } else if (upDoc.lifecycle_status !== 'CURRENT') {
+    issues.push({ field: 'upstream_dependencies', message: `References ${upDoc.lifecycle_status} document: ${upDoc.name}` });
+  }
+}
+
+const status = issues.length === 0 ? 'PASS' :
+  issues.some(i => i.message.includes('non-existent')) ? 'FAIL' : 'WARN';
+```
+
+---
+
+**Dimension 6 — Content**
+
+Check: content field populated and substantive.
+
+```typescript
+const issues = [];
+
+if (!doc.content) {
+  issues.push({ field: 'content', message: 'No content — document has nothing to deliver' });
+} else if (doc.content.trim().length < 100) {
+  issues.push({ field: 'content', message: `Stub content — only ${doc.content.trim().length} characters` });
+} else if (doc.content.trim().length < 500) {
+  issues.push({ field: 'content', message: `Thin content — only ${doc.content.trim().length} characters` });
+}
+
+const status = issues.length === 0 ? 'PASS' :
+  issues.some(i => i.message.includes('No content') || i.message.includes('Stub')) ? 'FAIL' : 'WARN';
+```
+
+---
+
+**Dimension 7 — Delivery**
+
+Check: has this document ever been sent to a lead?
+Parse send_logs from all leads.
+
+```typescript
+// allSentDocIds: Set<string> — built before the per-document loop
+// by parsing all lead send_logs
+
+const timesSent = allSendEvents.filter(e => e.document_id === doc.id).length;
+const uniqueLeads = new Set(allSendEvents.filter(e => e.document_id === doc.id).map(e => e.lead_id)).size;
+
+const issues = [];
+if (timesSent === 0) {
+  issues.push({
+    field: 'delivery',
+    message: 'Never sent to any lead',
+    times_sent: 0,
+    unique_leads: 0,
+  });
+}
+
+const status = issues.length === 0 ? 'PASS' : 'WARN';
+// Never-sent is WARN not FAIL — document may be new or awaiting the right lead
+```
+
+Build `allSendEvents` before the document loop:
+```typescript
+const allLeads = await db.select({ id: leadsTable.id, send_log: leadsTable.send_log }).from(leadsTable);
+const allSendEvents: Array<{ document_id: string; lead_id: string; date: string }> = [];
+
+for (const lead of allLeads) {
+  const sendLog = lead.send_log as Array<{ send_id: string; date: string; documents_sent: string[] }> || [];
+  for (const entry of sendLog) {
+    for (const docId of (entry.documents_sent || [])) {
+      allSendEvents.push({ document_id: docId, lead_id: lead.id, date: entry.date });
+    }
+  }
+}
+```
+
+---
+
+### 5.4 — Mount router
+
+File: `artifacts/api-server/src/routes/index.ts` (additive)
+
+```typescript
+import documentHealthRouter from './document-health';
+router.use(documentHealthRouter);
+```
+
+Add after workQueueRouter mount.
+
+---
+
+### 5.5 — New page: /document-health
+
+File: `artifacts/unlock-intel/src/pages/document-health.tsx` (create)
+
+**Page states:** IDLE → RUNNING → RESULTS
+
+On mount: call GET /document-health/latest. If a COMPLETE session exists,
+go straight to RESULTS. If RUNNING, go to RUNNING state and poll.
+
+---
+
+**IDLE state:**
+
+```
+[Centered card]
+  Icon: FileSearch (Lucide)
+  Heading: "Document Health Check"
+  Subtext: "Analyse every document in your library across 8 dimensions:
+            identity, targeting, belief alignment, compliance,
+            propagation, content, and delivery."
+
+  [Run Health Check button — primary, large]
+  On click: POST /document-health/run → transition to RUNNING
+
+  [If previous session exists — show below button]
+  "Last checked: [date]. [N] documents checked."
+  [View last report button — secondary]
+  On click: load RESULTS with last session data
+```
+
+---
+
+**RUNNING state:**
+
+Poll GET /document-health/latest every 2 seconds.
+When session.status === COMPLETE: transition to RESULTS.
+
+```
+[Centered card]
+  Icon: Loader2 (spinning)
+  Heading: "Analysing document library..."
+  Subtext: "Checking all CURRENT documents across 8 dimensions."
+  Progress: session.documents_checked / session.documents_checked + remaining
+  (use documents_checked as proxy — increment as scores arrive)
+```
+
+---
+
+**RESULTS state:**
+
+**Top summary bar:**
+```
+[4 stat pills in a row]
+  Total checked: [session.documents_checked]
+  Healthy (all PASS): [session.documents_healthy] — green
+  Warnings: [session.documents_warning] — amber  
+  Failing: [session.documents_failing] — red
+
+[Run Again button — secondary, top right]
+[Last run: [date] — small text]
+```
+
+**Filter bar:**
+```
+[Show: All | Failing only | Warnings | Healthy]  [Tier: All | 1 | 2 | 3]
+```
+
+**Scorecard table:**
+
+Headers:
+```
+Document | Tier | Identity | Targeting | Belief | Compliance | Propagation | Content | Delivery | Actions
+```
+
+One row per document (filtered by current filter selection):
+```
+[doc name — truncated if long] | [T1/T2/T3 badge] | [✓/⚠/✗] × 7 | [Fix button]
+```
+
+Status icons:
+- ✓ = PASS — CheckCircle, green
+- ⚠ = WARN — AlertCircle, amber  
+- ✗ = FAIL — XCircle, red
+
+Clicking a row expands it to show detail:
+```
+[Expanded row — full width, indented]
+  For each dimension with WARN or FAIL:
+    Dimension name + status icon
+    Each issue: bullet point with message
+    [If compliance FAIL with prohibited value:]
+      "Create Review Task" button → POST /tasks with linked_document_id
+    [If targeting FAIL:]
+      "Edit in Registry" link → /registry/[document_id]
+    [If belief WARN (no mapping):]
+      "Edit in Registry" link → /registry/[document_id]
+```
+
+**System-level findings panel** (below the table):
+
+```
+[Card: "Library-wide findings"]
+
+Beliefs with no document:
+  [List belief names that have no document in belief_targets across any doc]
+
+Stage coverage gaps:
+  [List persona × stage combinations with 0 documents]
+
+Propagation orphans:
+  [List Tier 2/3 documents with no upstream dependencies]
+
+Never-sent documents:
+  [Count and list — "N documents have never been sent to a lead"]
+```
+
+---
+
+### 5.6 — Sidebar
+
+File: `artifacts/unlock-intel/src/components/layout.tsx` (additive)
+
+Add to CONTENT section, after /registry:
+
+```tsx
+<NavItem href="/document-health" icon={FileSearch}>
+  Document Health
+</NavItem>
+```
+
+Import FileSearch from lucide-react.
+
+---
+
+### 5.7 — Route
+
+File: `artifacts/unlock-intel/src/App.tsx` (additive)
+
+```tsx
+import DocumentHealth from "./pages/document-health";
+// in Switch:
+<Route path="/document-health" component={DocumentHealth} />
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. GET /document-health/latest returns `{ session: null, scores: [] }`
+before any run. Automated: curl on fresh state.
+
+AC2. POST /document-health/run returns 202 immediately with a RUNNING
+session. Automated: confirm response arrives before analysis completes.
+
+AC3. After analysis completes, GET /document-health/latest returns
+session with status COMPLETE and scores for every CURRENT document.
+Manual test: count scores vs CURRENT document count — must match.
+
+AC4. Every score row has a status for all 7 dimensions. Scores with
+FAIL on any dimension have overall_status FAIL. Scores with WARN but
+no FAIL have overall_status WARN. Manual test: inspect scores table.
+
+AC5. /document-health page loads in RESULTS state when a COMPLETE
+session exists. Manual test: navigate to the page after a run.
+
+AC6. Scorecard shows correct ✓/⚠/✗ icons per dimension per document.
+Filter buttons (Failing only / Warnings / Healthy) work correctly.
+Manual test: verify filter behaviour.
+
+AC7. Clicking a row expands it showing the specific issues for each
+failing dimension. Manual test: expand a document with known issues.
+
+AC8. A document with no belief_targets shows WARN on belief dimension
+with message "No belief mapping". Manual test: find such a document.
+
+AC9. A document with prohibited content shows FAIL on compliance
+dimension with the specific prohibited value named. Manual test: run
+check against a document known to contain prohibited values.
+
+AC10. A Tier 2 or Tier 3 document with no upstream_dependencies shows
+WARN on propagation dimension. Manual test: find such a document.
+
+AC11. A document never sent to any lead shows WARN on delivery dimension.
+Manual test: find a document with no send history.
+
+AC12. System-level findings panel shows beliefs with no document mapping,
+stage coverage gaps, and never-sent document count. Manual test.
+
+AC13. "Document Health" appears in the sidebar CONTENT section with
+FileSearch icon. "Run Again" button starts a new run. Manual test.
+
+AC14. POST /document-health/run called while RUNNING returns the
+existing session with `already_running: true`. Automated: call twice
+rapidly, confirm only one session row created.
+
+---
+
+## Section 7 — Constraints
+
+- Analysis is READ-ONLY — no document mutations in this phase
+- The "Create Review Task" button in expanded rows DOES write a task —
+  this is the only write action in the UI
+- drizzle-kit push required after schema creation
+- Shadcn UI + Lucide only
+- Manual fetch() — no Orval
+- API_BASE: (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api"
+- Poll interval: 2 seconds during RUNNING — stop on COMPLETE or FAILED
+- No Orval codegen
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not fix any document issues — it only surfaces them
+- This build does not auto-create Review tasks for all REQUIRES_REVIEW
+  documents (that is the Work Queue's job)
+- This build does not show document content inline
+- This build does not add quality score dimension — that exists in
+  qc_history and is a separate concern
+- This build does not send notifications when health degrades
+
+---
+
+## Section 9 — Assumptions
+
+- `leadsTable` is importable from `@workspace/db` — confirmed
+- `beliefRegistryTable` is importable from `@workspace/db` — confirmed
+- `complianceConstantsTable` is importable from `@workspace/db` — confirmed
+- FileSearch is available in lucide-react — if not, use Search as fallback
+- The send_log on leads is a jsonb array of
+  `{ send_id, date, documents_sent: string[], transcript_summary? }`
+  — confirmed from leads schema
+- Tier 1 documents with no upstream_dependencies is CORRECT (not a WARN)
+  — only Tier 2 and Tier 3 need upstream dependencies
+
+---
+
+## Section 10 — Rollback
+
+Risk is MEDIUM.
+1. Delete two new schema files
+2. Remove barrel exports
+3. Delete document-health router file
+4. Remove router mount from routes/index.ts
+5. Remove route from App.tsx
+6. Remove nav item from layout.tsx
+7. Delete document-health.tsx page
+8. Run drizzle-kit push to drop tables
+
+No document data is affected. No mutations were made.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CREATED: [file + one-line description]
+FILES CHANGED: [file + what changed]
+ACCEPTANCE CRITERIA STATUS: [each AC: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, deviations, risks]
