@@ -6,9 +6,88 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, Upload, CheckCircle, XCircle, AlertTriangle, FileText, ArrowLeft, Sheet, RefreshCw, BookOpen, Info, Search } from "lucide-react";
+import { Loader2, Upload, CheckCircle, XCircle, AlertTriangle, FileText, ArrowLeft, Sheet, RefreshCw, BookOpen, Info, Search, Copy, Check } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
+const QUICK_UPDATE_RULES_TEXT = `QUICK VERSION UPDATE RULES — Unlock Content Intelligence Platform
+
+When uploading a new version of an existing document:
+
+- The uploaded file's entire content replaces the document's existing content.
+- Version number is automatically incremented (v1 → v2, etc.).
+- Review state is set to REQUIRES_REVIEW so it appears in the Work Queue for compliance checking.
+- Word count is recalculated from the new content.
+- Only CURRENT lifecycle documents can be updated.
+- Accepted formats: .md and .txt (plain text, max 10MB).
+- A changelog entry is created for audit tracking.
+
+The file should contain the full document content in plain text or markdown. No special tags or headers are needed — just the content itself.`;
+
+const BULK_IMPORT_RULES_TEXT = `BULK IMPORT PARSE RULES — Unlock Content Intelligence Platform
+
+Files must be .md format with structured IMPORT_BLOCK tags. Each block defines one document to create or update.
+
+FILE HEADER (optional):
+<!-- IMPORT_FILE
+title: My Import Batch
+author: J. Smith
+date: 2026-04-06
+description: Q2 content refresh
+-->
+
+BLOCK FORMAT:
+<!-- IMPORT_BLOCK
+destination: document
+action: create | update
+key: Content_Bank          (for update: match by file_code or name)
+id: uuid-here              (for update: match by exact ID)
+title: My Document Title
+tier: 1 | 2 | 3
+category: core | campaign | operational
+output_type: whitepaper | email | script
+lifecycle_status: DRAFT | CURRENT
+-->
+
+Your document content goes here in markdown...
+
+<!-- /IMPORT_BLOCK -->
+
+RULES:
+- "destination: document" is required on every block.
+- "action: create" creates a new document in DRAFT status.
+- "action: update" requires either "key" (matches file_code then name) or "id" (exact UUID match).
+- Content is scanned for prohibited compliance values (22p, 7.8x, "safe", "series a", "£99/month", "£249/month", "advanced subscription agreement") — violations are rejected.
+- Duplicate file uploads are detected via SHA-256 hash and blocked.
+- Multiple blocks per file are supported — each is validated independently.`;
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+  return (
+    <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5 text-xs">
+      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? "Copied" : "Copy Rules"}
+    </Button>
+  );
+}
 
 type Step = "upload" | "preview" | "summary";
 
@@ -329,10 +408,13 @@ function QuickUpdateTab() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Info className="w-4 h-4" />
-            Quick Update Rules
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Info className="w-4 h-4" />
+              Quick Update Rules
+            </CardTitle>
+            <CopyButton text={QUICK_UPDATE_RULES_TEXT} />
+          </div>
         </CardHeader>
         <CardContent className="space-y-2 text-xs text-muted-foreground">
           <ul className="space-y-1.5 list-disc list-inside">
@@ -914,10 +996,13 @@ export default function ImportPage() {
             </Card>
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <BookOpen className="w-4 h-4" />
-                  Bulk Import Parse Rules
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <BookOpen className="w-4 h-4" />
+                    Bulk Import Parse Rules
+                  </CardTitle>
+                  <CopyButton text={BULK_IMPORT_RULES_TEXT} />
+                </div>
               </CardHeader>
               <CardContent className="space-y-4 text-xs">
                 <div>
