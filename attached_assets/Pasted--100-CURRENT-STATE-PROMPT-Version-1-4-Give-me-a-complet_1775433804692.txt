@@ -1,0 +1,121 @@
+# 100 — CURRENT STATE PROMPT
+Version: 1.4
+
+---
+
+Give me a complete overview of this codebase. Complete the template below
+exactly. Do not add prose before or after it. Replace every placeholder
+in square brackets.
+
+SCOPE: Scope this scan to the following files only:
+- artifacts/api-server/src/routes/gdocs/index.ts
+- artifacts/api-server/src/routes/leads/index.ts
+- artifacts/api-server/src/routes/recommendation/index.ts
+- artifacts/api-server/src/routes/import/index.ts
+- artifacts/unlock-intel/src/pages/import.tsx
+- artifacts/unlock-intel/src/App.tsx (routes section only — list all registered routes)
+- artifacts/api-server/src/app.ts
+
+---
+
+SIGNIFICANCE RULE:
+A file is significant if it defines business logic, routing, persistence,
+validation, shared types, UI composition, tests, configuration, migrations,
+or integration code. When uncertain: include it. Do not omit a significant
+file because it seems repetitive or similar to another.
+
+ANTI-INFERENCE RULE:
+Describe only files and structures that actually exist in this codebase.
+If a file's purpose is unclear from code inspection, write: "Purpose unclear
+from scan." Do not infer intent from filenames or directory structure. Do not
+describe functions that cannot be found in the file.
+
+SCAN COVERAGE RULE:
+If the codebase is too large to describe every significant file in full, state
+this explicitly. List which directories were fully scanned, which were
+summarised at directory level, and which were not reached. Do not produce a
+scan that appears complete but is not.
+
+---
+
+## CURRENT STATE OUTPUT
+
+### 0. Scan coverage
+**Scope:** [full repo / scoped to: path]
+**Fully scanned:** [directories or files]
+**Summarised at directory level:** [list, or "none"]
+**Could not reach:** [list, or "none"]
+**Limitations:** [any known gaps, or "none"]
+
+---
+
+### 1. Key files
+
+#### `[path/to/file.ts]`
+**What it does:** [one sentence — from code inspection, not filename]
+**Key functions, variables, data structures:** [specific names and what they do]
+
+[repeat for every significant file in scope]
+
+---
+
+### 2. Data model
+
+- **[Type or schema name]:** [its fields and types]
+
+[one bullet per type, schema, or interface]
+
+---
+
+### 3. Data flow
+
+How data moves through the system from input to storage to display:
+
+- **[Step in the flow]:** [what happens, which function or endpoint handles
+  it, what it produces]
+
+---
+
+### 4. Dependencies between files
+
+Which files and functions depend on each other:
+
+- **[File or function]:** depends on [what] for [reason]
+
+[one bullet per significant dependency]
+
+---
+
+### 5. Test coverage
+
+- **[Test file or suite]:** [what it covers]
+
+If no tests exist: "No tests currently exist."
+If partial tests exist: list what is covered and what is not.
+
+---
+
+### 6. External services
+
+Third-party APIs, providers, or libraries in use:
+
+- **[Service or library]:** [how it is used]
+
+If none: "No external services."
+
+---
+
+### 7. Patterns and conventions
+
+How this codebase is structured — conventions any new code must follow:
+
+- [pattern or convention — where it is established and what it governs]
+
+---
+
+### 8. Inconsistencies and flags
+
+Patterns or naming conventions that appear inconsistent across files,
+and that could cause conflicts with architecture constraints:
+
+- [flag, or "None identified"]
