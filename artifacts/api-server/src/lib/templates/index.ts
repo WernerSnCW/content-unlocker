@@ -432,8 +432,53 @@ function buildBriefing(doc: DocumentRecord): string {
 </html>`;
 }
 
-export function getGdocsTemplate(document: DocumentRecord): string {
-  const content = document.content || '';
+function cleanContentForExport(content: string): string {
+  const lines = content.split('\n');
+  const cleaned: string[] = [];
+  let skipSection = false;
+  let skipTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (/^## COMPLIANCE CORRECTIONS APPLIED/i.test(trimmed) ||
+        /^## Designer Update Brief/i.test(trimmed)) {
+      skipSection = true;
+      continue;
+    }
+
+    if (skipSection && /^#/.test(trimmed) &&
+        !/^## COMPLIANCE/i.test(trimmed) &&
+        !/^## Designer/i.test(trimmed)) {
+      skipSection = false;
+    }
+
+    if (skipSection) continue;
+
+    if (/^\*Extracted and corrected from:/i.test(trimmed)) continue;
+    if (/^\*Corrections applied:/i.test(trimmed)) continue;
+    if (/^\*For designer update brief:/i.test(trimmed)) continue;
+    if (/^\*Document status:/i.test(trimmed)) continue;
+    if (/^\*Registry entry:/i.test(trimmed)) continue;
+
+    if (/^## Pitch Deck Content \|.*Corrected Reference/i.test(trimmed)) continue;
+
+    let cleaned_line = line;
+    cleaned_line = cleaned_line.replace(/⚠️\s*CORRECTED\b[^.]*\.?\s*/g, '');
+    cleaned_line = cleaned_line.replace(/⚠️\s*/g, '');
+    cleaned_line = cleaned_line.replace(/~~[^~]+~~/g, '');
+    if (/^\*Note:.*internal reference.*must not appear/i.test(trimmed)) continue;
+    if (/^\*Note:.*original deck stated/i.test(trimmed)) continue;
+
+    cleaned.push(cleaned_line);
+  }
+
+  return cleaned.join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
+}
+
+export function getGdocsTemplate(document: DocumentRecord, logoUrl?: string): string {
+  const content = cleanContentForExport(document.content || '');
   const bodyHtml = markdownToGdocsHtml(content);
   const date = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
@@ -457,11 +502,11 @@ export function getGdocsTemplate(document: DocumentRecord): string {
     <p style="font-size:20pt;margin:0;"><b>${escapeHtml(document.name)}</b></p>
     <p style="font-size:9pt;color:#888888;margin:4pt 0 0 0;">${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}</p>
   </td>
-  <td style="border:none;text-align:right;vertical-align:top;width:160pt;padding:0;">
-    <table style="margin-left:auto;border:none;"><tr>
-      <td bgcolor="#01BC77" style="width:6pt;border:none;padding:0;">&nbsp;</td>
-      <td style="padding-left:8pt;border:none;"><b><font size="5" color="#0F1629">UNLOCK</font></b></td>
-    </tr></table>
+  <td style="border:none;text-align:right;vertical-align:top;width:200pt;padding:0;">
+    ${logoUrl
+      ? `<img src="${logoUrl}" width="180" height="36" alt="Unlock" style="display:block;margin-left:auto;">`
+      : `<table style="margin-left:auto;border:none;"><tr><td bgcolor="#01BC77" style="width:6pt;border:none;padding:0;">&nbsp;</td><td style="padding-left:8pt;border:none;"><b><font size="5" color="#0F1629">UNLOCK</font></b></td></tr></table>`
+    }
   </td>
 </tr></table>
 <hr>
