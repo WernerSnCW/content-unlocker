@@ -18,6 +18,7 @@ router.get("/tasks", async (_req, res): Promise<void> => {
         type: tasksTable.type,
         linked_document_id: tasksTable.linked_document_id,
         linked_document_name: documentsTable.name,
+        context: tasksTable.context,
         created_at: tasksTable.created_at,
         updated_at: tasksTable.updated_at,
       })
@@ -100,7 +101,7 @@ router.get("/tasks/summary", async (_req, res): Promise<void> => {
 router.patch("/tasks/:id", async (req, res): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status, title, type } = req.body;
+    const { status, title, type, context } = req.body;
 
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       res.status(400).json({ error: "Invalid status" });
@@ -122,6 +123,7 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
     if (status !== undefined) updates.status = status;
     if (title !== undefined) updates.title = title;
     if (type !== undefined) updates.type = type;
+    if (context !== undefined) updates.context = context || null;
 
     const [updated] = await db
       .update(tasksTable)

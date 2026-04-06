@@ -455,11 +455,13 @@ async function runAnalysis(
       continue;
     }
 
+    const taskContext = task.context ? `\nOPERATOR CONTEXT (additional guidance from the operator about this review):\n${task.context}\n` : "";
+
     const prompt = `You are reviewing an investor document for compliance violations and content quality issues.
 
 DOCUMENT NAME: ${document.name}
 DOCUMENT TIER: ${document.tier}
-
+${taskContext}
 PROHIBITED VALUES (must never appear in any investor-facing document):
 ${prohibitedList}
 

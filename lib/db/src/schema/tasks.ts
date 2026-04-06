@@ -8,6 +8,7 @@ export const tasksTable = pgTable("tasks", {
   status: text("status").notNull().default("Open"),
   type: text("type").notNull().default("General"),
   linked_document_id: text("linked_document_id"),
+  context: text("context"),
   created_at: timestamp("created_at").notNull().defaultNow(),
   updated_at: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
