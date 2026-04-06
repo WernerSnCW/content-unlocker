@@ -1,0 +1,42 @@
+. The email-draft prompt is now fully wired to intelligence. Sarah's email referenced "fragmentation" — her specific concern — without being told to look for it. That's the system working as intended.
+What changed: one prompt, two new rules, one DB fetch. Backwards compatible — no lead_id, no change.
+
+Now the quick data fixes before 011d. Three of them, tell Replit AI:
+
+Fix 1 — Belief C4 primary_document_id
+C4 (The Timing Is Right) references document 196 which doesn't exist. The correct document is the Post-April 6 Messaging Guide. Check what file_code it was imported under:
+sqlSELECT id, file_code, name, lifecycle_status 
+FROM documents 
+WHERE name ILIKE '%april%' OR name ILIKE '%vct%' OR name ILIKE '%post%'
+ORDER BY name;
+If the document exists under a different ID, run:
+typescriptawait db.update(beliefRegistryTable)
+  .set({ primary_document_id: '[actual_doc_id]' })
+  .where(eq(beliefRegistryTable.id, 'C4'));
+If it doesn't exist at all, set primary_document_id to null for now.
+
+Fix 2 — Document 210 review_state
+Doc 210 (Pipedrive_Aircall_Setup) has 2 Done Review tasks but review_state is still REQUIRES_REVIEW. Set it to CLEAN directly:
+typescriptawait db.update(documentsTable)
+  .set({ review_state: 'CLEAN' })
+  .where(eq(documentsTable.id, '210'));
+Also fix the task completion flow — in artifacts/api-server/src/routes/tasks/index.ts, find the PATCH endpoint that marks a task Done. When type = 'Review' and linked_document_id is set, also update that document's review_state to 'CLEAN'.
+
+Fix 3 — Create Review tasks for docs 110 and inv_opp_feb26
+These two documents contain prohibited pricing (£99/£249) with no open tasks:
+typescriptconst docsToFlag = ['110', 'inv_opp_feb26']; // check actual IDs
+for (const docId of docsToFlag) {
+  const doc = await db.select().from(documentsTable)
+    .where(eq(documentsTable.id, docId)).limit(1);
+  if (doc[0]) {
+    await db.insert(tasksTable).values({
+      id: randomUUID(),
+      title: `Review: ${doc[0].name} — prohibited pricing detected`,
+      status: 'Open',
+      type: 'Review',
+      linked_document_id: docId,
+    });
+  }
+}
+
+Return a report for all three fixes with before/after verification. Then we move to 011d.
