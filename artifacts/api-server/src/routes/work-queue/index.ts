@@ -47,6 +47,18 @@ router.post("/work-queue/start", async (_req, res) => {
         eq(documentsTable.review_state, "REQUIRES_REVIEW")
       ));
 
+    if (requiresReviewDocs.length === 0) {
+      const [emptySession] = await db.insert(workQueueSessionsTable).values({
+        status: "COMPLETE",
+        total_tasks: 0,
+        analysed_tasks: 0,
+        completed_at: new Date(),
+      }).returning();
+      return res.status(200).json({ session: emptySession, already_running: false });
+    }
+
+    const documentTaskMap: Record<string, string> = {};
+
     for (const doc of requiresReviewDocs) {
       const existingTask = await db.select().from(tasksTable)
         .where(and(
@@ -55,50 +67,19 @@ router.post("/work-queue/start", async (_req, res) => {
           eq(tasksTable.status, "Open")
         )).limit(1);
 
-      if (!existingTask[0]) {
-        await db.insert(tasksTable).values({
+      if (existingTask[0]) {
+        documentTaskMap[doc.id] = existingTask[0].id;
+      } else {
+        const [newTask] = await db.insert(tasksTable).values({
           id: randomUUID(),
           title: `Review: ${doc.name}`,
           status: "Open",
           type: "Review",
           linked_document_id: doc.id,
-        });
+        }).returning();
+        documentTaskMap[doc.id] = newTask.id;
       }
     }
-
-    const openTasks = await db.select().from(tasksTable)
-      .where(and(
-        eq(tasksTable.status, "Open"),
-        eq(tasksTable.type, "Review"),
-        isNotNull(tasksTable.linked_document_id)
-      ));
-
-    if (openTasks.length === 0) {
-      const [emptySession] = await db.insert(workQueueSessionsTable).values({
-        status: "COMPLETE",
-        total_tasks: 0,
-      }).returning();
-      return res.status(200).json({ session: emptySession, already_running: false });
-    }
-
-    const documentIds = [...new Set(openTasks.map(t => t.linked_document_id as string))];
-    const allDocuments = await db.select().from(documentsTable)
-      .where(inArray(documentsTable.id, documentIds));
-
-    const eligibleDocs = allDocuments.filter(
-      d => d.lifecycle_status === "CURRENT" && d.review_state === "REQUIRES_REVIEW"
-    );
-
-    if (eligibleDocs.length === 0) {
-      const [emptySession] = await db.insert(workQueueSessionsTable).values({
-        status: "COMPLETE",
-        total_tasks: 0,
-      }).returning();
-      return res.status(200).json({ session: emptySession, already_running: false });
-    }
-
-    const eligibleDocIds = new Set(eligibleDocs.map(d => d.id));
-    const eligibleTasks = openTasks.filter(t => eligibleDocIds.has(t.linked_document_id as string));
 
     const constants = await db.select().from(complianceConstantsTable)
       .where(eq(complianceConstantsTable.status, "ACTIVE"));
@@ -111,7 +92,7 @@ router.post("/work-queue/start", async (_req, res) => {
 
     const [session] = await db.insert(workQueueSessionsTable).values({
       status: "ANALYSING",
-      total_tasks: eligibleDocs.length,
+      total_tasks: requiresReviewDocs.length,
       analysed_tasks: 0,
     }).returning();
 
@@ -119,7 +100,7 @@ router.post("/work-queue/start", async (_req, res) => {
 
     setImmediate(async () => {
       try {
-        await runAnalysis(session.id, eligibleDocs, eligibleTasks, prohibitedValues, canonicalValues);
+        await runAnalysis(session.id, requiresReviewDocs, documentTaskMap, prohibitedValues, canonicalValues);
       } catch (err) {
         console.error("Work queue analysis failed:", err);
         await db.update(workQueueSessionsTable)
@@ -190,48 +171,85 @@ router.post("/work-queue/auto-fix", async (_req, res) => {
 
       if (!doc) {
         await db.update(workQueueFindingsTable)
-          .set({ status: "FAILED", issue_description: finding.issue_description + " [Document not found]", resolved_at: new Date() })
+          .set({ status: "FAILED", issue_description: finding.issue_description + " [AUTO-FIX FAILED: document not found]", resolved_at: new Date() })
           .where(eq(workQueueFindingsTable.id, finding.id));
         failed++;
         continue;
       }
 
-      if (finding.original_text && finding.proposed_fix && doc.content && doc.content.includes(finding.original_text)) {
-        const newContent = doc.content.replace(finding.original_text, finding.proposed_fix);
-        await db.update(documentsTable)
-          .set({ content: newContent, review_state: "CLEAN" })
-          .where(eq(documentsTable.id, doc.id));
-
-        await db.update(tasksTable)
-          .set({ status: "Done" })
-          .where(eq(tasksTable.id, finding.task_id));
-
-        await db.insert(changelogTable).values({
-          id: randomUUID(),
-          action: "AUTO_FIX_APPLIED",
-          document_id: doc.id,
-          details: finding.issue_description,
-          triggered_by: "agent",
-        });
-
-        const result = await propagateFromDocument(doc.id);
-        await createReviewTasksForPropagation(result.targets);
-
-        await db.update(workQueueSessionsTable)
-          .set({ cascaded_count: sql`cascaded_count + ${result.targets.length}` })
-          .where(eq(workQueueSessionsTable.id, session.id));
-
+      if (!doc.content || !finding.original_text || !finding.proposed_fix) {
         await db.update(workQueueFindingsTable)
-          .set({ status: "AUTO_FIXED", resolved_at: new Date() })
-          .where(eq(workQueueFindingsTable.id, finding.id));
-
-        applied++;
-      } else {
-        await db.update(workQueueFindingsTable)
-          .set({ status: "FAILED", issue_description: finding.issue_description + " [Original text not found in document]", resolved_at: new Date() })
+          .set({ status: "FAILED", issue_description: finding.issue_description + " [AUTO-FIX FAILED: missing content, original_text, or proposed_fix]", resolved_at: new Date() })
           .where(eq(workQueueFindingsTable.id, finding.id));
         failed++;
+        continue;
       }
+
+      if (!doc.content.includes(finding.original_text)) {
+        await db.update(workQueueFindingsTable)
+          .set({ status: "FAILED", issue_description: finding.issue_description + " [AUTO-FIX FAILED: original text not found in document]", resolved_at: new Date() })
+          .where(eq(workQueueFindingsTable.id, finding.id));
+        failed++;
+        continue;
+      }
+
+      const newContent = doc.content.replace(finding.original_text, finding.proposed_fix);
+
+      if (newContent === doc.content) {
+        await db.update(workQueueFindingsTable)
+          .set({ status: "FAILED", issue_description: finding.issue_description + " [AUTO-FIX FAILED: replacement produced no change in content]", resolved_at: new Date() })
+          .where(eq(workQueueFindingsTable.id, finding.id));
+        failed++;
+        continue;
+      }
+
+      await db.update(documentsTable)
+        .set({ content: newContent })
+        .where(eq(documentsTable.id, doc.id));
+
+      const [verifyDoc] = await db.select({ content: documentsTable.content })
+        .from(documentsTable)
+        .where(eq(documentsTable.id, doc.id))
+        .limit(1);
+
+      const fixVerified = verifyDoc?.content?.includes(finding.proposed_fix) ?? false;
+
+      if (!fixVerified) {
+        await db.update(workQueueFindingsTable)
+          .set({ status: "FAILED", issue_description: finding.issue_description + " [AUTO-FIX FAILED: content written but proposed_fix not found on re-read]", resolved_at: new Date() })
+          .where(eq(workQueueFindingsTable.id, finding.id));
+        failed++;
+        continue;
+      }
+
+      await db.update(documentsTable)
+        .set({ review_state: "CLEAN" })
+        .where(eq(documentsTable.id, doc.id));
+
+      await db.update(tasksTable)
+        .set({ status: "Done" })
+        .where(eq(tasksTable.id, finding.task_id));
+
+      await db.insert(changelogTable).values({
+        id: randomUUID(),
+        action: "AUTO_FIX_APPLIED",
+        document_id: doc.id,
+        details: `Fixed: ${finding.issue_description}. Replaced: "${finding.original_text}" → "${finding.proposed_fix}"`,
+        triggered_by: "agent",
+      });
+
+      const result = await propagateFromDocument(doc.id);
+      await createReviewTasksForPropagation(result.targets);
+
+      await db.update(workQueueSessionsTable)
+        .set({ cascaded_count: sql`cascaded_count + ${result.targets.length}` })
+        .where(eq(workQueueSessionsTable.id, session.id));
+
+      await db.update(workQueueFindingsTable)
+        .set({ status: "AUTO_FIXED", resolved_at: new Date() })
+        .where(eq(workQueueFindingsTable.id, finding.id));
+
+      applied++;
     }
 
     await db.update(workQueueSessionsTable)
@@ -443,7 +461,7 @@ router.post("/work-queue/cards/:findingId/skip", async (req, res) => {
 async function runAnalysis(
   sessionId: string,
   documents: Array<typeof documentsTable.$inferSelect>,
-  tasks: Array<typeof tasksTable.$inferSelect>,
+  documentTaskMap: Record<string, string>,
   prohibitedValues: Array<typeof complianceConstantsTable.$inferSelect>,
   canonicalValues: Record<string, string>
 ): Promise<void> {
@@ -456,7 +474,10 @@ async function runAnalysis(
     .join("\n");
 
   for (const document of documents) {
-    const task = tasks.find(t => t.linked_document_id === document.id);
+    const taskId = documentTaskMap[document.id];
+    if (!taskId) continue;
+
+    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
     if (!task) continue;
 
     if (!document.content || document.content.trim() === "") {

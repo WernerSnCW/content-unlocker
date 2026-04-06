@@ -1,0 +1,481 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+3. List the files you plan to change and why
+4. List any questions (BLOCKERs only)
+5. Wait for confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Backward compatible — existing data must continue to work
+- Do not implement anything not in the spec
+- CODE PRESERVATION RULE: do not delete code outside planned files
+- PATCH LOOP RULE: if build fails significantly, stop and report — do not patch in place
+
+---
+
+# PHASE DOC — Work Queue Design Flaw Fixes (Phase 012a)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-012a
+Effort: 3–4 hours
+Dependencies: RR-2026-04-06-011c (work queue resolution endpoints must exist)
+Risk: HIGH
+Feature flag: None — these are correctness fixes, not new features
+
+---
+
+## Section 1 — Feature
+
+Fixes three design flaws in the Work Queue system identified by the
+Document Intelligence Health Check:
+
+**Flaw 1 — Queue scope depends on tasks existing:** The queue queries
+tasks to find documents to analyse. Any REQUIRES_REVIEW document without
+an open Review task is permanently invisible. Fix: query documents
+directly, auto-create tasks as a side effect, not as a prerequisite.
+
+**Flaw 2 — Task Done → document CLEAN (already partially reverted):**
+Marking a Review task Done must never automatically set document
+review_state to CLEAN. Only Work Queue resolution (auto-fix applied
+successfully, or card accepted) should set CLEAN. These concerns must
+be fully decoupled.
+
+**Flaw 3 — Auto-fix reports success regardless of text match:** The
+auto-fix flow marks findings as AUTO_FIXED and sets documents to CLEAN
+even when the text replacement fails silently. The fix must verify the
+replacement actually applied before asserting success.
+
+---
+
+## Section 2 — Why this is necessary
+
+The three flaws together create false confidence:
+- 18 REQUIRES_REVIEW documents were invisible to the queue
+- Doc 110 was falsely marked CLEAN after a failed auto-fix
+- Content_Bank (700) — a Tier 1 document — contained prohibited values
+  with no task and no queue visibility
+- The task completion flow was asserting document state it had no right
+  to assert
+
+These are not edge cases. They are systematic gaps in the core resolution
+logic that will recur on every queue run.
+
+---
+
+## Section 3 — Current state
+
+From the Document Intelligence Health Check:
+
+**work-queue/index.ts — POST /work-queue/start:**
+- Currently fetches open Review tasks first, then looks up their linked documents
+- Documents with REQUIRES_REVIEW but no open task are never reached
+- The band-aid fix (auto-create tasks at start) was applied as a data patch
+  but the underlying query order is still task-first — this must be inverted
+
+**work-queue/index.ts — POST /work-queue/auto-fix:**
+- Applies text replacement: replaces `original_text` with `proposed_fix`
+- If `original_text` is not found in document content: marks finding as FAILED (correct)
+- BUT: there is a code path where the text match check passes but the
+  replacement silently produces no change, and the finding is still marked
+  AUTO_FIXED and the document is set to CLEAN
+- Specifically: if `original_text` appears in the document but the string
+  replacement produces identical content (e.g. whitespace differences),
+  the verification step does not catch this
+
+**tasks/index.ts — PATCH /tasks/:id:**
+- The auto-set-CLEAN logic was reverted in the data patch session
+- Confirm this revert is complete before building — do not re-add it
+
+**Current data state:**
+- Doc 110: reset to REQUIRES_REVIEW (data patch applied)
+- Content_Bank 700: Review task created (data patch applied)
+- 18+ REQUIRES_REVIEW documents now have open Review tasks (data patch applied)
+- work_queue_findings for doc 110 auto-fix: status may be AUTO_FIXED incorrectly
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Domain/API — surgical edits to work-queue/index.ts (2 endpoints)
+- [x] Additive verification — tasks/index.ts (confirm revert, no new code)
+
+Layer count: 2
+Split required: NO — all changes in one file, focused on correctness
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Flaw 1 fix: Document-first queue scope
+
+File: `artifacts/api-server/src/routes/work-queue/index.ts`
+Location: POST /work-queue/start handler
+
+**Replace the current task-first query with a document-first query:**
+
+**Step 1 — Query documents directly:**
+```typescript
+// Fetch all CURRENT documents that need review
+const requiresReviewDocs = await db.select().from(documentsTable)
+  .where(and(
+    eq(documentsTable.lifecycle_status, 'CURRENT'),
+    eq(documentsTable.review_state, 'REQUIRES_REVIEW')
+  ));
+
+if (requiresReviewDocs.length === 0) {
+  // No documents need review — create COMPLETE session with 0 tasks
+  const session = await db.insert(workQueueSessionsTable).values({
+    status: 'COMPLETE',
+    total_tasks: 0,
+    analysed_tasks: 0,
+    completed_at: new Date(),
+  }).returning();
+  return res.status(200).json({ session: session[0], already_running: false });
+}
+```
+
+**Step 2 — Ensure each document has an open Review task:**
+```typescript
+// For each document, find or create an open Review task
+const documentTaskMap: Record<string, string> = {}; // document_id → task_id
+
+for (const doc of requiresReviewDocs) {
+  const existing = await db.select().from(tasksTable)
+    .where(and(
+      eq(tasksTable.linked_document_id, doc.id),
+      eq(tasksTable.type, 'Review'),
+      eq(tasksTable.status, 'Open')
+    )).limit(1);
+
+  if (existing[0]) {
+    documentTaskMap[doc.id] = existing[0].id;
+  } else {
+    // Create task for this document
+    const newTask = await db.insert(tasksTable).values({
+      id: randomUUID(),
+      title: `Review: ${doc.name}`,
+      status: 'Open',
+      type: 'Review',
+      linked_document_id: doc.id,
+    }).returning();
+    documentTaskMap[doc.id] = newTask[0].id;
+  }
+}
+```
+
+**Step 3 — Create session with correct total_tasks count:**
+```typescript
+const session = await db.insert(workQueueSessionsTable).values({
+  status: 'ANALYSING',
+  total_tasks: requiresReviewDocs.length,
+  analysed_tasks: 0,
+}).returning();
+const sessionId = session[0].id;
+
+// Return 202 immediately
+res.status(202).json({ session: session[0], already_running: false });
+
+// Run analysis in background
+setImmediate(async () => {
+  try {
+    await runAnalysis(sessionId, requiresReviewDocs, documentTaskMap, prohibitedValues, canonicalValues);
+  } catch (err) {
+    await db.update(workQueueSessionsTable)
+      .set({ status: 'FAILED', error_message: String(err), completed_at: new Date() })
+      .where(eq(workQueueSessionsTable.id, sessionId));
+  }
+});
+```
+
+**Update runAnalysis signature** to accept `documentTaskMap` instead of
+deriving the task from a tasks array:
+
+```typescript
+async function runAnalysis(
+  sessionId: string,
+  documents: Array<typeof documentsTable.$inferSelect>,
+  documentTaskMap: Record<string, string>, // document_id → task_id
+  prohibitedValues: typeof complianceConstantsTable.$inferSelect[],
+  canonicalValues: Record<string, string>
+): Promise<void>
+```
+
+Inside runAnalysis, replace the task lookup with:
+```typescript
+const taskId = documentTaskMap[document.id];
+if (!taskId) continue; // should not happen
+```
+
+**Compliance constants fetch** stays in POST /work-queue/start before
+the setImmediate call — same as before.
+
+---
+
+### 5.2 — Flaw 2 fix: Confirm task completion decoupling
+
+File: `artifacts/api-server/src/routes/tasks/index.ts`
+
+**Verify** that the PATCH /tasks/:id endpoint does NOT contain any logic
+that sets `review_state` on the linked document when status is changed
+to Done. If any such logic exists: remove it entirely.
+
+**Confirm** by inspection: the tasks router must only update the task
+record itself (status, updated_at). It must not touch documentsTable.
+
+**The only places that set document review_state to CLEAN are:**
+1. `POST /work-queue/auto-fix` — after verified successful text replacement
+2. `POST /work-queue/cards/:findingId/accept` — after operator accepts a card
+3. Direct admin actions via the document registry (existing behaviour, not changed here)
+
+Write a comment in the tasks PATCH handler:
+```typescript
+// NOTE: marking a task Done does NOT change the linked document's review_state.
+// Only the Work Queue resolution flow (auto-fix or card accept) sets documents to CLEAN.
+// See work-queue/index.ts for the authoritative resolution logic.
+```
+
+---
+
+### 5.3 — Flaw 3 fix: Verified auto-fix with content diff check
+
+File: `artifacts/api-server/src/routes/work-queue/index.ts`
+Location: POST /work-queue/auto-fix handler, per-finding loop
+
+**Replace the current auto-fix application logic with a verified replacement:**
+
+Current problematic flow:
+1. Check if `original_text` exists in content ✓
+2. Replace `original_text` with `proposed_fix`
+3. Mark finding AUTO_FIXED ← no verification that content actually changed
+4. Set document to CLEAN ← no verification
+
+**New verified flow:**
+
+```typescript
+// Step 1: Check original_text exists in content
+if (!document.content || !finding.original_text || !finding.proposed_fix) {
+  // Cannot apply — mark FAILED
+  await db.update(workQueueFindingsTable)
+    .set({
+      status: 'FAILED',
+      issue_description: finding.issue_description + ' [AUTO-FIX FAILED: missing content, original_text, or proposed_fix]',
+      resolved_at: new Date(),
+    })
+    .where(eq(workQueueFindingsTable.id, finding.id));
+  failedCount++;
+  continue;
+}
+
+if (!document.content.includes(finding.original_text)) {
+  // Text not found — mark FAILED
+  await db.update(workQueueFindingsTable)
+    .set({
+      status: 'FAILED',
+      issue_description: finding.issue_description + ' [AUTO-FIX FAILED: original text not found in document]',
+      resolved_at: new Date(),
+    })
+    .where(eq(workQueueFindingsTable.id, finding.id));
+  failedCount++;
+  continue;
+}
+
+// Step 2: Apply replacement
+const newContent = document.content.replace(finding.original_text, finding.proposed_fix);
+
+// Step 3: CRITICAL — verify content actually changed
+if (newContent === document.content) {
+  // Replacement produced no change — do NOT mark as fixed
+  await db.update(workQueueFindingsTable)
+    .set({
+      status: 'FAILED',
+      issue_description: finding.issue_description + ' [AUTO-FIX FAILED: replacement produced no change in content]',
+      resolved_at: new Date(),
+    })
+    .where(eq(workQueueFindingsTable.id, finding.id));
+  failedCount++;
+  continue;
+}
+
+// Step 4: Persist the verified new content
+await db.update(documentsTable)
+  .set({ content: newContent })
+  .where(eq(documentsTable.id, document.id));
+
+// Step 5: Verify the fix is now in the document
+const verifyDoc = await db.select({ content: documentsTable.content })
+  .from(documentsTable)
+  .where(eq(documentsTable.id, document.id))
+  .limit(1);
+
+const fixVerified = verifyDoc[0]?.content?.includes(finding.proposed_fix) ?? false;
+
+if (!fixVerified) {
+  // Write succeeded but verification failed — mark FAILED, do not set CLEAN
+  await db.update(workQueueFindingsTable)
+    .set({
+      status: 'FAILED',
+      issue_description: finding.issue_description + ' [AUTO-FIX FAILED: content written but proposed_fix not found on re-read]',
+      resolved_at: new Date(),
+    })
+    .where(eq(workQueueFindingsTable.id, finding.id));
+  failedCount++;
+  continue;
+}
+
+// Step 6: Only now — mark document CLEAN and task Done
+await db.update(documentsTable)
+  .set({ review_state: 'CLEAN' })
+  .where(eq(documentsTable.id, document.id));
+
+await db.update(tasksTable)
+  .set({ status: 'Done' })
+  .where(eq(tasksTable.id, finding.task_id));
+
+// Step 7: Write changelog
+await db.insert(changelogTable).values({
+  id: randomUUID(),
+  action: 'AUTO_FIX_APPLIED',
+  details: `Fixed: ${finding.issue_description}. Replaced: "${finding.original_text}" → "${finding.proposed_fix}"`,
+  triggered_by: 'agent',
+});
+
+// Step 8: Propagation
+const result = await propagateFromDocument(document.id);
+await createReviewTasksForPropagation(result.targets);
+await db.update(workQueueSessionsTable)
+  .set({ cascaded_count: sql`cascaded_count + ${result.targets.length}` })
+  .where(eq(workQueueSessionsTable.id, sessionId));
+
+// Step 9: Mark finding AUTO_FIXED only after all of the above
+await db.update(workQueueFindingsTable)
+  .set({ status: 'AUTO_FIXED', resolved_at: new Date() })
+  .where(eq(workQueueFindingsTable.id, finding.id));
+
+appliedCount++;
+```
+
+**Also fix the doc 110 finding:**
+After the code fix is deployed, run:
+```sql
+UPDATE work_queue_findings
+SET status = 'FAILED',
+    issue_description = issue_description || ' [RETROACTIVELY FAILED: text replacement did not apply — doc reset to REQUIRES_REVIEW]'
+WHERE document_id = '110'
+AND status = 'AUTO_FIXED';
+```
+(Agent: find the actual document ID for doc 110 and use it)
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. POST /work-queue/start with 20 REQUIRES_REVIEW documents and 0
+open Review tasks: creates 20 Review tasks automatically and analyses
+all 20 documents. Manual test: clear all open Review tasks, call start,
+verify total_tasks = 20 and all documents are analysed.
+
+AC2. POST /work-queue/start with 5 REQUIRES_REVIEW documents where 3
+already have open Review tasks: creates 2 new tasks (for the 2 without)
+and analyses all 5. Does not create duplicate tasks. Manual test.
+
+AC3. After POST /work-queue/start completes, every CURRENT REQUIRES_REVIEW
+document has a corresponding finding in work_queue_findings for the
+current session. Manual test: compare document count vs finding count.
+
+AC4. PATCH /tasks/:id marking a Review task Done does NOT change the
+linked document's review_state. Manual test: mark a Review task Done,
+inspect the linked document's review_state — must be unchanged.
+
+AC5. POST /work-queue/auto-fix where original_text is found in content
+and replacement produces a different string: marks finding AUTO_FIXED,
+sets document to CLEAN, marks task Done, triggers propagation. Manual test.
+
+AC6. POST /work-queue/auto-fix where original_text is NOT found in
+content: marks finding FAILED, does NOT set document to CLEAN, does NOT
+mark task Done. Manual test: use a finding where original_text doesn't
+match document content.
+
+AC7. POST /work-queue/auto-fix where replacement produces identical
+content (no actual change): marks finding FAILED, does NOT set document
+to CLEAN. Manual test: create a finding where original_text and
+proposed_fix are identical, run auto-fix.
+
+AC8. POST /work-queue/auto-fix: finding is only marked AUTO_FIXED after
+the content change has been written to DB AND verified by re-reading the
+document. Manual test: after auto-fix, read document content and confirm
+proposed_fix is present.
+
+AC9. Doc 110 finding in work_queue_findings has status FAILED (not
+AUTO_FIXED) and issue_description contains a note about the failure.
+Manual test: query work_queue_findings for doc 110.
+
+AC10. tasks/index.ts PATCH handler contains the decoupling comment and
+no logic that touches documentsTable. Code review: inspect the handler.
+
+---
+
+## Section 7 — Constraints
+
+- All three flaws fixed in work-queue/index.ts and tasks/index.ts only
+- propagateFromDocument() and createReviewTasksForPropagation() always
+  called together — only after verified successful auto-fix
+- Auto-fix sets document CLEAN only after: text found, replacement
+  different, content written, re-read verification passes
+- Task Done set only after document CLEAN is set — never before
+- No frontend changes in this phase
+- No schema changes in this phase
+- Existing findings in work_queue_findings are not deleted — only the
+  doc 110 finding status is corrected via a targeted update
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not redesign the card accept flow (that already has
+  correct verification logic)
+- This build does not add a UI for the document-first scope change
+- This build does not fix the Content_Bank 700 content violations —
+  those will be caught on the next queue run
+- This build does not add automated testing
+
+---
+
+## Section 9 — Assumptions
+
+- The tasks router PATCH handler was already reverted (no CLEAN logic)
+  in the data patch session — verify by inspection before building
+- `propagateFromDocument` returns `{ targets: string[] }` — confirmed
+  from existing usage
+- `randomUUID` from crypto already imported in work-queue/index.ts
+- The doc 110 document ID is findable via:
+  `SELECT id FROM documents WHERE file_code LIKE '110%'`
+
+---
+
+## Section 10 — Rollback
+
+Risk is HIGH — this changes core resolution logic.
+
+If auto-fix verification is too strict and catches false positives:
+- The FAILED status is recoverable — findings can be manually set back
+  to PENDING and re-run
+- No data is permanently lost — failed findings can be retried
+
+If document-first scope creates too many tasks:
+- Tasks can be bulk-deleted from the tasks table for the session
+- The session itself can be deleted and re-run
+
+Full rollback: revert changes to work-queue/index.ts. Tasks created
+by the document-first scope will remain but can be manually closed.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + what changed]
+FILES CREATED: [none expected]
+ACCEPTANCE CRITERIA STATUS: [each AC]
+ANYTHING I SHOULD KNOW: [deviations, risks, unexpected findings]

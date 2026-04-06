@@ -98,6 +98,9 @@ router.get("/tasks/summary", async (_req, res): Promise<void> => {
   }
 });
 
+// NOTE: marking a task Done does NOT change the linked document's review_state.
+// Only the Work Queue resolution flow (auto-fix or card accept) sets documents to CLEAN.
+// See work-queue/index.ts for the authoritative resolution logic.
 router.patch("/tasks/:id", async (req, res): Promise<void> => {
   try {
     const { id } = req.params;
