@@ -440,22 +440,23 @@ export function getGdocsTemplate(document: DocumentRecord): string {
     day: 'numeric', month: 'long', year: 'numeric'
   });
 
-  return `<html><head><meta charset="UTF-8"></head><body>
-<p style="text-align:right;margin-bottom:24px;">
-  <span style="font-size:22px;font-weight:bold;color:${colours.darkNavy};letter-spacing:2px;">
-    <span style="color:#01BC77;font-weight:bold;">|</span>&nbsp;UNLOCK
-  </span>
-</p>
-<h1 style="font-size:24px;color:${colours.darkNavy};margin-bottom:4px;">${escapeHtml(document.name)}</h1>
-<p style="font-size:11px;color:#888888;margin-bottom:24px;">
-  ${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}
-</p>
-<hr style="border:none;border-top:2px solid ${colours.darkNavy};margin-bottom:24px;">
+  return `<html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;color:#1A1A2E;">
+<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20pt;"><tr>
+  <td style="vertical-align:bottom;">
+    <span style="font-size:20pt;font-weight:bold;color:${colours.darkNavy};">${escapeHtml(document.name)}</span><br>
+    <span style="font-size:9pt;color:#888888;">${document.file_code ? `Ref: ${escapeHtml(document.file_code)}` : ''}${document.tier ? ` | Tier ${document.tier}` : ''}${document.version ? ` | v${document.version}` : ''}</span>
+  </td>
+  <td style="text-align:right;vertical-align:top;width:180pt;">
+    <table cellpadding="0" cellspacing="0" style="margin-left:auto;"><tr>
+      <td style="background-color:#01BC77;width:6pt;height:32pt;">&nbsp;</td>
+      <td style="padding-left:8pt;font-size:20pt;font-weight:bold;color:${colours.darkNavy};letter-spacing:3pt;font-family:Arial,Helvetica,sans-serif;">UNLOCK</td>
+    </tr></table>
+  </td>
+</tr></table>
+<hr>
 ${bodyHtml}
-<hr style="border:none;border-top:1px solid #E0E0E0;margin-top:32px;margin-bottom:8px;">
-<p style="font-size:9px;color:#888888;">
-  ${escapeHtml(document.file_code)} | ${escapeHtml(document.name)} | ${date}
-</p>
+<br><hr>
+<p style="font-size:8pt;color:#888888;">${escapeHtml(document.file_code)} | ${escapeHtml(document.name)} | ${date}</p>
 </body></html>`;
 }
 
@@ -463,13 +464,13 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
   let html = content;
 
   html = html.replace(/^#{4}\s+(.+)$/gm, (_, t) =>
-    `<h4 style="font-size:13px;font-weight:bold;color:${colours.charcoal};margin-top:16px;margin-bottom:8px;">${t}</h4>`);
+    `<h4 style="font-size:12pt;font-weight:bold;color:${colours.charcoal};">${t}</h4>`);
   html = html.replace(/^#{3}\s+(.+)$/gm, (_, t) =>
-    `<h3 style="font-size:15px;font-weight:bold;color:${colours.charcoal};margin-top:20px;margin-bottom:8px;">${t}</h3>`);
+    `<h3 style="font-size:14pt;font-weight:bold;color:${colours.charcoal};">${t}</h3>`);
   html = html.replace(/^#{2}\s+(.+)$/gm, (_, t) =>
-    `<h2 style="font-size:18px;font-weight:bold;color:${colours.darkNavy};margin-top:24px;margin-bottom:10px;">${t}</h2>`);
+    `<h2 style="font-size:16pt;font-weight:bold;color:${colours.darkNavy};">${t}</h2>`);
   html = html.replace(/^#{1}\s+(.+)$/gm, (_, t) =>
-    `<h1 style="font-size:22px;font-weight:bold;color:${colours.darkNavy};margin-top:28px;margin-bottom:12px;">${t}</h1>`);
+    `<h1 style="font-size:20pt;font-weight:bold;color:${colours.darkNavy};">${t}</h1>`);
 
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -501,7 +502,7 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
         result.push('<ul>');
         inList = true; listType = 'ul';
       }
-      result.push(`<li style="font-size:11px;color:${colours.black};margin-bottom:4px;">${trimmed.replace(/^[-*]\s+/, '')}</li>`);
+      result.push(`<li style="font-size:11pt;color:${colours.black};">${trimmed.replace(/^[-*]\s+/, '')}</li>`);
       continue;
     }
 
@@ -511,7 +512,7 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
         result.push('<ol>');
         inList = true; listType = 'ol';
       }
-      result.push(`<li style="font-size:11px;color:${colours.black};margin-bottom:4px;">${trimmed.replace(/^\d+\.\s+/, '')}</li>`);
+      result.push(`<li style="font-size:11pt;color:${colours.black};">${trimmed.replace(/^\d+\.\s+/, '')}</li>`);
       continue;
     }
 
@@ -521,17 +522,17 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
     }
 
     if (trimmed === '---' || trimmed === '***') {
-      result.push('<hr style="border:none;border-top:1px solid #E0E0E0;margin:12px 0;">');
+      result.push('<hr>');
       continue;
     }
 
     if (trimmed === '') {
-      result.push('<br>');
+      result.push('<p style="font-size:11pt;">&nbsp;</p>');
       continue;
     }
 
     if (!trimmed.startsWith('<')) {
-      result.push(`<p style="font-size:11px;line-height:1.6;color:${colours.black};margin-bottom:8px;">${trimmed}</p>`);
+      result.push(`<p style="font-size:11pt;line-height:1.5;color:${colours.black};">${trimmed}</p>`);
     } else {
       result.push(trimmed);
     }
@@ -546,10 +547,10 @@ function markdownToGdocsHtml(content: string, colours: typeof BRAND.colours): st
 function renderGdocsTable(rows: string[], colours: typeof BRAND.colours): string {
   if (rows.length === 0) return '';
   const headerCells = rows[0].split('|').filter(c => c.trim() !== '');
-  let html = '<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:10px;">';
+  let html = '<table style="width:100%;border-collapse:collapse;">';
   html += '<tr>';
   for (const cell of headerCells) {
-    html += `<td style="background-color:${colours.darkNavy};color:white;padding:8px 12px;font-weight:bold;font-size:9px;text-transform:uppercase;letter-spacing:0.5px;">${cell.trim()}</td>`;
+    html += `<td style="background-color:${colours.darkNavy};color:white;padding:6pt 10pt;font-weight:bold;font-size:9pt;">${cell.trim()}</td>`;
   }
   html += '</tr>';
   for (let i = 1; i < rows.length; i++) {
@@ -557,7 +558,7 @@ function renderGdocsTable(rows: string[], colours: typeof BRAND.colours): string
     const bg = i % 2 === 0 ? '#F5F5F5' : 'white';
     html += '<tr>';
     for (const cell of cells) {
-      html += `<td style="padding:6px 12px;border-bottom:1px solid #E0E0E0;background-color:${bg};font-size:10px;">${cell.trim()}</td>`;
+      html += `<td style="padding:5pt 10pt;border-bottom:1px solid #E0E0E0;background-color:${bg};font-size:10pt;">${cell.trim()}</td>`;
     }
     html += '</tr>';
   }
