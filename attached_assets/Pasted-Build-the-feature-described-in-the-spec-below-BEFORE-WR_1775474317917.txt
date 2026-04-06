@@ -1,0 +1,503 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs.
+
+NOTE ON BELIEF DOT STATE PICKER:
+For the belief dot click interaction (Panel 3), use Shadcn Select component for the state picker — consistent with the rest of the UI. Show the Select inline below the dot row when a dot is clicked (not a modal, not a popover — just a Select that appears in place). Close/hide it after a state is selected.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing page behaviour must be preserved in the Overview tab
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite any existing state, handlers, or rendered content from the current lead-detail.tsx. All existing content moves into the Overview tab unchanged. When modifying the file, use comment markers to indicate which sections are unchanged.
+
+PATCH LOOP RULE:
+If the build fails or the frontend fails to compile: stop. Tell me what failed and why. Do not patch in place if the issue requires structural changes.
+
+---
+
+# PHASE DOC — Investor Intelligence & Belief State System (Phase 010d: Frontend)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-010d
+Effort: 1 day
+Dependencies: RR-2026-04-06-010b1, RR-2026-04-06-010b2
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds the investor intelligence UI to the lead detail page. Three additions: (1) a notes textarea that auto-saves on blur; (2) a "Generate Profile" button; (3) a new "Intelligence & Beliefs" tab with three panels — intelligence summary, belief dot grid, gate status + next recommendation. The existing page content moves into an "Overview" tab.
+
+---
+
+## Section 2 — Why this is necessary
+
+The belief state and intelligence systems built in 010a–010c are invisible. No UI exists to view or interact with them.
+
+---
+
+## Section 3 — Current state
+
+From the Phase 010d Step 1 scan:
+
+- `lead-detail.tsx`: single flat layout, no tabs, 3-column grid (2+1)
+- Left column (col-span-2): Next Best Action card + Interaction Timeline card
+- Right column (col-span-1): Details card + Persona Validation card + Stage History card
+- State: 5 variables (confirmOpen, selectedPersona, confirmNotes, confirming, confirmResult)
+- API calls: useGetLead(id), useGetLeadNextAction(id), manual handleConfirmPersona()
+- notes and transcript_text exist on lead object but not displayed
+- No belief or intelligence data fetched or rendered
+- API_BASE uses wrong pattern (VITE_API_URL) — fix to BASE_URL pattern
+- Tabs component is available at @/components/ui/tabs
+- CheckCircle and XCircle already imported from lucide-react
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] UI — lead-detail.tsx additions
+- [x] Additive edits to existing file
+
+Layer count: 2
+Split required: NO
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Fix API_BASE pattern
+
+Change:
+```typescript
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+```
+To:
+```typescript
+const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
+```
+
+---
+
+### 5.2 — Add tab structure
+
+Wrap main page content in Shadcn Tabs with two tabs:
+- Tab 1: **Overview** (default) — existing 3-column grid content, unchanged
+- Tab 2: **Intelligence & Beliefs** — new content
+
+Tab switcher sits immediately below the lead header row.
+
+Add to imports:
+```typescript
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+```
+
+Add state:
+```typescript
+const [activeTab, setActiveTab] = useState<"overview" | "beliefs">("overview");
+```
+
+---
+
+### 5.3 — Notes textarea (top of Beliefs tab)
+
+Notes card at top of Intelligence & Beliefs tab:
+- Heading: "Operator Notes"
+- Subtext: "Add context about this investor before generating their profile."
+- Textarea: 4 rows, placeholder "Add your observations about this investor — what they said, their concerns, their situation..."
+- Value: `notes` state (initialised from `(lead as any).notes ?? ""` when lead loads)
+- On blur: call `handleNotesSave()`
+- Show "Saved" for 2 seconds after successful save
+
+State to add:
+```typescript
+const [notes, setNotes] = useState<string>("");
+const [notesSaving, setNotesSaving] = useState<boolean>(false);
+const [notesSaved, setNotesSaved] = useState<boolean>(false);
+```
+
+Initialise notes from lead data — add to existing lead load pattern:
+When `lead` data is available (after useGetLead resolves), set notes state: `setNotes((lead as any).notes ?? "")`.
+Use a useEffect that runs when lead changes.
+
+Save handler:
+```typescript
+const handleNotesSave = async () => {
+  if (!id) return;
+  setNotesSaving(true);
+  try {
+    const res = await fetch(`${API_BASE}/leads/${id}/notes`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes }),
+    });
+    if (res.ok) {
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2000);
+    }
+  } catch {
+    // silent fail
+  } finally {
+    setNotesSaving(false);
+  }
+};
+```
+
+---
+
+### 5.4 — Generate Profile button
+
+Below notes textarea in the notes card:
+
+Button: "Generate Profile" with Sparkles icon (import Sparkles from lucide-react)
+- Disabled when: `generatingProfile` is true OR both `notes.trim()` and `(lead as any).transcript_text` are falsy
+- Shows Loader2 spinner while loading
+- On click: calls `handleGenerateProfile()`
+- On error: shows error text below button
+
+State to add:
+```typescript
+const [generatingProfile, setGeneratingProfile] = useState<boolean>(false);
+const [generateError, setGenerateError] = useState<string | null>(null);
+```
+
+Handler:
+```typescript
+const handleGenerateProfile = async () => {
+  if (!id) return;
+  setGeneratingProfile(true);
+  setGenerateError(null);
+  try {
+    const res = await fetch(`${API_BASE}/leads/${id}/intelligence/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      await fetchIntelligence();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setGenerateError(data.error || "Failed to generate profile");
+    }
+  } catch {
+    setGenerateError("Failed to generate profile");
+  } finally {
+    setGeneratingProfile(false);
+  }
+};
+```
+
+---
+
+### 5.5 — Fetch belief and intelligence data
+
+Add state and fetch functions:
+
+```typescript
+const [intelligence, setIntelligence] = useState<any>(null);
+const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+const [beliefs, setBeliefs] = useState<any[]>([]);
+const [beliefsLoading, setBeliefsLoading] = useState(false);
+const [gates, setGates] = useState<any>(null);
+const [nextBelief, setNextBelief] = useState<any>(null);
+
+const fetchIntelligence = async () => {
+  if (!id) return;
+  setIntelligenceLoading(true);
+  try {
+    const res = await fetch(`${API_BASE}/leads/${id}/intelligence`);
+    const data = await res.json();
+    setIntelligence(data.intelligence);
+  } catch { /* silent */ }
+  finally { setIntelligenceLoading(false); }
+};
+
+const fetchBeliefs = async () => {
+  if (!id) return;
+  setBeliefsLoading(true);
+  try {
+    const res = await fetch(`${API_BASE}/leads/${id}/beliefs`);
+    const data = await res.json();
+    setBeliefs(data.beliefs || []);
+  } catch { /* silent */ }
+  finally { setBeliefsLoading(false); }
+};
+
+const fetchGatesAndNext = async () => {
+  if (!id) return;
+  try {
+    const [gatesRes, nextRes] = await Promise.all([
+      fetch(`${API_BASE}/leads/${id}/beliefs/gates`),
+      fetch(`${API_BASE}/leads/${id}/beliefs/next`),
+    ]);
+    const gatesData = await gatesRes.json();
+    const nextData = await nextRes.json();
+    setGates(gatesData.gates);
+    setNextBelief(nextData);
+  } catch { /* silent */ }
+};
+```
+
+useEffect to fetch when Beliefs tab becomes active:
+```typescript
+useEffect(() => {
+  if (activeTab === "beliefs" && id) {
+    fetchIntelligence();
+    fetchBeliefs();
+    fetchGatesAndNext();
+  }
+}, [activeTab, id]);
+```
+
+---
+
+### 5.6 — Intelligence & Beliefs tab: three panels
+
+**Panel 1 — Notes + Generate (from 5.3/5.4)**
+
+**Panel 2 — Intelligence Summary**
+
+Card: "Investor Profile"
+
+If `intelligence` is null and not loading: show placeholder text "No profile generated yet — add notes or upload a transcript, then click Generate Profile."
+
+If `intelligence` exists:
+- Row 1: Three pills side by side
+  - Qualification: green if QUALIFIED, amber if INSUFFICIENT_DATA, red if DISQUALIFIED
+  - Cluster: blue for growth_seeker ("Growth Seeker"), teal for preserver ("Preserver"), purple for legacy_builder ("Legacy Builder")
+  - Hot button: only show if `hot_button` is set — display human-readable label (family_security → "Family Security", freedom → "Freedom", legacy → "Legacy", relief → "Relief", significance → "Significance")
+- Row 2: `profile_summary` as paragraph text
+- Row 3: Readiness status pill + `recommended_action` text below
+  - READY_TO_CLOSE: green, OBJECTION_TO_RESOLVE: amber, INFORMATION_GAP: blue, NEEDS_NURTURING: gray
+- Row 4 (conditional): if `primary_blocker` set — "Blocker: [primary_blocker] ([blocker_type])"
+- Row 5 (conditional): if `hot_button_quote` set — italic blockquote
+
+**Panel 3 — Belief Dot Grid**
+
+Card: "Belief Map"
+
+Cluster display order: Universal, Growth Seeker, Preserver, Legacy Builder, Company Conviction, Founding Round
+
+Cluster name map:
+```typescript
+const CLUSTER_LABELS: Record<string, string> = {
+  universal: "Universal",
+  growth_seeker: "Growth Seeker",
+  preserver: "Preserver",
+  legacy_builder: "Legacy Builder",
+  company_conviction: "Company Conviction",
+  founding_round: "Founding Round",
+};
+```
+
+State colour map:
+```typescript
+const STATE_COLOURS: Record<string, string> = {
+  UNKNOWN: "bg-gray-300",
+  ABSENT: "bg-red-400",
+  PARTIAL: "bg-amber-400",
+  ESTABLISHED: "bg-green-500",
+  BLOCKED: "bg-purple-400",
+};
+```
+
+For each belief in `beliefs` array (joined with registry data from the GET /leads/:id/beliefs response which includes name, cluster, is_hard_gate, policy_status):
+
+Render a dot:
+- Circle: 2rem × 2rem, rounded-full, coloured by state
+- `title` attribute: belief name (tooltip)
+- If `policy_status === 'blocked_pending_legal'`: render with 50% opacity and a line through the name
+- If `is_hard_gate === true`: overlay a small Lock icon (import Lock from lucide-react)
+- If `investor_relevance === 'not_applicable'` in the belief row: render with 50% opacity
+
+State for selected belief (for inline picker):
+```typescript
+const [selectedBeliefId, setSelectedBeliefId] = useState<string | null>(null);
+```
+
+On dot click: set `selectedBeliefId` to that belief's id (or null if already selected — toggle).
+
+Below each cluster row, if `selectedBeliefId` is in that cluster: show a Shadcn `Select` with the 5 state options (UNKNOWN, ABSENT, PARTIAL, ESTABLISHED, BLOCKED). On selection: call `handleBeliefUpdate(selectedBeliefId, newState)` then set `selectedBeliefId(null)`.
+
+Belief update handler:
+```typescript
+const handleBeliefUpdate = async (beliefId: string, newState: string) => {
+  try {
+    await fetch(`${API_BASE}/leads/${id}/beliefs/${beliefId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: newState }),
+    });
+    await fetchBeliefs();
+    await fetchGatesAndNext();
+  } catch { /* silent */ }
+};
+```
+
+For leads where GET /leads/:id/beliefs returns an empty array (no belief rows yet): the dot grid still renders all 23 beliefs from the registry. But the GET /leads/:id/beliefs only returns beliefs that have rows. 
+
+SOLUTION: Also fetch the full belief registry (`GET /api/beliefs`) and merge with the lead's belief rows:
+
+```typescript
+const [beliefRegistry, setBeliefRegistry] = useState<any[]>([]);
+
+const fetchBeliefRegistry = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/beliefs`);
+    const data = await res.json();
+    setBeliefRegistry(data.beliefs || []);
+  } catch { /* silent */ }
+};
+```
+
+Call `fetchBeliefRegistry()` once on component mount (not on tab switch — it's static data):
+```typescript
+useEffect(() => {
+  fetchBeliefRegistry();
+}, []);
+```
+
+Build the display list by merging: for each belief in `beliefRegistry`, find the matching row in `beliefs` (by belief_id). Use the registry entry for name/cluster/is_hard_gate/policy_status, and the lead row for state/investor_relevance (default state to 'UNKNOWN' if no row).
+
+**Panel 4 — Gate Status + Next Step**
+
+Card: "Next Step"
+
+Top: Four gate rows:
+```
+[CheckCircle/XCircle icon] can_ask_risk_appetite_question — "[reason]"
+[CheckCircle/XCircle icon] can_recommend_pack_1 — "[reason]"
+[CheckCircle/XCircle icon] can_recommend_pack_2 — "[reason]"
+[CheckCircle/XCircle icon] can_make_investment_ask — "[reason]"
+```
+
+Gate label map:
+```typescript
+const GATE_LABELS: Record<string, string> = {
+  can_ask_risk_appetite_question: "Ask risk appetite question",
+  can_recommend_pack_1: "Recommend Pack 1",
+  can_recommend_pack_2: "Recommend Pack 2",
+  can_make_investment_ask: "Make investment ask",
+};
+```
+
+If `gates` is null: show loading or "No gate data available."
+
+Bottom: Next belief section:
+```
+If nextBelief?.next_belief:
+  "Next belief to establish:" label
+  Belief name in bold
+  Current state pill (coloured)
+  If recommended_document_id: "Recommended document: [recommended_document_id]"
+
+If nextBelief?.next_belief is null:
+  "All active beliefs established or in progress."
+```
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. Lead detail page renders two tabs: "Overview" and "Intelligence & Beliefs". Tab switching works. Manual test required.
+
+AC2. Notes textarea shows current notes, saves on blur, shows "Saved" indicator. Manual test required.
+
+AC3. "Generate Profile" button disabled when notes and transcript_text both empty/null. Manual test required.
+
+AC4. "Generate Profile" button calls generate endpoint, Intelligence Summary panel updates. Manual test required.
+
+AC5. Intelligence Summary shows qualification, cluster, hot_button, profile_summary, readiness when intelligence exists. Manual test required.
+
+AC6. Belief dot grid renders 23 dots (from registry merge), grouped by cluster, coloured by state. Manual test required.
+
+AC7. Clicking a dot shows state picker. Selecting updates belief and refreshes dot colour. Manual test required.
+
+AC8. U4 and F0 dots show lock icon overlay. Manual test required.
+
+AC9. Gate Status panel reflects correct open/closed based on belief states. Manual test required.
+
+AC10. Next Step panel shows next belief and recommended document. Manual test required.
+
+AC11. Overview tab content unchanged — no regression to existing functionality. Manual test required.
+
+AC12. API_BASE uses BASE_URL pattern — all API calls work correctly. Manual test required.
+
+---
+
+## Section 7 — Constraints
+
+- `lead-detail.tsx` only — no new files
+- Shadcn Tabs from `@/components/ui/tabs`
+- Shadcn Select for state picker
+- Manual fetch() for new endpoints — no Orval
+- API_BASE fixed to BASE_URL pattern
+- No new route in App.tsx
+- All existing content preserved in Overview tab
+- No unused import removal
+
+---
+
+## Section 8 — Non-goals
+
+- No transcript viewer
+- No belief dot pagination/search
+- No hot button elicitation in call scripts
+- No Recommendation Engine UI belief context
+- No as any type cast fixes
+
+---
+
+## Section 9 — Assumptions
+
+- notes field in GET /leads/:id returns string | null — confirmed from 010b1
+- Tabs at @/components/ui/tabs — confirmed from 009a
+- CheckCircle, XCircle already imported — confirmed from scan
+- belief registry endpoint GET /api/beliefs returns all 23 beliefs — confirmed from 010b1
+- GET /api/leads/:id/beliefs returns beliefs with registry join fields (name, cluster, is_hard_gate, policy_status) — confirmed from 010b1
+
+---
+
+## Section 10 — Rollback
+
+Revert lead-detail.tsx to pre-010d state. No schema or API changes. No data loss.
+
+---
+
+## Section 11 — What comes next
+
+After 010d ships: update CTX_architecture.md, run quality scorer on docs 330/331/332, seed belief_targets on 9 documents, run Google Sheets sync manual tests.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [none expected]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, risks]
