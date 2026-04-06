@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
+import { Badge } from "@/components/ui/badge";
 import { 
   LayoutDashboard, 
   Users, 
@@ -18,10 +20,29 @@ import {
   ShieldCheck,
   Upload,
   CheckSquare,
+  Zap,
 } from "lucide-react";
+
+const API_BASE =
+  (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const [openReviewCount, setOpenReviewCount] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/tasks`);
+        const data = await res.json();
+        const count = (data.tasks || []).filter(
+          (t: any) => t.status === "Open" && t.type === "Review"
+        ).length;
+        setOpenReviewCount(count);
+      } catch { /* silent */ }
+    };
+    fetchCount();
+  }, []);
 
   const navGroups = [
     {
@@ -32,6 +53,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/call-prep", label: "Call Prep", icon: Phone },
         { href: "/leads", label: "Lead Management", icon: Users },
         { href: "/tasks", label: "Task Board", icon: CheckSquare },
+        { href: "/work-queue", label: "Work Queue", icon: Zap },
       ],
     },
     {
@@ -93,6 +115,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       }`}>
                         <Icon className="w-4 h-4" />
                         {item.label}
+                        {item.href === "/work-queue" && openReviewCount > 0 && (
+                          <Badge variant="destructive" className="ml-auto text-xs px-1.5 py-0">
+                            {openReviewCount}
+                          </Badge>
+                        )}
                     </Link>
                   );
                 })}

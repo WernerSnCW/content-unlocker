@@ -1,0 +1,401 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+3. List the files you plan to change and why
+4. List any questions (BLOCKERs only)
+5. Wait for confirmation before writing code
+
+RULES:
+- Respect every constraint and non-goal — no exceptions
+- Shadcn UI and Lucide icons only — no new UI libraries
+- Manual fetch() for all API calls — no Orval
+- API_BASE pattern: (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api"
+- CODE PRESERVATION RULE: do not delete code outside planned files
+
+---
+
+# PHASE DOC — Work Queue System (Phase 011d: Frontend)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-011d
+Effort: 1 day
+Dependencies: RR-2026-04-06-011a, 011b, 011c (all backend endpoints must exist)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds the Work Queue page at `/work-queue`. The operator presses one button to start a compliance audit. The system analyses all open Review tasks in the background. When ready, it shows a Phase 1 summary (auto-fixes applied silently) and then a Phase 2 card flow — one decision card at a time, Accept or Skip, until the queue is empty. Ends with a session summary. A sidebar badge shows the open task count.
+
+---
+
+## Section 2 — Why this is necessary
+
+55 compliance findings exist in the DB with no UI to see or act on them. 7 fully working backend endpoints have no frontend. The entire Work Queue system is invisible to the operator.
+
+---
+
+## Section 3 — Current state
+
+**Backend — fully built and verified:**
+
+All 7 endpoints working with confirmed response shapes (see API contract above).
+Current DB state: 1 READY session, 55 findings (10 AUTO_FIXED, 45 PENDING decision_cards).
+
+**Frontend — nothing exists:**
+- No `/work-queue` route in App.tsx
+- No WorkQueue page component
+- Sidebar has no task count badge
+- Tasks page exists at `/tasks` but is separate from the Work Queue
+
+**Relevant existing patterns:**
+- API_BASE: `(import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api"`
+- Manual fetch() for all mutations — no Orval
+- Shadcn: Card, Button, Badge, Tabs, Select, Skeleton all available
+- Lucide: CheckCircle, XCircle, Loader2, AlertCircle, ArrowRight, Zap, FileText, ChevronRight
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] UI — new page, sidebar update, card flow state machine
+- [x] Additive edits — App.tsx (new route), sidebar component (badge)
+
+Layer count: 2
+Split required: NO — frontend only
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — New route
+
+File: `artifacts/unlock-intel/src/App.tsx` (additive edit)
+
+Add route:
+```tsx
+import WorkQueue from "./pages/work-queue";
+// in Switch:
+<Route path="/work-queue" component={WorkQueue} />
+```
+
+---
+
+### 5.2 — Sidebar badge
+
+File: wherever the sidebar navigation is defined (find it — likely a layout or sidebar component).
+
+Add a "Work Queue" nav item with a live task count badge:
+
+```tsx
+// Fetch open Review task count on sidebar mount
+const [openTaskCount, setOpenTaskCount] = useState<number>(0);
+
+useEffect(() => {
+  const fetchCount = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/tasks?status=Open&type=Review`);
+      const data = await res.json();
+      setOpenTaskCount(data.tasks?.length || 0);
+    } catch { /* silent */ }
+  };
+  fetchCount();
+}, []);
+```
+
+Show badge only when count > 0:
+```tsx
+<NavItem href="/work-queue" icon={Zap}>
+  Work Queue
+  {openTaskCount > 0 && (
+    <Badge variant="destructive" className="ml-auto text-xs">
+      {openTaskCount}
+    </Badge>
+  )}
+</NavItem>
+```
+
+---
+
+### 5.3 — Work Queue page
+
+File: `artifacts/unlock-intel/src/pages/work-queue.tsx` (create new file)
+
+The page has 5 states. The UI shows exactly one state at a time:
+
+```
+IDLE → PREPARING → PHASE_1_SUMMARY → PHASE_2_CARDS → SUMMARY
+```
+
+**State machine:**
+```typescript
+type QueueState = 'IDLE' | 'PREPARING' | 'PHASE_1_SUMMARY' | 'PHASE_2_CARDS' | 'SUMMARY';
+```
+
+---
+
+### 5.4 — IDLE state
+
+Show when: no active session exists (GET /status returns session: null) AND no READY/COMPLETE session.
+
+Also show on first load before status is checked.
+
+UI:
+```
+[Large centered card]
+  Icon: Zap (large, accent colour)
+  Heading: "Work Queue"
+  Subtext: "Run a compliance audit across all open review tasks.
+            The system will automatically fix objective violations
+            and surface content decisions for your review."
+
+  [Start button — primary, large]
+  Label: "Start Compliance Audit"
+  On click: call POST /work-queue/start → transition to PREPARING
+
+  [Small note below button]
+  "This will analyse all open Review tasks against compliance
+   constants and document content."
+```
+
+If GET /status returns a READY session on page load: skip IDLE, go straight to PHASE_1_SUMMARY.
+If GET /status returns ANALYSING: skip to PREPARING.
+
+---
+
+### 5.5 — PREPARING state
+
+Show when: session status is PENDING or ANALYSING.
+
+Poll GET /status every 2 seconds. When status becomes READY: transition to PHASE_1_SUMMARY.
+
+UI:
+```
+[Centered card]
+  Icon: Loader2 (spinning, accent colour)
+  Heading: "Analysing documents..."
+  Subtext: "Claude is reviewing your documents against compliance
+            rules. This takes about 30 seconds."
+
+  [Progress bar]
+  Progress: (session.analysed_tasks / session.total_tasks) * 100
+  Label: "Analysed {analysed_tasks} of {total_tasks} documents"
+
+  [Small note]
+  "You can leave this page — the analysis continues in the background."
+```
+
+Stop polling when status = READY, COMPLETE, or FAILED.
+On FAILED: show error state with session.error_message and a "Try Again" button.
+
+---
+
+### 5.6 — PHASE_1_SUMMARY state
+
+Show when: session status is READY. Show BEFORE cards.
+
+First: automatically call POST /work-queue/auto-fix. Show a loading spinner while this runs.
+
+After auto-fix completes, show:
+
+```
+[Centered card — green tint if applied > 0, neutral if 0]
+
+  Icon: CheckCircle (green)
+  Heading: "Phase 1 Complete"
+
+  [Stats row]
+  "N compliance issues fixed automatically"
+  "N documents updated"
+  "N downstream documents flagged for review"
+
+  [If applied === 0:]
+  "No automatic fixes needed — all compliance figures are correct."
+
+  [If session.cards_total > 0:]
+  [Continue button — primary]
+  Label: "Review {cards_total} content decisions →"
+  On click: transition to PHASE_2_CARDS
+
+  [If session.cards_total === 0:]
+  [Done button — primary]
+  Label: "All done — queue is clear"
+  On click: transition to SUMMARY
+```
+
+---
+
+### 5.7 — PHASE_2_CARDS state
+
+Show when: cards remain (GET /cards returns cards.length > 0).
+
+On entering this state: fetch GET /work-queue/cards to load all pending cards.
+Show cards one at a time — the first card in the sorted array (sort_order ascending).
+
+**Card UI:**
+```
+[Full-width card — clean, focused]
+
+  [Top bar]
+  Left: Document tier badge ("Tier 1" / "Tier 2" / "Tier 3")
+        Document name in bold
+  Right: Progress indicator: "Card 3 of 12"
+
+  [Issue section]
+  Label: "Issue identified"
+  Content: finding.issue_description
+
+  [If original_text set:]
+  Label: "Current text"
+  Content: <code block> finding.original_text </code>
+
+  [If proposed_fix set:]
+  Label: "Suggested fix"
+  Content: <code block or styled diff> finding.proposed_fix </code>
+
+  [Action row — two buttons]
+  [Accept button — green, primary]
+    Icon: CheckCircle
+    Label: "Accept fix"
+    On click: call POST /cards/:id/accept → remove card from local array → show next card
+    Show Loader2 while in-flight
+
+  [Skip button — ghost/outline]
+    Icon: XCircle
+    Label: "Skip"
+    On click: show skip reason selector (inline, below the button row)
+
+  [Skip reason selector — appears inline when Skip is clicked]
+    Three buttons (not a dropdown):
+    "Not relevant" | "Needs more context" | "Defer"
+    On selection: call POST /cards/:id/skip with { reason } → remove card → show next
+```
+
+**Card transitions:**
+- After accept or skip: remove the current card from local state, show the next card
+- No animation required — just swap the content
+- After the last card: call GET /work-queue/summary → transition to SUMMARY
+
+**Progress tracking:**
+- Track `currentIndex` locally (starts at 0, increments after each accept/skip)
+- Show "Card {currentIndex + 1} of {cards.length}"
+
+---
+
+### 5.8 — SUMMARY state
+
+Show when: all cards have been resolved OR session.status === COMPLETE.
+
+UI:
+```
+[Centered card]
+  Icon: CheckCircle (large, green)
+  Heading: "Queue complete"
+  Subtext: "Here's what happened in this session."
+
+  [Stats grid — 2×2 or 1×4]
+  "Auto-fixed"     {summary.auto_fixed}
+  "Accepted"       {summary.cards_accepted}
+  "Skipped"        {summary.cards_skipped}
+  "Cascaded"       {summary.cascaded}
+
+  [If summary.still_open > 0:]
+  Amber note: "{still_open} findings were skipped and remain open.
+               They will appear in the next queue run."
+
+  [Two buttons]
+  [Run again — secondary]
+  On click: call POST /start → back to PREPARING
+
+  [Back to tasks — ghost]
+  On click: navigate to /tasks
+```
+
+---
+
+### 5.9 — Error handling
+
+- If POST /start returns `already_running: true`: do not transition to PREPARING — instead show a toast/note "Analysis already running" and poll GET /status.
+- If any card action (accept/skip) fails: show an error message below the card, do not remove the card. Allow retry.
+- If GET /cards returns empty unexpectedly: go straight to SUMMARY.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `/work-queue` page is accessible from the sidebar and via direct URL. Manual test.
+
+AC2. Sidebar shows a red badge with the count of open Review tasks. Badge disappears when count is 0. Manual test.
+
+AC3. Clicking "Start Compliance Audit" calls POST /start and transitions to the PREPARING state with a progress bar. Manual test.
+
+AC4. Progress bar updates as session.analysed_tasks increments (via polling). Manual test: watch the bar move during a run.
+
+AC5. PHASE_1_SUMMARY shows the correct auto-fix count after POST /auto-fix completes. Manual test: verify count matches what was applied.
+
+AC6. "Review N content decisions" button only appears when cards_total > 0. Manual test.
+
+AC7. PHASE_2_CARDS shows cards one at a time in sort_order order. First card is a Tier 1 document if any Tier 1 findings exist. Manual test.
+
+AC8. Accept button calls POST /cards/:id/accept and advances to the next card. Manual test.
+
+AC9. Skip button shows three reason options inline. Selecting a reason calls POST /cards/:id/skip and advances to the next card. Manual test.
+
+AC10. After the last card, the SUMMARY state shows correct counts for auto_fixed, cards_accepted, cards_skipped, cascaded. Manual test.
+
+AC11. If a READY session already exists on page load (as is currently the case — 1 READY session, 45 pending cards), the page loads directly into PHASE_1_SUMMARY without needing to click Start. Manual test: navigate to /work-queue and confirm it goes straight to Phase 1.
+
+AC12. "Run again" button in SUMMARY calls POST /start and restarts the flow. Manual test.
+
+---
+
+## Section 7 — Constraints
+
+- Shadcn UI + Lucide only — no new libraries
+- Manual fetch() — no Orval
+- API_BASE: `(import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api"`
+- Poll interval: 2 seconds during PREPARING — stop polling on READY/COMPLETE/FAILED
+- No animation required for card transitions — content swap is sufficient
+- Skip reason: show as three inline buttons, not a dropdown
+- Do not modify any existing page — additive only (App.tsx route + sidebar badge + new page)
+- No Orval codegen
+
+---
+
+## Section 8 — Non-goals
+
+- No dark mode or theme switching
+- No keyboard shortcuts
+- No bulk accept/skip
+- No editing of proposed_fix before accepting
+- No filtering or sorting of cards by the operator
+- No real-time multi-user sync
+
+---
+
+## Section 9 — Assumptions
+
+- The sidebar nav component is findable — check for a layout or sidebar file in src/components or src/layouts
+- GET /tasks?status=Open&type=Review returns `{ tasks: Task[] }` — check the tasks router to confirm query param support, and adjust the badge fetch if needed
+- The existing 1 READY session will be picked up by GET /status on page load — AC11 covers this
+- Shadcn Badge, Button, Card, Skeleton all available — confirmed from prior builds
+- Lucide Zap not yet used — import it
+
+---
+
+## Section 10 — Rollback
+
+Remove new route from App.tsx, remove sidebar badge code, delete work-queue.tsx.
+No schema changes. No data changes. No backend changes.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS: [each AC: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+ANYTHING I SHOULD KNOW: [unexpected findings, risks, deviations]
