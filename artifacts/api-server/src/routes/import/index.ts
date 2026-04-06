@@ -120,6 +120,121 @@ router.post("/import/parse", (req, res, next) => {
   }
 });
 
+router.get("/import/documents-list", async (_req, res): Promise<void> => {
+  try {
+    const docs = await db
+      .select({
+        id: documentsTable.id,
+        file_code: documentsTable.file_code,
+        name: documentsTable.name,
+        tier: documentsTable.tier,
+        version: documentsTable.version,
+        lifecycle_status: documentsTable.lifecycle_status,
+      })
+      .from(documentsTable)
+      .where(eq(documentsTable.lifecycle_status, "CURRENT"));
+    res.json({ documents: docs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/import/quick-update", (req, res, next) => {
+  upload.single("file")(req, res, (err: any) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ error: "File exceeds 10MB limit" });
+        return;
+      }
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    next();
+  });
+}, async (req, res): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
+    }
+
+    const originalName = (req.file.originalname || "").toLowerCase();
+    if (!originalName.endsWith(".md") && !originalName.endsWith(".txt")) {
+      res.status(400).json({ error: "Only .md and .txt files are accepted" });
+      return;
+    }
+
+    const documentId = req.body?.document_id;
+    if (!documentId) {
+      res.status(400).json({ error: "document_id is required" });
+      return;
+    }
+
+    const docs = await db
+      .select()
+      .from(documentsTable)
+      .where(eq(documentsTable.id, documentId))
+      .limit(1);
+
+    if (docs.length === 0) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    const doc = docs[0];
+
+    if (doc.lifecycle_status !== "CURRENT") {
+      res.status(400).json({ error: `Document lifecycle status is ${doc.lifecycle_status}, only CURRENT documents can be updated` });
+      return;
+    }
+    const fileContent = req.file.buffer.toString("utf-8").trim();
+
+    if (!fileContent) {
+      res.status(400).json({ error: "Uploaded file is empty" });
+      return;
+    }
+
+    const newVersion = (doc.version || 1) + 1;
+    const wordCount = fileContent.split(/\s+/).filter(Boolean).length;
+
+    await db
+      .update(documentsTable)
+      .set({
+        content: fileContent,
+        version: newVersion,
+        word_count: wordCount,
+        review_state: "REQUIRES_REVIEW",
+        last_reviewed: new Date().toISOString().split("T")[0],
+      })
+      .where(eq(documentsTable.id, documentId));
+
+    await db.insert(changelogTable).values({
+      id: randomUUID(),
+      action: "DOCUMENT_VERSION_UPDATED",
+      document_id: documentId,
+      details: JSON.stringify({
+        name: doc.name,
+        previous_version: doc.version || 1,
+        new_version: newVersion,
+        word_count: wordCount,
+        source_filename: req.file.originalname,
+      }),
+      triggered_by: "quick-update",
+    });
+
+    res.json({
+      document_id: documentId,
+      name: doc.name,
+      previous_version: doc.version || 1,
+      new_version: newVersion,
+      word_count: wordCount,
+      review_state: "REQUIRES_REVIEW",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/import/:session_id", async (req, res): Promise<void> => {
   try {
     const rows = await db

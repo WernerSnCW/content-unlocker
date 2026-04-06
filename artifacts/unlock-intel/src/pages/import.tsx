@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, Upload, CheckCircle, XCircle, AlertTriangle, FileText, ArrowLeft, Sheet } from "lucide-react";
+import { Loader2, Upload, CheckCircle, XCircle, AlertTriangle, FileText, ArrowLeft, Sheet, RefreshCw, BookOpen, Info, Search } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -107,6 +107,246 @@ function getActionBadge(action: string) {
     <Badge className="bg-blue-600 text-white">create</Badge>
   ) : (
     <Badge className="bg-amber-500 text-white">update</Badge>
+  );
+}
+
+interface DocOption {
+  id: string;
+  file_code: string;
+  name: string;
+  tier: number;
+  version: number;
+  lifecycle_status: string;
+}
+
+function QuickUpdateTab() {
+  const [documents, setDocuments] = useState<DocOption[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [selectedDocId, setSelectedDocId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{
+    name: string;
+    previous_version: number;
+    new_version: number;
+    word_count: number;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}api/import/documents-list`)
+      .then((r) => r.json())
+      .then((data) => setDocuments(data.documents || []))
+      .catch(() => {})
+      .finally(() => setDocsLoading(false));
+  }, []);
+
+  const filteredDocs = useMemo(() => {
+    if (!searchQuery.trim()) return documents;
+    const q = searchQuery.toLowerCase();
+    return documents.filter(
+      (d) =>
+        d.name.toLowerCase().includes(q) ||
+        d.file_code.toLowerCase().includes(q)
+    );
+  }, [documents, searchQuery]);
+
+  const selectedDoc = documents.find((d) => d.id === selectedDocId);
+
+  async function handleUpload() {
+    if (!selectedDocId || !selectedFile) return;
+    setUploading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("document_id", selectedDocId);
+      const r = await fetch(`${API_BASE}api/import/quick-update`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.error || "Upload failed");
+        return;
+      }
+      setResult(data);
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function resetForm() {
+    setSelectedDocId("");
+    setSelectedFile(null);
+    setResult(null);
+    setError(null);
+    setSearchQuery("");
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  if (result) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-emerald-800/50 bg-emerald-950/20">
+          <CardContent className="py-6">
+            <div className="flex items-center gap-3 mb-4">
+              <CheckCircle className="w-6 h-6 text-emerald-400" />
+              <span className="text-lg font-medium text-emerald-300">Version Updated</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+              <div><span className="text-muted-foreground">Document:</span> <span className="font-medium">{result.name}</span></div>
+              <div><span className="text-muted-foreground">Version:</span> <span className="font-medium">v{result.previous_version} &rarr; v{result.new_version}</span></div>
+              <div><span className="text-muted-foreground">Word count:</span> <span className="font-medium">{result.word_count.toLocaleString()}</span></div>
+              <div><span className="text-muted-foreground">Review state:</span> <Badge className="bg-amber-500 text-white text-xs">REQUIRES_REVIEW</Badge></div>
+            </div>
+          </CardContent>
+        </Card>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={resetForm}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Update Another
+          </Button>
+          <Button variant="outline" asChild>
+            <a href={`${import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}/registry`}>View Registry</a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="py-6 space-y-5">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">1. Select document to update</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or file code..."
+                className="w-full pl-10 pr-3 py-2 rounded border border-border bg-background text-sm"
+              />
+            </div>
+            {docsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            ) : (
+              <div className="max-h-48 overflow-y-auto border border-border rounded">
+                {filteredDocs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-3 py-2">No matching documents</p>
+                ) : (
+                  filteredDocs.map((d) => (
+                    <div
+                      key={d.id}
+                      onClick={() => setSelectedDocId(d.id)}
+                      className={`px-3 py-2 cursor-pointer text-sm flex items-center justify-between border-b border-border last:border-b-0 transition-colors ${
+                        selectedDocId === d.id
+                          ? "bg-blue-950/40 border-l-2 border-l-blue-500"
+                          : "hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs text-muted-foreground shrink-0">{d.file_code}</span>
+                        <span className="truncate">{d.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">T{d.tier}</Badge>
+                        <span className="text-xs text-muted-foreground">v{d.version}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {selectedDoc && (
+              <div className="flex items-center gap-2 text-sm bg-blue-950/20 border border-blue-800/30 rounded px-3 py-2">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span>Selected: <strong>{selectedDoc.name}</strong> (v{selectedDoc.version}, T{selectedDoc.tier})</span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">2. Upload new version</label>
+            <p className="text-xs text-muted-foreground">Upload a .md or .txt file. Its content will replace the document's current content.</p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".md,.txt"
+              className="hidden"
+              onChange={(e) => {
+                setSelectedFile(e.target.files?.[0] || null);
+                setError(null);
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+                Choose File
+              </Button>
+              {selectedFile && (
+                <span className="text-sm flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                </span>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-red-500 text-sm bg-red-950/30 p-3 rounded">
+              <XCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              disabled={!selectedDocId || !selectedFile || uploading}
+              onClick={handleUpload}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Update Document
+            </Button>
+            {selectedDoc && selectedFile && (
+              <p className="text-xs text-muted-foreground">
+                This will update <strong>{selectedDoc.name}</strong> from v{selectedDoc.version} to v{selectedDoc.version + 1} and set review state to REQUIRES_REVIEW.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Quick Update Rules
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs text-muted-foreground">
+          <ul className="space-y-1.5 list-disc list-inside">
+            <li>The uploaded file's entire content replaces the document's existing content</li>
+            <li>Version number is automatically incremented (v1 &rarr; v2, etc.)</li>
+            <li>Review state is set to <span className="font-mono text-amber-400">REQUIRES_REVIEW</span> so it appears in the Work Queue</li>
+            <li>Word count is recalculated from the new content</li>
+            <li>Only <span className="font-mono text-emerald-400">CURRENT</span> lifecycle documents are shown</li>
+            <li>Accepted formats: <span className="font-mono">.md</span> and <span className="font-mono">.txt</span> (plain text, max 10MB)</li>
+            <li>A changelog entry is created for audit tracking</li>
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -550,11 +790,16 @@ export default function ImportPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="import-document">
+      <Tabs defaultValue="quick-update">
         <TabsList>
-          <TabsTrigger value="import-document">Import Document</TabsTrigger>
+          <TabsTrigger value="quick-update">Quick Version Update</TabsTrigger>
+          <TabsTrigger value="import-document">Bulk Import</TabsTrigger>
           <TabsTrigger value="sheet-sync">Sync from Google Sheet</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="quick-update">
+          <QuickUpdateTab />
+        </TabsContent>
 
         <TabsContent value="import-document">
           <div className="space-y-6">
@@ -665,6 +910,57 @@ export default function ImportPage() {
                     </TableBody>
                   </Table>
                 )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Bulk Import Parse Rules
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-xs">
+                <div>
+                  <p className="text-muted-foreground mb-2">Files must be <span className="font-mono">.md</span> format with structured IMPORT_BLOCK tags. Each block defines one document to create or update.</p>
+                </div>
+                <div>
+                  <p className="font-medium text-sm mb-1">File Header (optional)</p>
+                  <pre className="bg-muted/30 rounded p-3 text-xs font-mono overflow-x-auto whitespace-pre">{`<!-- IMPORT_FILE
+title: My Import Batch
+author: J. Smith
+date: 2026-04-06
+description: Q2 content refresh
+-->`}</pre>
+                </div>
+                <div>
+                  <p className="font-medium text-sm mb-1">Block Format</p>
+                  <pre className="bg-muted/30 rounded p-3 text-xs font-mono overflow-x-auto whitespace-pre">{`<!-- IMPORT_BLOCK
+destination: document
+action: create | update
+key: Content_Bank          (for update: match by file_code or name)
+id: uuid-here              (for update: match by exact ID)
+title: My Document Title
+tier: 1 | 2 | 3
+category: core | campaign | operational
+output_type: whitepaper | email | script
+lifecycle_status: DRAFT | CURRENT
+-->
+
+Your document content goes here in markdown...
+
+<!-- /IMPORT_BLOCK -->`}</pre>
+                </div>
+                <div>
+                  <p className="font-medium text-sm mb-1">Rules</p>
+                  <ul className="text-muted-foreground space-y-1 list-disc list-inside">
+                    <li><span className="font-mono text-blue-400">destination: document</span> is required on every block</li>
+                    <li><span className="font-mono text-blue-400">action: create</span> creates a new document in DRAFT status</li>
+                    <li><span className="font-mono text-blue-400">action: update</span> requires either <span className="font-mono">key</span> (matches file_code then name) or <span className="font-mono">id</span></li>
+                    <li>Content is scanned for prohibited compliance values (22p, 7.8x, "safe", series a, etc.) — violations are rejected</li>
+                    <li>Duplicate file uploads are detected via SHA-256 hash and blocked</li>
+                    <li>Multiple blocks per file are supported — each is validated independently</li>
+                  </ul>
+                </div>
               </CardContent>
             </Card>
           </div>
