@@ -1,0 +1,405 @@
+Build the feature described in the spec below.
+
+BEFORE WRITING ANY CODE:
+1. Read the entire spec from top to bottom
+2. Confirm receipt: "I see a phase doc with version stamp, acceptance criteria, constraints, non-goals, assumptions, and current state sections."
+   If any section is missing: stop and tell me — do not proceed.
+3. List the files you plan to change and why
+4. List any questions (see QUESTION FORMAT below)
+5. Wait for my confirmation before writing code
+
+QUESTION FORMAT:
+Number each question. For each question, reference the specific acceptance
+criterion or constraint it relates to.
+Format: "Q[N] — relates to [AC# or constraint name]: [question]"
+
+Classify each question before asking:
+- BLOCKER: must be resolved before any code is written
+- NON-BLOCKING ASSUMPTION: state the assumption you will use and proceed
+  unless the spec explicitly requires confirmation
+
+Only stop for BLOCKERs. For NON-BLOCKING ASSUMPTIONS: state the assumption
+and continue unless instructed otherwise.
+
+---
+
+RULES:
+- Respect every constraint and non-goal in the spec — no exceptions
+- Backward compatible — existing data must continue to work
+- If unclear: stop and ask, never invent behaviour
+- Do not implement anything not in the spec
+- If a requirement is in Non-goals: do not implement it even if it seems logical
+
+CODE PRESERVATION RULE:
+Do not delete or overwrite code outside the files listed in your change plan
+unless explicitly required by the spec. When modifying a large file, use
+comment markers to indicate unchanged sections rather than omitting them.
+If deletion of existing code outside the change plan is required: stop,
+report the file and function name, and wait for confirmation before proceeding.
+
+SIDE EFFECT RULE:
+If you must modify a function that is imported or called by files outside
+your planned change list: stop before making the change.
+Report: "SIDE EFFECT RISK — [function] in [file] is used by [other files].
+Proposed change: [description]. Confirm before proceeding."
+
+SPEC-CONSTRAINT CONFLICT RULE:
+If implementing a requirement would violate backward compatibility, a stated
+constraint, or another requirement in the spec: stop immediately.
+Report: "SPEC-CONSTRAINT CONFLICT — [requirement] conflicts with [constraint].
+Files involved: [list]. Do not attempt a workaround. Return to Step 3."
+
+PATCH LOOP RULE:
+If the build fails and requires significant changes: do NOT patch in place.
+A change is significant if it: alters data structures, touches more than 3
+files outside the original plan, or requires rethinking a spec requirement.
+Stop. Tell me what failed and why. Return to Step 3 to update the spec
+before rebuilding clean.
+
+CRITICAL BLOCKER — CONNECTOR SERVICE NAME:
+Before writing any code that calls the Replit Connectors SDK for Google Sheets,
+you MUST stop and report:
+"BLOCKER — Section 9 assumption: What is the correct service name for Google
+Sheets in connectors.proxy()? The spec assumes 'google-sheets' but the existing
+gdocs/index.ts uses 'google-drive'. Please confirm the exact service name and
+API path before proceeding with the sheet-sync router."
+Do not guess or assume — wait for confirmation.
+
+---
+
+# PHASE DOC — Google Sheets Transcript Sync (Phase A)
+Version: v1.0
+Date: 2026-04-06
+Build ID: RR-2026-04-06-009a
+Effort: 1.5 days
+Dependencies: RR-2026-04-06-008b (Task Manager Phase B — tasks table must exist; leadsTable must be stable)
+Risk: MEDIUM
+
+---
+
+## Section 1 — Feature
+
+Adds a "Sync from Google Sheet" tab to the existing Import Content page (`/import`). The operator pastes a Google Sheet URL, clicks Sync Now, and the system reads the sheet via the existing Replit Connectors SDK — creating new leads and storing transcript text for rows not yet imported. Each synced lead and transcript then appears in the Leads list ready for manual analysis via the Recommendation Engine.
+
+---
+
+## Section 2 — Why this is necessary
+
+Call logs and transcripts are currently tracked in a Google Sheet (structured with Lead, Call Transcript, Call Recording columns) and imported into the platform manually. There is no automated path from the sheet to the leads database — transcripts must be uploaded one by one to the Recommendation Engine. This build creates a direct sync path that eliminates manual data entry and makes every transcript immediately available for analysis.
+
+---
+
+## Section 3 — Current state
+
+From the Step 1 scan:
+
+- `artifacts/api-server/src/routes/gdocs/index.ts`: Uses `connectors.proxy("google-drive", ...)` from `@replit/connectors-sdk` for Google Doc export/import. Same connector pattern will be used for Google Sheets read.
+- `artifacts/api-server/src/routes/leads/index.ts`: `fuzzyMatchLeads(query, leads)` defined at lines 18–51. Also duplicated inline in `recommendation/index.ts`. Must be extracted to a shared lib — do not create a third copy.
+- `leadsTable`: Has `transcript_filename` (text) and `source` fields. No `transcript_text` column exists — this must be added.
+- `artifacts/unlock-intel/src/pages/import.tsx`: Three-step UI (upload → preview → execute) for markdown document import. New "Sync from Google Sheet" tab must be a parallel path — entirely separate state from the existing upload/preview/execute flow.
+- `artifacts/api-server/src/routes/import/index.ts`: Existing import router. New sheet sync endpoints go in a new dedicated router file, not this one.
+- No `sheet_sync_sessions` table exists — must be created.
+- No shared fuzzy match lib exists — must be extracted.
+
+---
+
+## Section 4 — Complexity assessment
+
+Layers touched:
+- [x] Data model — `transcript_text` column on `leadsTable`, new `sheet_sync_sessions` table
+- [ ] API contract changes — manual fetch only, no Orval codegen
+- [x] New UI components — new tab on `/import` page
+- [x] Additive edits to existing files — `leadsTable` schema, barrel export, routes index, `import.tsx` (new tab)
+- [x] Database schema — two schema changes, drizzle-kit push required
+- [x] External service integration — Google Sheets read via Replit Connectors SDK
+- [x] Domain logic — new shared lib for fuzzy match, new sheet sync service
+
+Layer count: 6
+Split required: YES — this is Phase A of 2. Phase B adds the 30-minute background poller.
+
+---
+
+## Section 5 — Required behaviour
+
+### 5.1 — Schema: transcript_text column on leadsTable
+
+File: `lib/db/src/schema/leads.ts` (additive edit)
+
+Add one nullable text column to `leadsTable`:
+```typescript
+transcript_text: text('transcript_text'),
+```
+
+No other changes to `leads.ts`. Run `drizzle-kit push` after this change.
+
+---
+
+### 5.2 — Schema: sheet_sync_sessions table
+
+File: `lib/db/src/schema/sheet-sync-sessions.ts` (create new file)
+
+Define `sheetSyncSessionsTable` with these columns:
+- `id` — text, primary key, default `randomUUID()` from crypto
+- `sheet_url` — text, not null
+- `status` — text, not null, default `'RUNNING'` — allowed values: `'RUNNING'`, `'COMPLETE'`, `'PARTIAL'`, `'FAILED'`
+- `rows_found` — integer, not null, default 0
+- `leads_created` — integer, not null, default 0
+- `leads_updated` — integer, not null, default 0
+- `leads_skipped` — integer, not null, default 0
+- `rows_failed` — integer, not null, default 0
+- `error_message` — text, nullable
+- `created_at` — timestamp, not null, defaultNow()
+- `completed_at` — timestamp, nullable
+
+Export: `sheetSyncSessionsTable`, `insertSheetSyncSessionSchema`, `InsertSheetSyncSession`, `SheetSyncSession` TypeScript types.
+
+File: `lib/db/src/schema/index.ts` (additive edit)
+
+Add: `export * from './sheet-sync-sessions';`
+
+Run `drizzle-kit push` after this change.
+
+---
+
+### 5.3 — Shared lib: fuzzyMatchLeads extraction
+
+File: `artifacts/api-server/src/lib/fuzzyMatch.ts` (create new file)
+
+Extract `fuzzyMatchLeads` from `leads/index.ts` and export it. Copy the exact logic from lines 18–51 of `leads/index.ts` — do not change the scoring rules or threshold.
+
+File: `artifacts/api-server/src/routes/leads/index.ts` (edit)
+
+Remove the local `fuzzyMatchLeads` function definition. Import from the shared lib:
+```typescript
+import { fuzzyMatchLeads } from '../../lib/fuzzyMatch';
+```
+
+Do NOT touch `recommendation/index.ts` — the inline duplicate there is deferred per Non-goals.
+
+Verify `GET /leads/match` still works after the refactor.
+
+---
+
+### 5.4 — API: sheet sync router
+
+File: `artifacts/api-server/src/routes/sheet-sync/index.ts` (create new file)
+
+Create an Express Router. Routes in this exact order:
+
+**POST /sheet-sync/sync**
+
+Body: `{ sheet_url: string }`
+
+Validate: `sheet_url` must be non-empty and start with `https://docs.google.com/spreadsheets/`. If invalid: 400 `{ error: 'Invalid Google Sheet URL' }`.
+
+Behaviour:
+
+1. Create session in `sheetSyncSessionsTable` with `status: 'RUNNING'`, `sheet_url`, `created_at: now()`.
+
+2. Extract spreadsheet ID:
+```typescript
+const match = sheet_url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+if (!match) return 400 { error: 'Could not extract spreadsheet ID from URL' };
+const spreadsheetId = match[1];
+```
+
+3. Read the sheet via Replit Connectors SDK — Google Sheets API v4. ⚠️ STOP HERE AND RAISE BLOCKER about connector service name before implementing this call.
+
+Expected response shape: `{ values: string[][] }` — row 0 is header (skip). Column 0 = Lead name, column 1 = Call Transcript, column 2 = Call Recording (ignore).
+
+If connector call fails: update session to `FAILED`, `error_message`, `completed_at`. Return 502 `{ error: 'Could not read Google Sheet', session_id }`.
+
+4. Load all existing leads: `const allLeads = await db.select().from(leadsTable);`
+
+5. For each data row (skip header, skip empty name rows):
+
+   a. Extract `leadName = row[0]?.trim()`, `transcriptText = row[1]?.trim()`. If either empty: increment `rows_failed`, continue.
+
+   b. Run `fuzzyMatchLeads(leadName, allLeads)`. Take top result if score >= 0.4.
+
+   c. Match found AND `match.lead.transcript_text` already populated → skip, increment `leads_skipped`.
+
+   d. Match found AND `match.lead.transcript_text` is null/empty → update lead's `transcript_text`, write changelog `TRANSCRIPT_SYNCED_FROM_SHEET`, increment `leads_updated`.
+
+   e. No match (score < 0.4) → create new lead:
+   ```typescript
+   id: `lead_${randomUUID().slice(0, 8)}`
+   name: leadName
+   source: 'sheet_sync'
+   transcript_text: transcriptText
+   pipeline_stage: 'Outreach'
+   ```
+   Write changelog `LEAD_CREATED_FROM_SHEET`, increment `leads_created`.
+
+6. Determine final status: all pass → `COMPLETE`, some fail → `PARTIAL`, all fail → `FAILED`. Update session record. Return 200 with session summary.
+
+Wrap Steps 2–6 in try/catch: on error, update session to `FAILED`, return 500.
+
+**GET /sheet-sync/sessions** (declare BEFORE /:id)
+
+Query `sheetSyncSessionsTable` ordered by `created_at` desc, limit 20. Return `{ sessions: [] }`.
+
+**GET /sheet-sync/sessions/:id**
+
+Return single session or 404.
+
+Changelog entries use `triggered_by: 'sheet_sync'` throughout.
+
+File: `artifacts/api-server/src/routes/index.ts` (additive edit)
+
+Add: `router.use('/sheet-sync', sheetSyncRouter)` after tasks router mount.
+
+---
+
+### 5.5 — Frontend: new tab on Import page
+
+File: `artifacts/unlock-intel/src/pages/import.tsx` (additive edit)
+
+Add a "Sync from Google Sheet" tab using Shadcn `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`. Tab 1 = existing import (unchanged). Tab 2 = new sheet sync.
+
+Tab 2 state (fully independent of existing import state):
+- `sheetUrl: string`
+- `syncing: boolean`
+- `syncResult: SyncResult | null`
+- `syncError: string | null`
+- `sessions: SheetSyncSession[]`
+
+On mount: fetch `GET /api/sheet-sync/sessions` → populate `sessions`.
+
+UI:
+- Text input for sheet URL (placeholder: `https://docs.google.com/spreadsheets/d/...`)
+- "Sync Now" button — disabled if URL empty or syncing
+- On click: POST to sync endpoint, display result card, refetch sessions
+- Result card: green for success showing counts, red for error
+- Session history table: date, URL (truncated), status badge, counts columns
+
+Types:
+```typescript
+interface SyncResult {
+  session_id: string;
+  status: string;
+  rows_found: number;
+  leads_created: number;
+  leads_updated: number;
+  leads_skipped: number;
+  rows_failed: number;
+}
+interface SheetSyncSession extends SyncResult {
+  id: string;
+  sheet_url: string;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+```
+
+All API calls: manual `fetch()` with `API_BASE`. No Orval hooks.
+Styling: `#0F1629` background, `#2D2D3F` cards, `#00C853` button. Shadcn + Lucide only.
+
+---
+
+## Section 6 — Acceptance criteria
+
+AC1. `POST /api/sheet-sync/sync` with a valid Google Sheet URL returns 200 with `{ session_id, status, rows_found, leads_created, leads_updated, leads_skipped, rows_failed }`. Manual test required: use the actual Google Sheet URL, click Sync Now, verify the response fields are populated correctly.
+
+AC2. A new lead is created in `leadsTable` for each sheet row where no fuzzy match exists (score < 0.4). The created lead has `source: 'sheet_sync'`, `pipeline_stage: 'Outreach'`, `transcript_text` populated, and id in `lead_XXXXXXXX` format. Manual test required: add a row with a name not in the leads table, sync, confirm the lead appears in the Leads list.
+
+AC3. A sheet row where a fuzzy match exists (score >= 0.4) and the matched lead has `transcript_text: null` results in that lead's `transcript_text` being updated. No duplicate lead is created. Manual test required: add a row matching an existing lead with no transcript, sync, confirm transcript_text is populated and no duplicate exists.
+
+AC4. A sheet row where a fuzzy match exists and the matched lead already has `transcript_text` populated is skipped — transcript_text is not overwritten, `leads_skipped` increments. Manual test required: sync the same sheet twice; on the second sync, all previously processed rows appear in `leads_skipped`.
+
+AC5. A `sheet_sync_sessions` row is created for every sync call with `sheet_url`, `status`, `rows_found`, `leads_created`, `leads_updated`, `leads_skipped`, `rows_failed`, `created_at`, and `completed_at`. Manual test required: inspect the database after a sync.
+
+AC6. Session status is `COMPLETE` when all rows processed without error, `PARTIAL` when some rows fail, `FAILED` when all rows fail or the sheet is unreadable.
+
+AC7. `GET /api/sheet-sync/sessions` returns 200 with up to 20 sessions ordered by `created_at` descending.
+
+AC8. `GET /api/sheet-sync/sessions/:id` returns the full session object for a valid id, and 404 for an unknown id.
+
+AC9. `POST /api/sheet-sync/sync` with a URL not starting with `https://docs.google.com/spreadsheets/` returns 400 `{ error: 'Invalid Google Sheet URL' }`.
+
+AC10. A changelog entry with `action: 'LEAD_CREATED_FROM_SHEET'` and `triggered_by: 'sheet_sync'` exists for each newly created lead. Manual test required: inspect changelog table after syncing a sheet with new rows.
+
+AC11. A changelog entry with `action: 'TRANSCRIPT_SYNCED_FROM_SHEET'` and `triggered_by: 'sheet_sync'` exists for each lead where `transcript_text` was written. Manual test required: inspect changelog table.
+
+AC12. The "Sync from Google Sheet" tab appears on `/import` alongside "Import Document". The existing import flow is unaffected. Manual test required: navigate to `/import`, confirm both tabs present and switching between them does not affect the other tab's state.
+
+AC13. Clicking "Sync Now" with a valid URL triggers the sync and displays the result card with counts. Manual test required: perform a sync and verify the result card appears.
+
+AC14. The session history table shows the last sync session after a sync completes with correct status and counts. Manual test required: sync, confirm the session appears in the history table.
+
+AC15. `fuzzyMatchLeads` is defined in exactly one place: `artifacts/api-server/src/lib/fuzzyMatch.ts`. The function in `leads/index.ts` is replaced with an import. `GET /api/leads/match?name=X` still returns correct results. Manual test required: call the leads match endpoint and confirm results are unchanged.
+
+AC16. All new lead IDs follow the `lead_XXXXXXXX` format. Manual test required: inspect a synced lead's id field in the database.
+
+---
+
+## Section 7 — Constraints
+
+- `artifacts/api-server/src/lib/propagation.ts`: must not be called or modified.
+- `artifacts/api-server/src/routes/recommendation/index.ts`: must not be modified.
+- `artifacts/unlock-intel/src/pages/import.tsx`: existing upload/preview/execute state must not be modified. New tab adds parallel state only.
+- `lib/db/src/schema/index.ts`: additive exports only.
+- `artifacts/api-server/src/routes/sheet-sync/index.ts`: `GET /sheet-sync/sessions` must be declared before `GET /sheet-sync/sessions/:id`.
+- Backward compatibility: `transcript_text` column is nullable — existing lead rows unaffected.
+- All IDs: `randomUUID()` from `crypto`. Lead IDs: `lead_${randomUUID().slice(0, 8)}` exactly.
+- Changelog entries written inline — no shared helper.
+- Do not run Orval codegen. All sheet sync frontend calls use manual `fetch()` with `API_BASE`.
+- `fuzzyMatchLeads` must be imported from `lib/fuzzyMatch.ts` — do not reimplement.
+
+---
+
+## Section 8 — Non-goals
+
+- This build does not add background polling — Phase B.
+- This build does not integrate synced transcripts with the Recommendation Engine.
+- This build does not support column mapping — fixed column structure only.
+- This build does not write back to the Google Sheet.
+- This build does not handle multiple worksheets — reads `Sheet1` only.
+- This build does not remove the inline fuzzy match duplicate in `recommendation/index.ts`.
+- This build does not modify the existing markdown document import flow.
+
+---
+
+## Section 9 — Assumptions
+
+- The Google Sheet is shared with the Google account connected via Replit Connectors.
+- The connector service name for Google Sheets is ASSUMED to be `'google-sheets'` with path `/v4/spreadsheets/:id/values/Sheet1`. THIS IS A BLOCKER — confirm the exact service name and API path before implementing the connector call.
+- `pipeline_stage` defaults to `'Outreach'` for new leads from sheet sync.
+- The `leadsTable` `updated_at` column auto-updates via `$onUpdate` Drizzle helper; if not present, set explicitly to `new Date()`.
+- The header row (row 0) is always present and always skipped.
+- Rows with an empty Lead name cell are treated as failed rows.
+
+---
+
+## Section 10 — Rollback
+
+1. Delete `lib/db/src/schema/sheet-sync-sessions.ts`
+2. Remove barrel export from `lib/db/src/schema/index.ts`
+3. Remove `transcript_text` from `lib/db/src/schema/leads.ts`
+4. Delete `artifacts/api-server/src/lib/fuzzyMatch.ts`
+5. Restore inline `fuzzyMatchLeads` in `leads/index.ts` and remove import
+6. Delete `artifacts/api-server/src/routes/sheet-sync/index.ts`
+7. Remove sheet-sync router mount from `routes/index.ts`
+8. Revert tab additions in `import.tsx`
+9. Drop `sheet_sync_sessions` table and `transcript_text` column via drizzle-kit push after schema revert
+
+---
+
+## Section 11 — What comes next
+
+Phase B (RR-2026-04-06-009b) adds the 30-minute background poller via `lib/sheetPoller.ts` initialised from the server startup file. Before Phase B can be specced, Step 1 must rescan the server startup structure, the new `routes/sheet-sync/index.ts`, and confirm whether any boot-time scheduler pattern already exists.
+
+---
+
+AFTER BUILDING — return this report:
+FILES CHANGED: [file + description of specific change]
+FILES CREATED: [file + one-line description]
+ACCEPTANCE CRITERIA STATUS:
+  [each: SATISFIED / NEEDS MANUAL TEST / COULD NOT SATISFY]
+  [NEEDS MANUAL TEST → exact manual test steps]
+  [COULD NOT SATISFY → why + what you did instead]
+ANYTHING I SHOULD KNOW: [unexpected findings, undocumented decisions, risks]
+
+PHASE DOC FINAL:
+[paste here]
