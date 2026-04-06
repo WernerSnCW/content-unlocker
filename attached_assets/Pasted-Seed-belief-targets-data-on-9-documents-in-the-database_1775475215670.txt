@@ -1,0 +1,134 @@
+Seed belief_targets data on 9 documents in the database.
+
+This is a data migration only — no new files, no schema changes, no API changes.
+
+BEFORE WRITING ANY CODE:
+1. Confirm receipt of this prompt
+2. List the SQL or Drizzle update statements you plan to run
+3. Wait for confirmation before executing
+
+---
+
+## What to do
+
+Update the `belief_targets` column on the following documents in `documentsTable`.
+
+The `belief_targets` column is `jsonb` with default `[]`. Each entry is:
+`{ "belief_id": string, "state_from": string, "state_to": string }`
+
+Find each document by `file_code` using `startsWith` matching (e.g. file_code LIKE '140%').
+
+Run one update per document. Use Drizzle ORM — no raw SQL.
+
+---
+
+## The updates
+
+**Document 140 (Unlock Access Explainer)**
+```json
+[
+  { "belief_id": "U1", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "G2", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "G3", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 150 (EIS The Investors Secret Weapon)**
+```json
+[
+  { "belief_id": "U4", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "P2", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "F2", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 160 (Five EIS Case Studies 2026)**
+```json
+[
+  { "belief_id": "U4", "state_from": "PARTIAL", "state_to": "ESTABLISHED" },
+  { "belief_id": "G1", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 170 (IHT and EIS Estate Planning)**
+```json
+[
+  { "belief_id": "L1", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "L2", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 190 (UK Investment Landscape 2026)**
+```json
+[
+  { "belief_id": "U2", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "P3", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 196 (Post-April 6 Messaging Guide)**
+```json
+[
+  { "belief_id": "C4", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 120 (Pack 1 Founding Investor Brief)**
+```json
+[
+  { "belief_id": "U3", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "C2", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "C3", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "C5", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "F0", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "F1", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 130 (Pack 2 Information Memorandum)**
+```json
+[
+  { "belief_id": "C1", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "C6", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "F3", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+**Document 100 (One-Pager)**
+```json
+[
+  { "belief_id": "U3", "state_from": "UNKNOWN", "state_to": "PARTIAL" },
+  { "belief_id": "C4", "state_from": "UNKNOWN", "state_to": "PARTIAL" }
+]
+```
+
+---
+
+## Verification
+
+After running the updates, verify:
+
+1. `SELECT file_code, belief_targets FROM documents WHERE belief_targets != '[]'::jsonb ORDER BY file_code` — should return 9 rows with populated belief_targets arrays.
+
+2. `SELECT COUNT(*) FROM documents WHERE belief_targets != '[]'::jsonb` — must return 9.
+
+3. Spot check: `SELECT belief_targets FROM documents WHERE file_code LIKE '150%'` — must return array with U4, P2, F2 entries.
+
+---
+
+## Rules
+
+- Use Drizzle ORM (db.update) — not raw SQL
+- Match documents by file_code using `like` operator with '%' suffix: `like(documentsTable.file_code, '140%')`
+- Do not modify any other column
+- Do not create new documents
+- Do not trigger propagation — this is a data seed, not a content change
+
+---
+
+## After completing
+
+Report:
+- How many documents were updated
+- The verification query results
+- Any documents that could not be found by file_code prefix
