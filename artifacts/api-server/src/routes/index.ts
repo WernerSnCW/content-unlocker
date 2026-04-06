@@ -17,6 +17,7 @@ import promptsRouter from "./prompts";
 import complianceConstantsRouter from "./compliance-constants";
 import importRouter from "./import";
 import tasksRouter from "./tasks";
+import sheetSyncRouter from "./sheet-sync";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(promptsRouter);
 router.use(complianceConstantsRouter);
 router.use(importRouter);
 router.use(tasksRouter);
+router.use("/sheet-sync", sheetSyncRouter);
 
 export default router;

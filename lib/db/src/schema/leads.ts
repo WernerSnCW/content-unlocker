@@ -20,6 +20,7 @@ export const leadsTable = pgTable("leads", {
   notes: jsonb("notes").notNull().default([]),
   source: text("source"),
   transcript_filename: text("transcript_filename"),
+  transcript_text: text("transcript_text"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
