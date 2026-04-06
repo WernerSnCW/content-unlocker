@@ -1,4 +1,4 @@
-import { db, leadsTable, documentsTable, changelogTable, acuTable, channelsTable, complianceConstantsTable } from "@workspace/db";
+import { db, leadsTable, documentsTable, changelogTable, acuTable, channelsTable, complianceConstantsTable, beliefRegistryTable } from "@workspace/db";
 import { eq, ilike, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { readFileSync, readdirSync } from "fs";
@@ -26,6 +26,8 @@ export async function seedDatabase() {
       logger.info({ ...promptResult }, "Prompt seed complete");
       const ccResult = await seedComplianceConstants();
       logger.info({ ...ccResult }, "Compliance constants seed complete");
+      const brResult = await seedBeliefRegistry();
+      logger.info({ ...brResult }, "Belief registry seed complete");
     } catch (err) {
       logger.error({ err }, "Incremental seed error (non-fatal)");
     }
@@ -107,7 +109,7 @@ export async function seedDatabase() {
       archived: lead.archived || false,
       send_log: lead.send_log || [],
       stage_history: lead.stage_history || [],
-      notes: lead.notes || [],
+      notes_legacy: lead.notes || [],
     }).onConflictDoNothing();
   }
 
@@ -174,6 +176,8 @@ export async function seedDatabase() {
     logger.info({ ...promptResult }, "Prompt seed complete");
     const ccResult = await seedComplianceConstants();
     logger.info({ ...ccResult }, "Compliance constants seed complete");
+    const brResult = await seedBeliefRegistry();
+    logger.info({ ...brResult }, "Belief registry seed complete");
   } catch (err) {
     logger.error({ err }, "Post-seed incremental seed error (non-fatal)");
   }
@@ -257,6 +261,42 @@ export async function seedComplianceConstants(): Promise<{ created: number; skip
   }
 
   return { created, skipped, total: constants.length };
+}
+
+async function seedBeliefRegistry(): Promise<{ created: number; skipped: boolean }> {
+  const existing = await db.select({ id: beliefRegistryTable.id }).from(beliefRegistryTable).limit(1);
+  if (existing.length > 0) {
+    return { created: 0, skipped: true };
+  }
+
+  const BELIEF_SEED = [
+    { id: 'U1', cluster: 'universal', name: 'The Practical Advice Gap', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', gates: ['G3', 'any_unlock_product_claim'], primary_document_id: '140', description: 'Most IFAs practically cannot advise on individual EIS companies. The advice effectively stops at the fund level.' },
+    { id: 'U2', cluster: 'universal', name: 'Hidden Correlation Risk', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', gates: ['P3', 'iran_effect_content'], primary_document_id: '190' },
+    { id: 'U3', cluster: 'universal', name: 'Structural Independence as the Moat', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', gates: ['F0', 'any_platform_claim'], primary_document_id: '120' },
+    { id: 'U4', cluster: 'universal', name: 'EIS Risk Is Manageable', belief_type: 'correctable', is_hard_gate: true, policy_status: 'active', gates: ['risk_appetite_question', 'any_risk_framing'], primary_document_id: '150', description: 'Maximum effective loss after all reliefs is ~38.5p per pound (EIS) or ~27.5p (SEIS).' },
+    { id: 'G1', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Asymmetric Upside in Early-Stage Tech', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '160' },
+    { id: 'G2', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Direct EIS vs Fund Fee Drag', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '140' },
+    { id: 'G3', cluster: 'growth_seeker', cluster_display_name: 'Growth Seeker', cluster_tagline: 'Live Well', name: 'Infrastructure Required for Direct EIS', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['U1'], primary_document_id: '140' },
+    { id: 'P1', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'The January 2027 Head Start', belief_type: 'correctable', is_hard_gate: false, policy_status: 'blocked_pending_legal', description: 'BLOCKED — legal sign-off required on ASA two-year structure.' },
+    { id: 'P2', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'Reassessing Risk (38.5p not gross)', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '150' },
+    { id: 'P3', cluster: 'preserver', cluster_display_name: 'Preserver', cluster_tagline: 'Stay Safe', name: 'Unlock More Valuable in a Correction', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['U2'], primary_document_id: '190' },
+    { id: 'L1', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'April 2027 Broke the Estate Plan', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '170' },
+    { id: 'L2', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'Rolling EIS as BPR Replacement', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['L1'], primary_document_id: '170' },
+    { id: 'L3', cluster: 'legacy_builder', cluster_display_name: 'Legacy Builder', cluster_tagline: 'Leave Wealth', name: 'The Two-Year Window', belief_type: 'correctable', is_hard_gate: false, policy_status: 'blocked_pending_legal', description: 'BLOCKED — legal sign-off required.' },
+    { id: 'C1', cluster: 'company_conviction', name: 'The Market Is Large Enough', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '130' },
+    { id: 'C2', cluster: 'company_conviction', name: 'The Team Can Build This', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Tom King 15 years EIS/investment strategy. Werner — electronic banking + integrations. Tony Vine-Lott — strategic advisor, former Chairman Barclays Stockbroking.' },
+    { id: 'C3', cluster: 'company_conviction', name: 'The Product Is Real, Not a Pitch', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Five founding investors actively using. Platform evolved from DD tool through real usage.' },
+    { id: 'C4', cluster: 'company_conviction', name: 'The Timing Is Right', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '196', description: 'April 6 2026 VCT relief reduced. April 2027 pension IHT. Regulatory environment creating demand.' },
+    { id: 'C5', cluster: 'company_conviction', name: 'The Business Model Holds', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '120', description: 'Subscription only. No commission, no AUM fee, no trail. Independence built into revenue model.' },
+    { id: 'C6', cluster: 'company_conviction', name: 'The Exit Path Is Credible', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', primary_document_id: '130', description: 'PitchBook/Morningstar, Bureau van Dijk/Moody\'s, Refinitiv/LSEG. Confirmed acquirer category.' },
+    { id: 'F0', cluster: 'founding_round', name: 'Unlock Will Become Structurally Essential', belief_type: 'developmental', is_hard_gate: true, policy_status: 'active', prerequisite_beliefs: ['C2', 'C3'], gates: ['F1', 'F2', 'F3', 'pack_1', 'pack_2', 'investment_ask'], primary_document_id: '120', description: 'Must be established before any founding round content.' },
+    { id: 'F1', cluster: 'founding_round', name: 'Founding Round Terms Are Attractive', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0', 'C1', 'C4', 'C5'], primary_document_id: '120' },
+    { id: 'F2', cluster: 'founding_round', name: 'HMRC Co-Invests via EIS', belief_type: 'correctable', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0'], primary_document_id: '150' },
+    { id: 'F3', cluster: 'founding_round', name: 'The Exit Path Is Clear', belief_type: 'developmental', is_hard_gate: false, policy_status: 'active', prerequisite_beliefs: ['F0', 'C6'], primary_document_id: '130' },
+  ];
+
+  await db.insert(beliefRegistryTable).values(BELIEF_SEED);
+  return { created: BELIEF_SEED.length, skipped: false };
 }
 
 export function validateSeedData(): { valid: boolean; errors: string[]; warnings: string[] } {

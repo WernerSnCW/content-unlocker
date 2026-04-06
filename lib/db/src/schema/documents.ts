@@ -38,6 +38,7 @@ export const documentsTable = pgTable("documents", {
   sequence_id: text("sequence_id"),
   word_count: integer("word_count"),
   branch_condition: text("branch_condition"),
+  belief_targets: jsonb("belief_targets").default([]),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable);

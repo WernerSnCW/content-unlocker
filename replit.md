@@ -64,6 +64,7 @@ The project is structured as a pnpm workspace monorepo using TypeScript (v5.9).
 -   **Video Catalogue:** Manages video metadata, lifecycle status, and integrates videos into the recommendation engine.
 -   **Call Transcript Analysis:** Parses `.txt/.docx` transcripts, normalizes speaker labels, and extracts investor names.
 -   **Lead Matching:** Implements fuzzy matching for lead identification.
+-   **Investor Intelligence & Belief State System (Phase 010a: Schema):** Database foundation for belief state tracking. 4 new tables: `belief_registry` (23 beliefs seeded: U1-U4 universal, G1-G3 growth_seeker, P1-P3 preserver, L1-L3 legacy_builder, C1-C6 company_conviction, F0-F3 founding_round), `lead_beliefs` (per-lead belief states with unique constraint on lead_id+belief_id, states: UNKNOWN/ABSENT/PARTIAL/ESTABLISHED/BLOCKED), `belief_transitions` (state change audit log), `lead_intelligence` (per-lead profile with qualification, cluster, hot_button, SPIN fields, readiness). `documentsTable` gains `belief_targets` jsonb column. `leadsTable.notes` migrated from jsonb to text (old data preserved in `notes_legacy`). Hard gates: U4 and F0. Blocked beliefs: P1 and L3. Seed runs via `seedBeliefRegistry()` in dataManager.ts with insert-if-not-exists pattern.
 
 ## External Dependencies
 
