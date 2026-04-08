@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, jsonb, doublePrecision, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -22,6 +22,25 @@ export const leadsTable = pgTable("leads", {
   source: text("source"),
   transcript_filename: text("transcript_filename"),
   transcript_text: text("transcript_text"),
+
+  // Contact details (for Pipedrive sync + Aircall matching)
+  email: text("email"),
+  phone: text("phone"),
+
+  // Call outcome tracking (for Aircall integration + call queue)
+  call_attempts: integer("call_attempts").notNull().default(0),
+  last_call_outcome: text("last_call_outcome"), // interested, no-interest, no-answer, callback-requested, meeting-booked, not-now
+  callback_date: timestamp("callback_date", { withTimezone: true }),
+  outreach_paused_until: timestamp("outreach_paused_until", { withTimezone: true }),
+
+  // Campaign/batch tracking (for Pipedrive field mapping + wave tracking)
+  batch_date: text("batch_date"),
+  campaign_name: text("campaign_name"),
+  sequence_stage: text("sequence_stage"),
+
+  // External CRM link (for Pipedrive sync)
+  pipedrive_person_id: integer("pipedrive_person_id").unique(),
+
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
