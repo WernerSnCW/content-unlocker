@@ -1,0 +1,383 @@
+# Unlock Content — Development Spec
+
+**Executive summary:** This spec covers 12 build phases addressing all 26 findings, ranging from critical infrastructure fixes to UI surface work. Total estimated effort is approximately 14–18 developer-days. The single highest-risk item is PDF storage on the local filesystem (B1): generated PDFs will not survive a deployment or container restart, meaning PDF export is functionally broken in production until Phase 1 is complete.
+
+---
+
+## Phase 1: PDF Infrastructure (Effort: M)
+
+**Findings addressed:** B1, B2, B26
+
+**Problem:** `pdfService.ts` writes generated PDFs to the local filesystem via `pdf_file_path`. On Replit, the filesystem does not persist across deployments or container restarts, so every generated PDF is lost on redeploy. Additionally, the Puppeteer browser singleton (`let browser: Browser | null = null`) has no health check or reconnection logic — if Chromium crashes, every subsequent PDF export call fails until the server is manually restarted. On the frontend, PDF export failure produces no user-visible feedback.
+
+**Spec:**
+- Replace local filesystem PDF storage in `pdfService.ts` with Replit Object Storage (or an equivalent persistent store). Update `generatePdf()` to write the PDF binary to object storage and store the resulting object key or URL in `pdf_file_path` rather than a local path. Update the download handler behind `GET /documents/:id/download-pdf` to read from object storage using the stored key.
+- Add browser health checking to the Puppeteer singleton in `pdfService.ts`. Before each `generatePdf()` call, verify the browser process is alive (e.g. `browser.isConnected()`). If the check fails, call `browser.close()` defensively, set `browser = null`, and re-launch. Wrap the reconnection attempt in a try/catch; if relaunch fails, throw a typed `PdfServiceError` with a meaningful message rather than allowing the call to proceed with a dead browser.
+- Add a `maxRetries: 1` reconnection loop — if the first PDF generation attempt throws a Chromium connection error, attempt one reconnect-and-retry before surfacing the error to the caller.
+- In the frontend PDF export flow, add an error boundary around the export action. On failure (non-2xx response or network error), display an inline error message to the operator — e.g. "PDF generation failed. Please try again or contact support." Do not fail silently. If a loading/spinner state is shown during generation, ensure it is dismissed on failure.
+
+**Acceptance criteria:**
+- A PDF generated before a simulated server restart is still downloadable after the restart.
+- Killing the Chromium process manually does not cause subsequent PDF export requests to return unhandled errors; the service recovers on the next request.
+- When PDF generation fails, the operator sees an error message in the UI within the same interaction — no silent failure.
+- `GET /documents/:id/download-pdf` returns the correct binary for a previously generated document after a deployment cycle.
+
+**Risks / notes:** Object storage integration requires the correct Replit SDK configuration. Confirm the storage bucket is provisioned before deploying this change. The `pdf_file_path` column currently stores a local filesystem path — existing rows will have stale paths after migration; a one-time migration script or a fallback in the download handler is needed to handle pre-migration rows gracefully.
+
+---
+
+## Phase 2: Claude API Resilience (Effort: S)
+
+**Findings addressed:** B3
+
+**Problem:** AI generation calls to Claude in `generationEngine.ts` have no explicit timeout configured. A slow or hung Claude API response blocks the Express connection indefinitely, tying up the server thread and eventually causing the request to appear stalled to the operator with no feedback.
+
+**Spec:**
+- Add an explicit timeout to all Claude API calls in `generationEngine.ts`. Use an `AbortController` with a configurable timeout (default: 90 seconds for generation, 30 seconds for shorter analysis calls). Pass the `signal` to the Claude client call. On `AbortError`, throw a typed `ClaudeTimeoutError` with the timeout duration in the message.
+- Wrap the timeout pattern in a shared utility function (e.g. `withClaudeTimeout(fn, ms)`) and apply it consistently to all Claude calls in `generationEngine.ts` — do not apply it only to the generation entrypoint, as the same hang risk exists in QC rerun and regeneration paths.
+- In the route handler, catch `ClaudeTimeoutError` specifically and return HTTP 504 with a JSON body: `{"error": "AI generation timed out. Please try again."}`. Do not return a generic 500.
+- Apply the same timeout pattern to Claude calls in `routes/recommendation/index.ts` (transcript analysis and document ranking), `routes/work-queue/index.ts` (work queue analysis), and `routes/lead-intelligence/index.ts` (intelligence generation). All share the same hang risk.
+
+**Acceptance criteria:**
+- Simulating a hung Claude call (e.g. via a mock that never resolves) causes the request to return HTTP 504 within the configured timeout window.
+- The timeout duration is configurable via environment variable, not hardcoded.
+- All Claude call sites in `generationEngine.ts`, `routes/recommendation/index.ts`, `routes/work-queue/index.ts`, and `routes/lead-intelligence/index.ts` are wrapped.
+
+**Risks / notes:** The timeout value for content generation (which can legitimately take 30–60 seconds for complex documents) needs to be higher than analysis calls. Set generation timeout at 120 seconds minimum; analysis at 30–45 seconds. Test against real Claude response latencies before tuning down.
+
+---
+
+## Phase 3: Shared Library Stabilisation (Effort: S)
+
+**Findings addressed:** B7
+
+**Problem:** `lib/personas.ts` and `lib/call-questions.ts` sit at the workspace root and are imported via deep relative paths (e.g. `../../../../../lib/personas`) from inside route packages. These files are not members of any pnpm workspace package. Any restructuring of the route directory hierarchy will silently break these imports at build time with no type-safe warning at the point of restructuring.
+
+**Spec:**
+- Convert `lib/personas.ts` and `lib/call-questions.ts` into a proper pnpm workspace package. Create a `packages/shared-lib/` directory with its own `package.json` (name: `@unlock/shared-lib`), `tsconfig.json` extending the root config, and an `index.ts` barrel export.
+- Move `lib/personas.ts` → `packages/shared-lib/src/personas.ts` and `lib/call-questions.ts` → `packages/shared-lib/src/call-questions.ts`. Export both from `packages/shared-lib/src/index.ts`.
+- Add `"@unlock/shared-lib": "workspace:*"` to the `dependencies` of every route package that currently imports these files. Update all import statements from relative paths to `import { ... } from '@unlock/shared-lib'`.
+- Remove the original `lib/` directory at the workspace root once all imports are migrated and the build passes.
+- Add a lint rule (e.g. `no-restricted-imports` pattern matching `../../../../lib/`) to prevent future reintroduction of deep relative cross-package imports.
+
+**Acceptance criteria:**
+- `pnpm build` succeeds with no TypeScript errors after migration.
+- Removing the `lib/` directory from the workspace root causes a build error caught at compile time (not a silent runtime failure), confirming all consumers are migrated.
+- No import in any route package references a path outside its own package boundary.
+
+**Risks / notes:** Identify all consumers of `lib/personas.ts` and `lib/call-questions.ts` before moving files — grep for both filenames and their exports. The `personas` data is also used by the content bank persona parser; confirm `routes/content/index.ts` is updated as part of this migration.
+
+---
+
+## Phase 4: Operational Transparency Fixes (Effort: S)
+
+**Findings addressed:** B4, B8, B9, B13, B14, B19
+
+**Problem:** Six distinct operational transparency failures are present, all causing operators or the system itself to receive misleading signals:
+
+- `routes/content/index.ts` lines 109–114: if persona guide parsing returns 0 results, 3 hardcoded fallback personas are silently returned. Operators see data but don't know it isn't from their actual persona guide.
+- Document health check reports 0 of 70 documents as healthy; this may reflect overly aggressive scoring calibration rather than a genuine content crisis, but the system provides no way to distinguish the two.
+- Import pipeline rejected 24 of 37 blocks (65%) in the recorded session with no visible explanation for why valid content might be rejected.
+- 10 tasks are marked Done but their linked documents remain in `REQUIRES_REVIEW` state — the task board shows work complete but the document registry contradicts it.
+- 2 work queue sessions (`3269884c…`, `6b27f1a2…`) are marked `COMPLETE` while containing 58 `PENDING` findings combined — the session state does not distinguish "analysis complete" from "all findings resolved."
+- 1 stale open review task exists on document `EIS_2026_Five_Case_Studies` (doc 160) which is already `CLEAN`.
+
+**Spec:**
+- In `routes/content/index.ts`, replace the silent fallback at lines 109–114 with explicit error signalling. If parsing yields 0 personas, log a `WARN` level server log entry with the message "Persona guide parsing returned 0 results — returning hardcoded fallback. Check persona guide format." and include a `_fallback: true` flag in the API response so any consuming UI can display a warning banner to operators.
+- Audit the document health scoring logic for calibration. Specifically, check the delivery dimension threshold — the review notes confirm "never-sent documents are correctly flagged as warnings" which would push all 70 documents to warning/failing in an early deployment. If this is the cause of 0% healthy, add an `is_early_deployment_mode` flag or adjust the delivery dimension weight so undeployed documents are not penalised the same as deployed documents with delivery failures. The calibration fix should result in at least some documents reaching healthy status in the current dataset.
+- On the import pipeline page, surface rejection reasons per block. The session object already stores rejected block data; expose `rejection_reason` per rejected block in `GET /api/import/:session_id` and display a collapsible "Rejected blocks" section in the UI showing the reason for each rejection so operators can diagnose format mismatches.
+- Add a work queue session status `ANALYSIS_COMPLETE` distinct from `COMPLETE`. `ANALYSIS_COMPLETE` means all documents have been analysed; `COMPLETE` means all findings have been resolved. Update the session completion path that currently moves `ANALYSING → READY → COMPLETE` to instead move to `ANALYSIS_COMPLETE`. Reserve `COMPLETE` for when pending findings count reaches 0 (which the accept/skip endpoint already handles). Update the work queue UI to display `ANALYSIS_COMPLETE` with a label like "Analysis done — findings pending" rather than "Complete."
+- For the 10 Done-task/REQUIRES_REVIEW document mismatches: add a server-startup reconciliation check (or a scheduled job) that detects tasks in `Done` status where the linked document is in `REQUIRES_REVIEW` and adds a `propagation_reflagged` note to the task record. Display these tasks in the task board with a visual indicator ("Document re-flagged after this task was completed") rather than showing them as cleanly done.
+- Close the stale open review task on document 160 (`EIS_2026_Five_Case_Studies`): write a one-time data migration script that sets this task to `Done` with a note "Auto-closed: document is CLEAN." Run it as part of this phase's deployment.
+
+**Acceptance criteria:**
+- Calling `GET /api/content-bank/personas` when the persona guide is malformed returns a response with `_fallback: true` and a server-side WARN log entry is emitted.
+- At least 1 document reaches healthy status after health scoring calibration (or the 0% result is explained by a documented known condition displayed in the UI).
+- `GET /api/import/:session_id` includes `rejection_reason` for each rejected block; the import UI shows rejection reasons.
+- Work queue sessions that have completed analysis but have unresolved findings show status `ANALYSIS_COMPLETE`, not `COMPLETE`.
+- The stale open task on doc 160 is closed in the database after deployment.
+- The 10 Done-task/REQUIRES_REVIEW mismatches display a visible indicator in the task board UI.
+
+**Risks / notes:** The health scoring calibration change must be validated against the full 70-document dataset before deployment — the goal is accurate scoring, not inflating healthy counts artificially. Do not change scoring weights without verifying the new calibration against documents you know to be genuinely healthy or failing.
+
+---
+
+## Phase 5: Compliance Gap Remediation (Effort: S)
+
+**Findings addressed:** B11, B22
+
+**Problem:** `inv_opp_feb26` (Investment Opportunity — February 2026, Tier 3) is marked `CLEAN` and has no open review task, but contains prohibited platform pricing content (£99/£249 subscription tiers) as confirmed by the compliance drift scan. This is the only document the recommendation engine would treat as safe to send that contains prohibited content. Additionally, there is no post-fix verification mechanism — after a work queue finding is accepted and fixed, there is no automated re-scan to confirm the prohibited content was actually removed.
+
+**Spec:**
+- Immediate data fix: set `inv_opp_feb26` `review_state` to `REQUIRES_REVIEW` and create a new open review task with title "Compliance re-check: prohibited pricing detected by audit" linked to this document. This must deploy before any other change in this phase.
+- Add a post-fix compliance verification step to the work queue accept endpoint (`POST /work-queue/cards/:findingId/accept`). After a finding is accepted and the fix is applied: (1) reload the document content from the database, (2) run a lightweight prohibited-value scan against the compliance_constants table (reuse the existing scanner logic from `acuScanner.ts` or the work queue analysis prompt — use the simpler string-match approach for prohibited values specifically, not a full Claude call), (3) if the scan still detects the prohibited value, mark the finding as `ACCEPTED_UNVERIFIED` rather than `ACCEPTED` and create a new `decision_card` finding for the same violation with a note "Prohibited content detected after attempted fix — manual review required." Log this event to the changelog.
+- Add a visual indicator on the work queue card UI for findings in `ACCEPTED_UNVERIFIED` state — show an amber warning badge "Fix unconfirmed" so operators are not misled into thinking the issue is resolved.
+- Update the document health check and work queue analysis to treat `ACCEPTED_UNVERIFIED` findings as still-open for the purpose of document review_state — a document should not be eligible to move to `CLEAN` while any finding is in `ACCEPTED_UNVERIFIED` state.
+
+**Acceptance criteria:**
+- `inv_opp_feb26` has `review_state = REQUIRES_REVIEW` and an open review task after deployment.
+- Accepting a work queue finding for a document that still contains the prohibited value results in an `ACCEPTED_UNVERIFIED` status, not `ACCEPTED`.
+- An `ACCEPTED_UNVERIFIED` finding causes the document to remain ineligible for `CLEAN` status.
+- A finding where the prohibited value is genuinely removed transitions to `ACCEPTED` (not `ACCEPTED_UNVERIFIED`).
+- The changelog records post-fix scan results.
+
+**Risks / notes:** The post-fix scan should use string matching against the `value` field of `is_prohibited = true` compliance constants, not a full Claude call — this keeps the accept action fast and deterministic. The Claude-based work queue analysis is for discovery; the post-fix check is for confirmation of a specific known value's removal.
+
+---
+
+## Phase 6: Google Integration Verification and Hardening (Effort: M)
+
+**Findings addressed:** B5, B6
+
+**Problem:** Google Sheets sync has only a failed session on record (error: "Sheet read failed" — caused by an invalid sheet URL) and the happy path has never been confirmed. Google Docs export (`POST /api/gdocs/export/:id`) has a wired route and complete `formatService.ts` logic but has not been end-to-end tested. Neither integration can be confirmed as working without a live test, and both are operator-facing features.
+
+**Spec:**
+- **Google Sheets sync:** Run a live end-to-end test using a valid Google Sheet containing test lead data. Record the session result. If the test passes, document the required sheet format (column headers, required fields) as a help text block in the sheet sync UI. If the test fails, identify the failure point in `sheet-sync/index.ts` and fix it before marking this finding resolved.
+- Add input validation to `POST /api/sheet-sync/sync` for the sheet URL parameter: check that the URL matches the Google Sheets URL pattern before attempting the API call. Return HTTP 400 with a clear error message ("Invalid Google Sheets URL format") rather than making the API call and failing with a generic "Sheet read failed" error. This was the cause of the only recorded failure.
+- Add OAuth token expiry handling in `sheet-sync/index.ts`: catch the specific error thrown by `@replit/connectors-sdk` when the token is expired or the connector is disconnected, and return a user-facing error message ("Google Sheets connection has expired — please reconnect the Google integration") rather than a generic failure. Log the expiry event to the changelog.
+- **Google Docs export:** Run a live end-to-end test exporting a real document (one of the 84 existing documents) to Google Drive using `POST /api/gdocs/export/:id`. Confirm the document appears in the connected Google Drive. If the test passes, add a success notification in the UI showing the Google Docs URL of the exported document. If the test fails, identify the failure point in `formatService.ts` or the `@replit/connectors-sdk` integration and fix it.
+- Add the same OAuth expiry handling to the Google Docs export route — catch connector disconnection errors and surface them to the operator with a reconnect prompt rather than a generic 500.
+- Add a "Test connection" button to whatever settings or configuration surface exists for both Google integrations, allowing operators to verify connectivity without performing a real sync or export.
+
+**Acceptance criteria:**
+- A Google Sheets sync using a valid sheet URL with the correct column format completes with status `SUCCESS` and creates or updates lead records.
+- A Google Docs export of an existing document produces a viewable document in the connected Google Drive.
+- Supplying an invalid Google Sheets URL returns HTTP 400 with a descriptive error message.
+- An expired OAuth token produces a user-facing reconnection prompt, not a generic server error.
+
+**Risks / notes:** Both integrations depend on `@replit/connectors-sdk` — confirm the Google Drive connector is active and the OAuth token is valid before running tests. If the Replit connector infrastructure is unavailable in the test environment, this phase cannot be completed and should be flagged as blocked. The fuzzy lead matching logic in `sheet-sync/index.ts` should also be verified during the live test — confirm leads are matched correctly when name spelling differs slightly.
+
+---
+
+## Phase 7: Recommendation Engine Belief Integration (Effort: M)
+
+**Findings addressed:** B10, B12, B18
+
+**Problem:** The document ranking prompt in `routes/recommendation/index.ts` (lines 928–975) does not receive the lead's belief state map. Claude ranks candidate documents without knowing which beliefs need progression; belief enrichment is only applied post-hoc to the ranking output. This means Claude cannot prefer documents that advance the most impactful beliefs. Additionally, 8 beliefs are marked `ESTABLISHED` with no evidence or confidence score (`lead_beliefs` table — leads 001, 002, 003 across beliefs U1, U4, F0, F1, F2, U2, U3), creating an audit gap. The `GET /leads/:leadId/beliefs/next` endpoint and belief gates endpoint have no UI entry point.
+
+**Spec:**
+- Modify the document ranking call in `routes/recommendation/index.ts` to fetch the lead's current belief states before constructing the ranking prompt. Include the belief state map in the prompt payload as a structured section, e.g.:
+
+```
+LEAD BELIEF STATE:
+- U1 (Understands product is not a fund): ESTABLISHED
+- U2 (Understands EIS mechanism): EXPLORING
+- F0 (Founding investor framing accepted): NOT_STARTED
+...
+
+RANKING PRIORITY: Prefer documents that advance beliefs currently in EXPLORING or NOT_STARTED state, particularly those in the Funding cluster for this lead's pipeline stage.
+```
+
+- Move belief enrichment (currently applied post-hoc) to the pre-prompt stage — pass belief targets per document into the candidate list Claude receives, so Claude can directly match beliefs-to-advance against beliefs-needed.
+- For the 8 ESTABLISHED beliefs with no evidence: add a data migration that sets `evidence = 'Established prior to evidence tracking system'` and `confidence = 0.5` (low confidence placeholder) and `evidence_source = 'legacy'` for all affected rows. This is an audit fix, not a functional change — it populates the fields without fabricating evidence.
+- Add a server-side validation guard on the belief state update endpoint (`POST /leads/:leadId/beliefs/analyze` or whichever endpoint sets belief state to `ESTABLISHED`): if `state` is being set to `ESTABLISHED` and `evidence` is null or empty string, reject the update with HTTP 422 and message "Cannot establish belief without evidence." This prevents future evidence-free ESTABLISHED beliefs.
+- Add a "Next belief to target" panel to the lead detail page. Call `GET /leads/:leadId/beliefs/next` and display the result as a highlighted card showing: the belief name, current state, recommended document (with a link to the document detail page), and a brief rationale. Position this panel prominently on the Beliefs tab of the lead detail page, above the full belief state list.
+- Add a belief gates status indicator to the same panel, showing which prerequisite beliefs are satisfied and which are blocking progression (from the belief gates endpoint).
+
+**Acceptance criteria:**
+- The document ranking Claude prompt includes the lead's current belief state map and each candidate document's belief targets.
+- Ranking output for a lead with `F0 = NOT_STARTED` prefers documents targeting F0 over documents targeting beliefs already `ESTABLISHED` for that lead (verifiable by inspecting the ranking rationale field).
+- All 8 ESTABLISHED beliefs with null evidence have non-null evidence, evidence_source, and confidence after migration.
+- Attempting to set a belief to ESTABLISHED via the API without providing evidence returns HTTP 422.
+- The lead detail Beliefs tab displays a "Next belief to target" card populated from `GET /leads/:leadId/beliefs/next`.
+
+**Risks / notes:** Adding belief state to the ranking prompt increases prompt size. Measure token count for a lead with 23 beliefs and a full candidate document list — if approaching Claude's context limit, summarise the belief state as a list of only non-ESTABLISHED and non-NOT_APPLICABLE beliefs rather than the full 23.
+
+---
+
+## Phase 8: Lead Intelligence UI Surface (Effort: M)
+
+**Findings addressed:** B15, B16, B17
+
+**Problem:** The lead intelligence engine generates and stores SPIN analysis fields (`spin_situation`, `spin_problem`, `spin_implication`, `spin_need_payoff` in `lead_intelligence`), qualification boolean flags (`higher_rate_taxpayer`, `capital_available`, `already_done_eis`, `ifa_involved`, `estate_above_2m`, `assets_abroad`, `vct_aim_experience`, `self_directed`, `open_to_early_stage_risk` in `lead_intelligence`), and belief evidence trails (`evidence`, `evidence_source`, `confidence`, `established_date` in `lead_beliefs`) — but none of these fields are displayed on the lead detail page or anywhere in the UI. Belief transition history (`belief_transitions` table) is also fully recorded but invisible. Operators are making call decisions and document recommendations without access to the full intelligence picture the system has already built.
+
+**Spec:**
+- **SPIN Analysis section:** Add a "SPIN Analysis" section to the lead detail page, within or below the existing Profile/Intelligence panel. Display all four SPIN fields as labelled read-only text blocks:
+  - Situation: `spin_situation`
+  - Problem: `spin_problem`
+  - Implication: `spin_implication`
+  - Need/Payoff: `spin_need_payoff`
+  
+  If any SPIN field is null (intelligence not yet generated or insufficient data), display a greyed-out placeholder "Not yet analysed." Do not hide the section — its absence signals the operator to run intelligence generation.
+
+- **Qualification checklist:** Add a "Qualification" section to the lead detail Profile tab. Render the boolean flags as a checklist with icons (✓ / ✗ / unknown):
+  - Higher rate taxpayer: `higher_rate_taxpayer`
+  - Capital available: `capital_available`
+  - IFA involved: `ifa_involved`
+  - Already done EIS: `already_done_eis`
+  - Estate above £2M: `estate_above_2m`
+  - Assets abroad: `assets_abroad`
+  - VCT/AIM experience: `vct_aim_experience`
+  - Self-directed: `self_directed`
+  - Open to early-stage risk: `open_to_early_stage_risk`
+  
+  Null values should render as "Unknown" rather than false, since null means not assessed, not confirmed-absent. Add `qualification_notes` as a text field below the checklist if non-null.
+
+- **Belief evidence trail:** On the lead detail Beliefs tab, make each belief row expandable. When expanded, show:
+  - Evidence: `lead_beliefs.evidence`
+  - Source: `lead_beliefs.evidence_source`
+  - Confidence: `lead_beliefs.confidence` (rendered as a percentage or bar, not a raw decimal)
+  - Date established: `lead_beliefs.established_date`
+  - Relevance rationale: `lead_beliefs.relevance_rationale`
+  
+  If evidence is null for an ESTABLISHED belief, show an amber warning "No evidence recorded" rather than an empty field.
+
+- **Belief transition history:** Within the expanded belief panel, add a "History" subsection showing a timeline of entries from the `belief_transitions` table for that belief/lead combination. Each entry should show: timestamp, previous state, new state, trigger (who or what triggered the change), and any notes. Render as a compact vertical timeline.
+
+**Acceptance criteria:**
+- The lead detail page for a lead with a generated intelligence profile shows non-null SPIN fields in a dedicated section.
+- All 9 qualification boolean flags are displayed on the lead detail page, with null rendered as "Unknown" (not false).
+- Each belief on the Beliefs tab can be expanded to show evidence, source, confidence, date, and relevance rationale.
+- Belief transition history entries from `belief_transitions` are visible in the expanded belief panel.
+- The ESTABLISHED beliefs with null evidence (from the B12 data issue) display the "No evidence recorded" warning in the UI.
+
+**Risks / notes:** The `lead_intelligence` table stores qualification booleans — confirm the API response from `GET /api/leads/:leadId/intelligence` (or equivalent) includes all 9 boolean fields before building the UI. If the endpoint is filtering them out, update the serialiser. This phase requires zero backend changes — all data is already in the database; work is frontend-only unless the API serialiser is omitting fields.
+
+---
+
+## Phase 9: Call Preparation Brief (Effort: M) [Depends on: Phase 7, Phase 8]
+
+**Findings addressed:** B21
+
+**Problem:** No unified pre-call view exists. The data needed for effective call preparation — lead intelligence profile, current belief state with next-belief recommendation, document send history, and suggested call questions — already exists across multiple API endpoints (`GET /leads/:id`, `GET /leads/:id/beliefs/next`, `GET /api/call-framework/questions`, lead send_log), but operators must navigate across multiple pages to assemble it manually. The review confirms a "Call Prep" page exists in the navigation but its current state does not fulfil this brief.
+
+**Spec:**
+- Build a single Call Preparation page at `/leads/:leadId/call-prep` (or enhance the existing call-prep route if it exists). This page is the pre-call briefing document for the operator.
+- Structure the page in five sections, loaded in parallel from their respective endpoints:
+
+  **1. Lead snapshot** — Name, company, pipeline stage, persona, qualification status, hot button quote. Source: `GET /api/leads/:id` + `lead_intelligence`.
+
+  **2. Qualification checklist** — The 9 boolean flags from Phase 8. Source: `lead_intelligence`. (Reuse the component built in Phase 8.)
+
+  **3. SPIN analysis** — The four SPIN fields from Phase 8. Source: `lead_intelligence`. (Reuse the component built in Phase 8.)
+
+  **4. Belief state and next target** — Current belief state summary (counts by cluster: established/exploring/not started), the next belief to target (from `GET /leads/:leadId/beliefs/next`), and the recommended document for that belief. Include belief gate status — which prerequisites are satisfied.
+
+  **5. Send history** — Chronological list of documents sent to this lead (from `lead.send_log`), with send date, document name, and a link to the document detail page.
+
+  **6. Suggested questions** — The 4 questions from `GET /api/call-framework/questions`, displayed as a checklist the operator can mentally tick during the call.
+
+- Add a direct link from the lead detail page to this call prep page — a prominent "Prepare for call" button in the lead detail header. This addresses the missing handoff identified in B25.
+- The call prep page should be printable / print-friendly (CSS `@media print` rule that removes navigation and collapses to a clean single-column layout).
+
+**Acceptance criteria:**
+- `GET /leads/:leadId/call-prep` (or equivalent route) renders all 6 sections for a lead with a generated intelligence profile.
+- All data loads within 2 seconds for a lead with a full profile (parallel fetch, not sequential).
+- The lead detail page has a visible "Prepare for call" button that navigates to the call prep page.
+- The call prep page renders usably when printed (no navigation, no sidebars).
+- For a lead with no generated intelligence, the page renders with empty-state placeholders and a prompt to generate the intelligence profile.
+
+**Risks / notes:** The call framework currently returns only 4 questions (noted in D4/B finding context). This is intentionally minimal per the review; surface all 4 as-is rather than blocking this phase on expanding the question set. The page is read-only in its first iteration — do not add call logging or note-taking in this phase.
+
+---
+
+## Phase 10: Navigation and Page Handoffs (Effort: S)
+
+**Findings addressed:** B23, B25
+
+**Problem:** Three non-functional header elements erode operator trust: the header search bar performs no search, the notification bell is decorative with a misleading red dot implying unread notifications, and the settings icon leads nowhere. Additionally, five page transitions that operators would naturally expect do not exist: document health check has no link to the work queue; the recommendation page has no link to the send log; the gaps page has no link to content generation; campaign detail has no link to the document registry; and lead detail has no link to call preparation (addressed in Phase 9).
+
+**Spec:**
+- **Header search:** Replace the non-functional search bar with one of two options (choose based on engineering effort available): (a) a functional search that queries `GET /api/documents` and `GET /api/leads` with a search parameter and displays results as a dropdown, or (b) remove the search bar from the header entirely and replace it with a visible "Search" icon that opens a modal with a "Coming soon" message. Option (a) is strongly preferred. If implementing (a): debounce input at 300ms, show results grouped by type (Leads / Documents), limit to 5 results per type, clicking a result navigates to the relevant detail page.
+- **Notification bell:** Remove the red dot indicator from the notification bell if it does not represent real unread notifications. Either wire the bell to a real notification source (e.g. new work queue findings, documents flagged by propagation) or remove the bell from the header entirely. Do not leave a red dot on a decorative element — this is the highest-trust-cost item.
+- **Settings icon:** Either wire the settings icon to a settings page (even a minimal one listing connected integrations and their status — Google Sheets, Google Docs) or remove the icon from the header. Do not leave a navigable-looking element that leads nowhere.
+- **Document health → Work queue:** Add a "Review in Work Queue" button to the document health check results page. When clicked, navigate to `/work-queue` with the document pre-filtered (if work queue supports filtering by document). If not, navigate to the work queue root.
+- **Recommendation page → Send log:** After a document send is triggered from the recommendation page, display a "View send log" link in the success confirmation that navigates to the lead's send history.
+- **Gaps page → Content generation:** Add a "Generate document" button or link next to each identified gap in the content gap analysis page. This should navigate to the content generation page with the gap type and target persona pre-populated as query parameters.
+- **Campaign detail → Document registry:** Add a "Browse document registry" link on the campaign detail page, navigating to the document registry filtered by the campaign's target persona or stage where applicable.
+- **Lead detail → Call preparation:** Covered in Phase 9.
+
+**Acceptance criteria:**
+- The header search bar either returns real results from the leads and documents endpoints, or is removed entirely (no non-functional search input remains).
+- The notification bell has no red dot unless it represents genuine unread notifications.
+- The settings icon leads to a real page or is removed.
+- Each of the four missing page handoffs (health→queue, recommend→send log, gaps→generate, campaign→registry) has a working navigation link.
+
+**Risks / notes:** Implementing functional header search (option a) is the right long-term choice but has non-trivial scope — it requires both leads and documents endpoints to support a search query parameter. Check whether this is already implemented before building it. If it is, the UI work is straightforward. If it is not, the backend addition is small (add `?q=` parameter with `ILIKE` filter to both endpoints) but should be scoped explicitly.
+
+---
+
+## Phase 11: Batch Processing Completion (Effort: M)
+
+**Findings addressed:** B24
+
+**Problem:** Batch transcript processing stops at analysis output — the batch mode analyses multiple transcripts and surfaces detected personas, pipeline stages, and objections, but produces no document ranking output. Operators must re-process each transcript individually in single mode to get document recommendations, defeating the purpose of batch mode. The document ranking logic (`POST /recommendation/rank`) already exists and works in single mode.
+
+**Spec:**
+- Extend the batch transcript processing flow to proceed from analysis to document ranking for each transcript. After the batch analysis step completes for a transcript, automatically call `POST /recommendation/rank` with the analysis output (detected_persona, pipeline_stage, transcript_summary, objections) and the full document candidate list. Store the ranking result alongside the analysis result.
+- The batch results UI should display, per transcript: the analysis output (current state) plus a collapsible "Recommended documents" section showing the ranked document list for that transcript — document name, priority, relevance score, and a link to the document detail page.
+- Add a "Send document" action button on the ranked document rows within batch results, allowing operators to initiate a send directly from the batch view without navigating to the single-mode recommendation page.
+- Handle the case where batch contains many transcripts (>10): run ranking calls sequentially with a visible progress indicator, not in parallel, to avoid Claude rate limit collisions. Show "Ranking documents for transcript 3/8..." during processing.
+- If a ranking call fails for one transcript in a batch, mark that transcript's ranking as failed with an error message and continue with the remaining transcripts — do not abort the entire batch.
+
+**Acceptance criteria:**
+- Submitting a batch of 3 transcripts produces document rankings for all 3 without requiring the operator to re-process any transcript in single mode.
+- The batch results page displays ranked documents per transcript.
+- A failed ranking for one transcript in a batch does not prevent rankings from completing for other transcripts.
+- The progress indicator updates during ranking (not just during analysis).
+
+**Risks / notes:** Each transcript in a batch that goes through full analysis + ranking involves 2 Claude calls. For a batch of 10 transcripts, this is 20 Claude API calls. Ensure the timeout logic from Phase 2 is in place before deploying this change. Monitor for rate limit errors from the Claude API under batch load and add exponential backoff if they occur.
+
+---
+
+## Phase 12: Automated Test Coverage (Effort: L)
+
+**Findings addressed:** B20
+
+**Problem:** The platform has zero automated test coverage. Regressions in critical business logic — recommendation filter layers, ACU compliance enforcement, propagation cascade logic, belief gate validation — cannot be detected automatically. Any change to `routes/recommendation/index.ts` (1,361 lines), `generationEngine.ts`, or `propagation.ts` could silently break core functionality.
+
+**Spec:**
+- Set up the test framework: add `vitest` (or `jest`) to the root `package.json`. Configure a `test` script. Add a `vitest.config.ts` with coverage reporting targeting the `routes/` and `lib/` directories.
+- Write unit tests for the recommendation engine filter layers in `routes/recommendation/index.ts`. Each of the 7 filter layers should be independently testable. Priority order:
+  1. **Send history filter** — test that documents already sent to a lead are excluded.
+  2. **Lifecycle filter** — test that non-CURRENT documents are excluded.
+  3. **Belief gate filter** — test that documents gated on unestablished beliefs are excluded.
+  4. **ACU compliance filter** — test that documents containing prohibited ACU content are excluded.
+  5. **Stage filter** — test that documents irrelevant to the lead's pipeline stage are ranked lower.
+  6. **Persona filter** — test persona routing rules.
+  7. **Worth-it weighting** — test that weight values affect ranking order.
+  
+  Each filter test should use a fixture set of documents and leads, not the production database. Target: 30+ assertions across filter tests.
+
+- Write unit tests for the propagation logic in `propagation.ts`:
+  - Test that updating a Tier 1 document correctly flags all dependent Tier 2 and Tier 3 documents as REQUIRES_REVIEW.
+  - Test that second-order propagation (Tier 1 → Tier 2 → Tier 3) works correctly.
+  - Test that a Tier 3 document update does not trigger upstream propagation.
+
+- Write unit tests for ACU compliance enforcement in `generationEngine.ts` (or `acuScanner.ts`):
+  - Test that a LOCKED ACU value is injected verbatim into generated content.
+  - Test that content containing a prohibited ACU value is flagged by the scanner.
+
+- Write integration tests for the 3 highest-risk API endpoints using `supertest`:
+  - `POST /api/recommendation/analyze` — mock Claude, verify response schema.
+  - `GET /api/leads/:leadId/beliefs/next` — verify correct belief is returned given a fixture belief state.
+  - `POST /work-queue/cards/:findingId/accept` — verify document state changes correctly and post-fix scan runs (after Phase 5).
+
+- Add a CI step (GitHub Actions or Replit equivalent) that runs `pnpm test` on every push. A failing test should block deployment.
+
+**Acceptance criteria:**
+- `pnpm test` runs without database access (all tests use fixtures or mocks).
+- Test coverage for `routes/recommendation/index.ts` reaches ≥60% line coverage.
+- All 7 recommendation filter layers have at least 2 test cases each (happy path and rejection case).
+- Propagation tests pass for Tier 1 → Tier 2 and Tier 1 → Tier 1 → Tier 2 (second-order) cases.
+- CI runs tests on push and reports pass/fail.
+
+**Risks / notes:** This is the highest-effort phase and the one most likely to be deferred under time pressure — resist that pressure. The recommendation engine is 1,361 lines with no tests; any change to it is a regression risk. Start with the filter layer tests; they can be written without mocking Claude by extracting the filter functions into pure functions that take document lists and lead state as inputs and return filtered lists. If the filter logic is currently tightly coupled to the Claude call, refactor to separate filtering from AI ranking before writing tests.
+
+---
+
+## Backlog (DEFER)
+
+**D1. Email draft prompt hardcodes product tagline and instrument name**
+`routes/recommendation/index.ts` hardcodes `"Clarity, without complexity"` and `"Instant Investment (not ASA)"` rather than reading from `compliance_constants`. Currently low risk because the hardcoded values match the canonical values in the DB. Becomes relevant if either value changes — at that point, the prompt will silently use the old value while the DB has the new one. Fix when either canonical value is updated, or as part of a broader prompt-hygiene pass.
+
+**D2. Sidebar navigation has 22 ungrouped entries**
+The sidebar lists 22 entries with no hierarchy or grouping, placing administrative tools (system prompts, compliance constants, changelog) alongside primary workflows. Defer until the core workflow is stable and operator feedback on navigation friction is gathered. Address in a UX consolidation pass — likely group into: Leads & Calls, Content Library, Compliance & Quality, Campaigns, System.
+
+**D3. Work queue decision cards lack document context**
+Cards show finding text and severity but not the document's tier, persona relevance, or belief targets, requiring operators to navigate away to assess impact. Defer until work queue usage patterns are established. Add tier badge and top belief target to the card as a quick-win in a UX polish pass.
+
+**D4. Call Framework as standalone page**
+`GET /api/call-framework/questions` returns 4 questions displayed on a standalone Call Framework page. The page adds limited value as a navigation destination. Its content is incorporated into the call preparation brief in Phase 9. Once Phase 9 is deployed, evaluate whether the Call Framework page should be removed from the sidebar navigation or merged into the call prep view.
+
+---
