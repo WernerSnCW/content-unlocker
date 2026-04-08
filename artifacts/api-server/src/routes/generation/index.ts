@@ -3,6 +3,7 @@ import { db, documentsTable, changelogTable, acuTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import {
   GenerateDocumentBody,
   RegenerateDocumentParams,
@@ -62,7 +63,7 @@ router.post("/generation/generate", async (req, res): Promise<void> => {
   const docId = `gen_${randomUUID().slice(0, 8)}`;
 
   try {
-    const genMessage = await anthropic.messages.create({
+    const genMessage = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [
@@ -244,7 +245,7 @@ router.post("/generation/:id/regenerate", async (req, res): Promise<void> => {
   const failSummary = failedChecks.map((c: any) => `- ${c.label}: ${c.offending_text || "N/A"} → should be: ${c.correct_version || "N/A"}`).join("\n");
 
   try {
-    const genMessage = await anthropic.messages.create({
+    const genMessage = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [
@@ -668,7 +669,7 @@ function splitIntoChunks(content: string, maxSize: number): string[] {
 }
 
 async function runQCSingle(contentChunk: string, complianceText: string, documentType: string, attempt: number) {
-  const message = await anthropic.messages.create({
+  const message = await claudeWithTimeout(anthropic, {
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
     messages: [

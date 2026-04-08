@@ -28,8 +28,11 @@ const API_BASE =
   (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [openReviewCount, setOpenReviewCount] = useState<number>(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -44,6 +47,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     };
     fetchCount();
   }, []);
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      return;
+    }
+    setSearchOpen(true);
+    try {
+      const [leadsRes, docsRes] = await Promise.all([
+        fetch(`${API_BASE}/leads`),
+        fetch(`${API_BASE}/documents`),
+      ]);
+      const leadsData = await leadsRes.json();
+      const docsData = await docsRes.json();
+      const q = query.toLowerCase();
+      const matchedLeads = (leadsData.leads || [])
+        .filter((l: any) => l.name?.toLowerCase().includes(q) || l.company?.toLowerCase().includes(q))
+        .slice(0, 5)
+        .map((l: any) => ({ type: "lead", id: l.id, label: l.name, sub: l.company || l.pipeline_stage, href: `/leads/${l.id}` }));
+      const matchedDocs = (docsData || [])
+        .filter((d: any) => d.name?.toLowerCase().includes(q) || d.file_code?.toLowerCase().includes(q))
+        .slice(0, 5)
+        .map((d: any) => ({ type: "document", id: d.id, label: d.name, sub: d.type, href: `/registry/${d.id}` }));
+      setSearchResults([...matchedLeads, ...matchedDocs]);
+    } catch { setSearchResults([]); }
+  };
 
   const navGroups = [
     {
@@ -154,18 +185,52 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 type="text" 
                 placeholder="Search leads, documents, or content..." 
                 className="w-full bg-muted/50 border-none rounded-md pl-10 pr-4 py-1.5 text-sm focus:ring-1 focus:ring-primary focus:bg-background transition-colors"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 200)}
+                onFocus={() => searchQuery.trim() && setSearchOpen(true)}
               />
+              {searchOpen && searchResults.length > 0 && (
+                <div className="absolute top-full left-0 w-full mt-1 bg-popover border rounded-md shadow-lg z-50 max-h-72 overflow-y-auto">
+                  {searchResults.map(r => (
+                    <button
+                      key={`${r.type}-${r.id}`}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-3 border-b last:border-0"
+                      onMouseDown={() => {
+                        setLocation(r.href);
+                        setSearchOpen(false);
+                        setSearchQuery("");
+                      }}
+                    >
+                      {r.type === "lead" ? <Users className="w-4 h-4 text-muted-foreground shrink-0" /> : <FileText className="w-4 h-4 text-muted-foreground shrink-0" />}
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{r.label}</div>
+                        <div className="text-xs text-muted-foreground truncate">{r.sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {searchOpen && searchResults.length === 0 && searchQuery.trim() && (
+                <div className="absolute top-full left-0 w-full mt-1 bg-popover border rounded-md shadow-lg z-50 px-3 py-2 text-sm text-muted-foreground">
+                  No results found
+                </div>
+              )}
             </div>
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors relative">
+            <Link href="/tasks" className="p-2 text-muted-foreground hover:text-foreground transition-colors relative">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full"></span>
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+              {openReviewCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[14px] h-[14px] bg-destructive rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                  {openReviewCount}
+                </span>
+              )}
+            </Link>
+            <Link href="/compliance-constants" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
               <Settings className="w-5 h-5" />
-            </button>
+            </Link>
           </div>
         </header>
 

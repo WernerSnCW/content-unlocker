@@ -270,6 +270,9 @@ export default function GapAnalysis() {
             )}
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => { setView("gaps"); setSelectedGap(null); }}>Cancel</Button>
+              <Button variant="outline" onClick={() => window.location.href = `${import.meta.env.BASE_URL}generate`}>
+                Open in Generator
+              </Button>
               <Button onClick={handleGenerateFromBrief} disabled={generateMutation.isPending || (editableBrief.information_needed?.length > 0 && !overrideGaps)}>
                 {generateMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</> : <><Wand2 className="w-4 h-4 mr-2" /> Generate Content</>}
               </Button>

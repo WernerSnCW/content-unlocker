@@ -3,6 +3,7 @@ import { db, documentsTable, changelogTable, gapSnapshotsTable } from "@workspac
 import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import { getComplianceConstants } from "../../lib/dataManager";
 import contentBankText from "../../data/content/700_CONTENT_Bank_V4_CURRENT.md";
 import masterContextRaw from "../../data/content/065_MASTER_generation_context_v1.0.md";
@@ -407,7 +408,7 @@ export async function generateBriefFromGap(gap: any, additional_context?: string
     gapDescription += `\nDetailed requirements: ${gap.description}`;
   }
 
-  const briefMessage = await anthropic.messages.create({
+  const briefMessage = await claudeWithTimeout(anthropic, {
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
     messages: [
@@ -574,7 +575,7 @@ Generate the document content. Return ONLY valid JSON:
 
 Return ONLY the JSON.`;
 
-    const genMessage = await anthropic.messages.create({
+    const genMessage = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{ role: "user", content: briefPrompt }],
@@ -602,7 +603,7 @@ Return ONLY the JSON.`;
       generated.content = caveatBlock + generated.content;
     }
 
-    const qcMessage = await anthropic.messages.create({
+    const qcMessage = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [

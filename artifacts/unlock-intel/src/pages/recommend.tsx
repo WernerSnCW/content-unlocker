@@ -66,6 +66,9 @@ type BatchResult = {
   lead_match?: { matches: LeadMatch[]; status: "matched" | "partial" | "none" };
   linked_lead_id?: string;
   created_lead_id?: string;
+  rankData?: any;
+  rankLoading?: boolean;
+  rankError?: string;
 };
 
 const PRIMARY_ISSUE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: string }> = {
@@ -343,6 +346,50 @@ export default function Recommend() {
     });
     setLinkingIndex(null);
     setLinkSearch("");
+  };
+
+  const handleBatchRank = async (index: number) => {
+    const result = batchResults?.[index];
+    if (!result || !result.analysis || !result.linked_lead_id) return;
+
+    setBatchResults((prev) => {
+      if (!prev) return prev;
+      const updated = [...prev];
+      updated[index] = { ...updated[index], rankLoading: true, rankError: undefined };
+      return updated;
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/recommendation/rank`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lead_id: result.linked_lead_id,
+          detected_persona: result.analysis.persona,
+          pipeline_stage: result.analysis.stage,
+          transcript_summary: result.analysis.transcript_summary || "",
+          objections: result.analysis.objections?.map((o: any) => typeof o === "string" ? o : o.objection) || [],
+          eis_familiar: result.analysis.matrix_context?.eis_familiar,
+          iht_confirmed: result.analysis.matrix_context?.iht_confirmed,
+          adviser_mentioned: result.analysis.matrix_context?.adviser_mentioned,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Ranking failed");
+      const data = await res.json();
+      setBatchResults((prev) => {
+        if (!prev) return prev;
+        const updated = [...prev];
+        updated[index] = { ...updated[index], rankData: data, rankLoading: false };
+        return updated;
+      });
+    } catch (err: any) {
+      setBatchResults((prev) => {
+        if (!prev) return prev;
+        const updated = [...prev];
+        updated[index] = { ...updated[index], rankLoading: false, rankError: err.message };
+        return updated;
+      });
+    }
   };
 
   const togglePanel = (key: string) => setDetailPanels((p) => ({ ...p, [key]: !p[key] }));
@@ -852,6 +899,13 @@ export default function Recommend() {
                             <Badge variant="secondary" className="text-xs shrink-0">{doc.file_code}</Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{doc.rationale}</p>
+                          {doc.belief_targeted && (
+                            <div className="mt-2 flex items-center gap-1">
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Targets: {doc.belief_targeted}
+                              </Badge>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     ))}
@@ -1162,11 +1216,42 @@ export default function Recommend() {
                               </>
                             )}
                             {result.linked_lead_id && (
-                              <Button size="sm" variant="outline" className="w-full gap-1 text-xs" onClick={() => window.location.href = `${import.meta.env.BASE_URL}leads/${result.linked_lead_id}`}>
-                                <User className="w-3 h-3" />View Lead
-                              </Button>
+                              <>
+                                <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={() => window.location.href = `${import.meta.env.BASE_URL}leads/${result.linked_lead_id}`}>
+                                  <User className="w-3 h-3" />View Lead
+                                </Button>
+                                {!result.rankData && (
+                                  <Button size="sm" variant="default" className="flex-1 gap-1 text-xs" onClick={() => handleBatchRank(i)} disabled={result.rankLoading}>
+                                    {result.rankLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                                    Rank Docs
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
+                          {result.rankError && (
+                            <div className="text-xs text-red-400 mt-1">{result.rankError}</div>
+                          )}
+                          {result.rankData && (
+                            <div className="mt-3 space-y-2">
+                              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ranked Documents</div>
+                              {result.rankData.ranked_documents?.slice(0, 3).map((doc: any) => (
+                                <div key={doc.document_id} className="p-2 bg-muted/50 rounded-md">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium">{doc.name}</span>
+                                    <Badge variant="secondary" className="text-xs">{doc.file_code}</Badge>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{doc.rationale}</p>
+                                  {doc.belief_targeted && (
+                                    <Badge variant="outline" className="text-xs mt-1 bg-blue-50 text-blue-700 border-blue-200">Targets: {doc.belief_targeted}</Badge>
+                                  )}
+                                </div>
+                              ))}
+                              {result.rankData.ranked_documents?.length === 0 && (
+                                <div className="text-xs text-muted-foreground">{result.rankData.all_sent_message || "No suitable documents found."}</div>
+                              )}
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div className="text-sm text-red-400">{result.error}</div>

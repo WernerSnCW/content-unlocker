@@ -6,6 +6,7 @@ import { propagateFromDocument } from "../../lib/propagation";
 import { createReviewTasksForPropagation } from "../../lib/taskHelpers";
 import { getTemplate, type DocumentTemplate } from "../../lib/templates/index";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import multer from "multer";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
@@ -236,7 +237,7 @@ No markdown code fences. No explanatory text.
 }`;
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{ role: "user", content: promptString }],

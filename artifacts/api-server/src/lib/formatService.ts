@@ -1,4 +1,5 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "./claudeTimeout";
 import { BRAND } from "./brand";
 
 interface FormatInput {
@@ -115,7 +116,7 @@ Remember:
 }
 
 export async function formatContentForGdocs(doc: FormatInput): Promise<string> {
-  const message = await anthropic.messages.create({
+  const message = await claudeWithTimeout(anthropic, {
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
     system: DESIGN_BIBLE_SYSTEM,

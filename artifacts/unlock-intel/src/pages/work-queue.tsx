@@ -81,6 +81,7 @@ export default function WorkQueue() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
+  const [complianceWarning, setComplianceWarning] = useState<{ violations: Array<{ value: string; label: string }> } | null>(null);
   const [showSkipReasons, setShowSkipReasons] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -222,6 +223,7 @@ export default function WorkQueue() {
 
   const handleAccept = async (findingId: string) => {
     setCardError(null);
+    setComplianceWarning(null);
     setActionLoading(true);
     try {
       const res = await fetch(
@@ -235,7 +237,15 @@ export default function WorkQueue() {
       }
       const data = await res.json();
       setSession(data.session);
-      advanceCard();
+      if (data.compliance_verified === false && data.violations?.length > 0) {
+        setComplianceWarning({ violations: data.violations });
+        setTimeout(() => {
+          setComplianceWarning(null);
+          advanceCard();
+        }, 4000);
+      } else {
+        advanceCard();
+      }
     } catch {
       setCardError("Failed to accept — try again");
     } finally {
@@ -562,6 +572,21 @@ export default function WorkQueue() {
               </div>
             )}
 
+            {complianceWarning && (
+              <div className="flex items-start gap-2 text-amber-700 text-sm bg-amber-500/10 border border-amber-500/30 rounded-md p-3">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" />
+                <div>
+                  <p className="font-semibold">Fix unconfirmed — prohibited content still detected</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {complianceWarning.violations.map((v, i) => (
+                      <li key={i} className="text-xs">{v.label}: <code className="bg-amber-500/10 px-1 rounded">{v.value}</code></li>
+                    ))}
+                  </ul>
+                  <p className="text-xs mt-1 text-amber-600">A new finding has been created for manual review. Document remains flagged.</p>
+                </div>
+              </div>
+            )}
+
             {cardError && (
               <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 rounded-md p-3">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -673,6 +698,9 @@ export default function WorkQueue() {
 
             <div className="flex items-center gap-3 justify-center">
               <Button onClick={handleRunAgain}>Run again</Button>
+              <Button variant="outline" onClick={() => navigate("/registry")}>
+                <FileText className="w-4 h-4 mr-1" />View Registry
+              </Button>
               <Button variant="ghost" onClick={() => navigate("/tasks")}>
                 Back to tasks
               </Button>

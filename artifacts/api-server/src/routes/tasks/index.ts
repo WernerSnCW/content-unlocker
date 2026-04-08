@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { eq, ne, asc } from "drizzle-orm";
+import { eq, ne, asc, and, sql } from "drizzle-orm";
 import { db, tasksTable, documentsTable, changelogTable } from "@workspace/db";
 
 const router = Router();
@@ -18,6 +18,7 @@ router.get("/tasks", async (_req, res): Promise<void> => {
         type: tasksTable.type,
         linked_document_id: tasksTable.linked_document_id,
         linked_document_name: documentsTable.name,
+        linked_document_review_state: documentsTable.review_state,
         context: tasksTable.context,
         created_at: tasksTable.created_at,
         updated_at: tasksTable.updated_at,
@@ -26,9 +27,46 @@ router.get("/tasks", async (_req, res): Promise<void> => {
       .leftJoin(documentsTable, eq(documentsTable.id, tasksTable.linked_document_id))
       .orderBy(asc(tasksTable.created_at));
 
-    res.json({ tasks: rows });
+    const enriched = rows.map(row => ({
+      ...row,
+      stale_mismatch: row.status !== "Done" && row.type === "Review" && row.linked_document_review_state === "CLEAN",
+    }));
+
+    res.json({ tasks: enriched });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to fetch tasks" });
+  }
+});
+
+router.post("/tasks/reconcile", async (_req, res): Promise<void> => {
+  try {
+    const staleTasks = await db
+      .select({ id: tasksTable.id, title: tasksTable.title, linked_document_id: tasksTable.linked_document_id })
+      .from(tasksTable)
+      .innerJoin(documentsTable, eq(documentsTable.id, tasksTable.linked_document_id))
+      .where(and(
+        ne(tasksTable.status, "Done"),
+        eq(tasksTable.type, "Review"),
+        eq(documentsTable.review_state, "CLEAN")
+      ));
+
+    for (const task of staleTasks) {
+      await db.update(tasksTable)
+        .set({ status: "Done", context: "Auto-closed: linked document is already CLEAN" })
+        .where(eq(tasksTable.id, task.id));
+
+      await db.insert(changelogTable).values({
+        id: randomUUID(),
+        action: "TASK_AUTO_CLOSED",
+        document_id: task.linked_document_id,
+        details: `Stale review task "${task.title}" auto-closed — document already CLEAN`,
+        triggered_by: "system",
+      });
+    }
+
+    res.json({ reconciled: staleTasks.length, tasks: staleTasks.map(t => t.id) });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to reconcile tasks" });
   }
 });
 

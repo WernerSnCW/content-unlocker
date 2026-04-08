@@ -3,6 +3,7 @@ import { db, documentsTable, changelogTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import { detectPropagationTargets } from "../../lib/propagation";
 
 const router: IRouter = Router();
@@ -156,7 +157,7 @@ router.post("/content/feature-update", async (req, res): Promise<void> => {
         .join("\n");
 
       if (docSummaries.length > 0) {
-        const semanticMessage = await anthropic.messages.create({
+        const semanticMessage = await claudeWithTimeout(anthropic, {
           model: "claude-sonnet-4-6",
           max_tokens: 4096,
           messages: [

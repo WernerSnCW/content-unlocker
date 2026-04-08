@@ -3,6 +3,7 @@ import { db, leadBeliefsTable, beliefRegistryTable, beliefTransitionsTable, chan
 import { eq, and, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 
 const VALID_STATES = ["UNKNOWN", "ABSENT", "PARTIAL", "ESTABLISHED", "BLOCKED"];
 const VALID_RELEVANCE = ["high", "standard", "low", "not_applicable"];
@@ -94,7 +95,7 @@ router.post("/leads/:leadId/beliefs/analyze", async (req, res): Promise<void> =>
       `ID: ${b.id} | Name: ${b.name} | Description: ${b.description || b.name}`
     ).join("\n");
 
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{
@@ -147,6 +148,10 @@ Rules:
     for (const r of results) {
       const belief = relevantBeliefs.find(b => b.id === r.belief_id);
       const beliefName = belief?.name || r.belief_id;
+
+      if (r.signal === "ESTABLISHED" && !r.evidence_quote) {
+        r.signal = "PARTIAL";
+      }
 
       if ((r.confidence === "HIGH" || r.confidence === "MEDIUM") && r.signal !== "UNKNOWN") {
         const [existing] = await db.select().from(leadBeliefsTable)
@@ -401,6 +406,20 @@ router.patch("/leads/:leadId/beliefs/:beliefId", async (req, res): Promise<void>
     res.json({ ...beliefRow, ...registry });
   } catch (err) {
     res.status(500).json({ error: "Failed to update belief" });
+  }
+});
+
+router.get("/leads/:leadId/beliefs/transitions", async (req, res): Promise<void> => {
+  try {
+    const { leadId } = req.params;
+    const rows = await db.select()
+      .from(beliefTransitionsTable)
+      .where(eq(beliefTransitionsTable.lead_id, leadId))
+      .orderBy(asc(beliefTransitionsTable.created_at));
+
+    res.json({ transitions: rows });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch transitions" });
   }
 });
 

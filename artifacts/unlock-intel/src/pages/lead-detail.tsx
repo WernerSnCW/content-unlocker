@@ -105,6 +105,7 @@ export default function LeadDetail() {
   const [nextBelief, setNextBelief] = useState<any>(null);
   const [beliefRegistry, setBeliefRegistry] = useState<any[]>([]);
   const [selectedBeliefId, setSelectedBeliefId] = useState<string | null>(null);
+  const [transitions, setTransitions] = useState<any[]>([]);
 
   /* --- Initialise notes from lead data --- */
   useEffect(() => {
@@ -124,6 +125,7 @@ export default function LeadDetail() {
       fetchIntelligence();
       fetchBeliefs();
       fetchGatesAndNext();
+      fetchTransitions();
     }
   }, [activeTab, id]);
 
@@ -239,6 +241,15 @@ export default function LeadDetail() {
     } catch { /* silent */ }
   };
 
+  const fetchTransitions = async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`${API_BASE}/leads/${id}/beliefs/transitions`);
+      const data = await res.json();
+      setTransitions(data.transitions || []);
+    } catch { /* silent */ }
+  };
+
   const handleBeliefUpdate = async (beliefId: string, newState: string) => {
     try {
       await fetch(`${API_BASE}/leads/${id}/beliefs/${beliefId}`, {
@@ -265,6 +276,10 @@ export default function LeadDetail() {
           policy_status: reg.policy_status,
           state: leadRow?.state || "UNKNOWN",
           investor_relevance: leadRow?.investor_relevance || "standard",
+          evidence: leadRow?.evidence || null,
+          evidence_source: leadRow?.evidence_source || null,
+          confidence: leadRow?.confidence || null,
+          relevance_rationale: leadRow?.relevance_rationale || null,
         };
       });
     return clusterBeliefs;
@@ -303,9 +318,15 @@ export default function LeadDetail() {
           <h1 className="text-3xl font-bold tracking-tight">{lead.name}</h1>
           <p className="text-muted-foreground mt-1">{lead.company || "No company"}</p>
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <Badge variant="outline" className="text-sm px-3 py-1">{lead.pipeline_stage}</Badge>
           {lead.detected_persona && <Badge className="text-sm px-3 py-1 bg-primary text-primary-foreground">{lead.detected_persona}</Badge>}
+          <Link href={`/call-prep?lead=${id}`}>
+            <Button size="sm" variant="outline" className="gap-1">
+              <Phone className="w-3.5 h-3.5" />
+              Call Prep
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -638,6 +659,67 @@ export default function LeadDetail() {
               </CardContent>
             </Card>
 
+            {/* Panel 2b — SPIN Framework */}
+            {intelligence?.spin_situation && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">SPIN Framework</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { label: "Situation", value: intelligence.spin_situation, colour: "border-blue-500/30" },
+                      { label: "Problem", value: intelligence.spin_problem, colour: "border-red-500/30" },
+                      { label: "Implication", value: intelligence.spin_implication, colour: "border-amber-500/30" },
+                      { label: "Need-Payoff", value: intelligence.spin_need_payoff, colour: "border-green-500/30" },
+                    ].map(s => s.value && (
+                      <div key={s.label} className={`border-l-2 ${s.colour} pl-3 space-y-1`}>
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{s.label}</div>
+                        <p className="text-sm">{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Panel 2c — Qualification Flags */}
+            {intelligence && (intelligence.higher_rate_taxpayer !== undefined || intelligence.capital_available !== undefined) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Qualification Flags</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                      { key: "higher_rate_taxpayer", label: "Higher Rate Taxpayer" },
+                      { key: "capital_available", label: "Capital Available" },
+                      { key: "self_directed", label: "Self-Directed" },
+                      { key: "open_to_early_stage_risk", label: "Open to Early-Stage Risk" },
+                      { key: "ifa_involved", label: "IFA Involved" },
+                      { key: "already_done_eis", label: "Previous EIS Experience" },
+                      { key: "estate_above_2m", label: "Estate Above 2M" },
+                      { key: "assets_abroad", label: "Assets Abroad" },
+                      { key: "vct_aim_experience", label: "VCT/AIM Experience" },
+                    ].map(flag => {
+                      const val = intelligence[flag.key];
+                      if (val === undefined || val === null) return null;
+                      return (
+                        <div key={flag.key} className="flex items-center gap-2 text-sm">
+                          {val ? (
+                            <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                          ) : (
+                            <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                          )}
+                          <span>{flag.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Panel 3 — Belief Dot Grid */}
             <Card>
               <CardHeader>
@@ -678,13 +760,38 @@ export default function LeadDetail() {
                               );
                             })}
                           </div>
-                          {selectedBeliefId && clusterBeliefs.some(b => b.belief_id === selectedBeliefId) && (
-                            <div className="mt-2 mb-2 max-w-xs">
-                              <div className="text-xs text-muted-foreground mb-1">
-                                {clusterBeliefs.find(b => b.belief_id === selectedBeliefId)?.name}
+                          {selectedBeliefId && clusterBeliefs.some(b => b.belief_id === selectedBeliefId) && (() => {
+                          const sel = clusterBeliefs.find(b => b.belief_id === selectedBeliefId)!;
+                          return (
+                            <div className="mt-2 mb-2 max-w-sm bg-muted/30 border rounded-md p-3 space-y-2">
+                              <div className="text-xs font-medium">{sel.name}</div>
+                              {sel.evidence && (
+                                <blockquote className="text-xs italic text-muted-foreground border-l-2 border-muted pl-2">
+                                  {sel.evidence}
+                                </blockquote>
+                              )}
+                              <div className="flex flex-wrap gap-2">
+                                {sel.confidence && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {sel.confidence} confidence
+                                  </Badge>
+                                )}
+                                {sel.evidence_source && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {sel.evidence_source.replace(/_/g, " ")}
+                                  </Badge>
+                                )}
+                                {sel.investor_relevance && sel.investor_relevance !== "standard" && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {sel.investor_relevance} relevance
+                                  </Badge>
+                                )}
                               </div>
+                              {sel.relevance_rationale && (
+                                <p className="text-[10px] text-muted-foreground">{sel.relevance_rationale}</p>
+                              )}
                               <Select
-                                value={clusterBeliefs.find(b => b.belief_id === selectedBeliefId)?.state || "UNKNOWN"}
+                                value={sel.state || "UNKNOWN"}
                                 onValueChange={(val) => {
                                   handleBeliefUpdate(selectedBeliefId, val);
                                   setSelectedBeliefId(null);
@@ -702,7 +809,8 @@ export default function LeadDetail() {
                                 </SelectContent>
                               </Select>
                             </div>
-                          )}
+                          );
+                        })()}
                         </div>
                       )
                     ))}
@@ -710,6 +818,32 @@ export default function LeadDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Panel 3b — Belief Transitions */}
+            {transitions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Belief History</CardTitle>
+                  <CardDescription>Recent belief state changes for this investor.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {transitions.slice(0, 20).map((t: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <Badge variant="outline" className="text-[10px] shrink-0">{t.belief_id}</Badge>
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${STATE_COLOURS[t.previous_state] || "bg-gray-300"}`} />
+                        <span className="text-muted-foreground">→</span>
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${STATE_COLOURS[t.new_state] || "bg-gray-300"}`} />
+                        <span className="text-xs font-medium">{t.previous_state} → {t.new_state}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {t.created_at ? format(new Date(t.created_at), "MMM d, HH:mm") : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Panel 4 — Gate Status + Next Step */}
             <Card>

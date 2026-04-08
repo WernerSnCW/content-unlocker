@@ -107,10 +107,11 @@ function parsePersonas(text: string) {
   }
 
   if (personas.length === 0) {
+    console.warn("Persona guide parsing returned 0 results — returning hardcoded fallback.");
     return [
-      { name: "Growth Seeker", archetype: "Growth Seeker", tier: "Tier 1", signals: ["Asks about returns", "Mentions growth"], pain_points: ["Wants higher returns"], objections: ["Risk concerns"] },
-      { name: "Preserver", archetype: "Preserver", tier: "Tier 1", signals: ["Mentions capital preservation", "Risk-averse language"], pain_points: ["Fears losing capital"], objections: ["Too risky"] },
-      { name: "Legacy Builder", archetype: "Legacy Builder", tier: "Tier 1", signals: ["Mentions estate planning", "IHT concerns"], pain_points: ["Estate tax burden"], objections: ["Complexity of structures"] },
+      { name: "Growth Seeker", archetype: "Growth Seeker", tier: "Tier 1", signals: ["Asks about returns", "Mentions growth"], pain_points: ["Wants higher returns"], objections: ["Risk concerns"], _fallback: true },
+      { name: "Preserver", archetype: "Preserver", tier: "Tier 1", signals: ["Mentions capital preservation", "Risk-averse language"], pain_points: ["Fears losing capital"], objections: ["Too risky"], _fallback: true },
+      { name: "Legacy Builder", archetype: "Legacy Builder", tier: "Tier 1", signals: ["Mentions estate planning", "IHT concerns"], pain_points: ["Estate tax burden"], objections: ["Complexity of structures"], _fallback: true },
     ];
   }
 

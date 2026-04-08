@@ -3,6 +3,7 @@ import { db, leadsTable, documentsTable, changelogTable, videosTable, leadIntell
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import {
   AnalyzeTranscriptBody,
   RankDocumentsBody,
@@ -213,7 +214,7 @@ router.post("/recommendation/analyze-batch", async (req, res): Promise<void> => 
     const transcriptWithMeta = metadataBlock + item.content;
 
     try {
-      const message = await anthropic.messages.create({
+      const message = await claudeWithTimeout(anthropic, {
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
         messages: [
@@ -494,7 +495,7 @@ ${beliefRows.map(b => `- ${b.belief_name} (${b.belief_id}): ${b.state}`).join('\
     : "\nCALL CHECKLIST STATUS: Not provided — infer from the transcript which of these four areas were addressed:\n- Q1: Investment goals and time horizon\n- Q2: Prior EIS/startup investing experience\n- Q3: Hesitations or deal-breakers\n- Q4: Other decision-makers involved\n";
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [
@@ -924,8 +925,18 @@ router.post("/recommendation/rank", async (req, res): Promise<void> => {
   const personaRoute = resolvedArchetype ? getPersonaRoute(resolvedArchetype) : undefined;
   const stageRule = getStageRule(pipeline_stage);
 
+  const beliefEntries = Object.entries(beliefStateMap);
+  const nonUnknownBeliefs = beliefEntries.filter(([, state]) => state !== "UNKNOWN");
+  const beliefContext = nonUnknownBeliefs.length > 0
+    ? `\nINVESTOR BELIEF STATE (use to prioritise documents that reinforce or address gaps):
+${nonUnknownBeliefs.map(([id, state]) => `- ${id}: ${state}`).join("\n")}
+Beliefs marked ABSENT or PARTIAL indicate gaps — prioritise documents that help establish those beliefs.
+Beliefs marked ESTABLISHED confirm existing alignment — less urgency unless reinforcement is valuable.
+Beliefs marked BLOCKED indicate resistance — avoid documents that challenge blocked beliefs.`
+    : "";
+
   try {
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [
@@ -944,7 +955,7 @@ ${personaRoute ? `\nPERSONA ROUTING (${resolvedArchetype}):
 - Supplementary triggers: ${personaRoute.supplementary_triggers}` : ""}
 ${stageRule ? `\nSTAGE OBJECTIVE (${pipeline_stage}):
 - Objective: ${stageRule.objective}
-- Timing: ${stageRule.timing}` : ""}
+- Timing: ${stageRule.timing}` : ""}${beliefContext}
 
 WORTH-IT RATINGS (use as base weight — 3=★★★ highest leverage, 2=★★, 1=★):
 Documents rated 3 should be preferred unless context strongly favours a lower-rated doc.
@@ -1270,7 +1281,7 @@ ${intel.hot_button_quote ? `- Their own words: "${intel.hot_button_quote}"` : ''
   }
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [

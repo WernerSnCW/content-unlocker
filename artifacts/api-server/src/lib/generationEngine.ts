@@ -1,6 +1,7 @@
 import { db, acuTable, outputTemplatesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "./claudeTimeout";
 
 interface GenerationRequest {
   template_id: string;
@@ -197,7 +198,7 @@ export async function generateFromTemplate(request: GenerationRequest): Promise<
 
   promptParts.push(`\nReturn a JSON object with each section ID as a key and the generated content as the value. Each section value must be a plain text or markdown prose string — never a JSON object, array, or structured data type. Include a _metadata key with template_id, word_counts, acus_used, and compliance_check status.`);
 
-  const response = await anthropic.messages.create({
+  const response = await claudeWithTimeout(anthropic, {
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
     messages: [{ role: "user", content: promptParts.join("\n") }],

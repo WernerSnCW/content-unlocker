@@ -375,18 +375,31 @@ function buildPdfHtml(doc: PdfDocumentInput): string {
 
 export async function generatePdf(doc: PdfDocumentInput): Promise<Buffer> {
   const html = buildPdfHtml(doc);
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  let browser;
   try {
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    browser = await getBrowser();
+  } catch (err: any) {
+    browserInstance = null;
+    throw new Error(`Browser launch failed: ${err.message}`);
+  }
+  const page = await browser.newPage();
+  const PDF_TIMEOUT = 30000;
+  try {
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: PDF_TIMEOUT });
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      timeout: PDF_TIMEOUT,
     });
     return Buffer.from(pdfBuffer);
+  } catch (err: any) {
+    if (err.message?.includes("timeout") || err.message?.includes("Timeout")) {
+      throw new Error("PDF generation timed out — document may be too complex");
+    }
+    throw err;
   } finally {
-    await page.close();
+    await page.close().catch(() => {});
   }
 }
 

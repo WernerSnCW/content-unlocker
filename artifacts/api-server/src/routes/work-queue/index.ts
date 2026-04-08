@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, workQueueSessionsTable, workQueueFindingsTable, tasksTable, documentsTable, complianceConstantsTable, changelogTable } from "@workspace/db";
 import { desc, notInArray, inArray, isNotNull, and, eq, sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 import { randomUUID } from "crypto";
 import { propagateFromDocument } from "../../lib/propagation";
 import { createReviewTasksForPropagation } from "../../lib/taskHelpers";
@@ -349,15 +350,69 @@ router.post("/work-queue/cards/:findingId/accept", async (req, res) => {
         .where(eq(documentsTable.id, doc.id));
     }
 
+    const prohibitedValues = await db.select({ value: complianceConstantsTable.value, label: complianceConstantsTable.label })
+      .from(complianceConstantsTable)
+      .where(and(
+        eq(complianceConstantsTable.is_prohibited, true),
+        eq(complianceConstantsTable.status, "ACTIVE")
+      ));
+
+    let complianceVerified = true;
+    const violations: Array<{ value: string; label: string }> = [];
+
+    if (prohibitedValues.length > 0) {
+      const [freshDoc] = await db.select().from(documentsTable)
+        .where(eq(documentsTable.id, finding.document_id));
+
+      if (freshDoc?.content) {
+        const contentLower = freshDoc.content.toLowerCase();
+        for (const pv of prohibitedValues) {
+          if (contentLower.includes(pv.value.toLowerCase())) {
+            complianceVerified = false;
+            violations.push({ value: pv.value, label: pv.label });
+          }
+        }
+      }
+    }
+
+    const finalStatus = complianceVerified ? "ACCEPTED" : "ACCEPTED_UNVERIFIED";
+
+    if (!complianceVerified && doc) {
+      await db.update(documentsTable)
+        .set({ review_state: "REQUIRES_REVIEW" })
+        .where(eq(documentsTable.id, doc.id));
+
+      await db.insert(workQueueFindingsTable).values({
+        id: randomUUID(),
+        session_id: finding.session_id,
+        task_id: finding.task_id,
+        document_id: finding.document_id,
+        document_name: finding.document_name,
+        document_tier: finding.document_tier,
+        finding_type: "decision_card",
+        issue_description: `Post-fix verification failed: prohibited content still detected — ${violations.map(v => v.label).join(", ")}. Manual review required.`,
+        proposed_fix: null,
+        original_text: null,
+        status: "PENDING",
+        sort_order: finding.sort_order + 1,
+      });
+
+      await db.update(workQueueSessionsTable)
+        .set({ cards_total: sql`cards_total + 1` })
+        .where(eq(workQueueSessionsTable.id, finding.session_id));
+    }
+
     await db.update(tasksTable)
       .set({ status: "Done" })
       .where(eq(tasksTable.id, finding.task_id));
 
     await db.insert(changelogTable).values({
       id: randomUUID(),
-      action: "CARD_ACCEPTED",
+      action: complianceVerified ? "CARD_ACCEPTED" : "CARD_ACCEPTED_UNVERIFIED",
       document_id: finding.document_id,
-      details: finding.issue_description,
+      details: complianceVerified
+        ? finding.issue_description
+        : `Fix accepted but post-fix scan detected prohibited content: ${violations.map(v => v.value).join(", ")}. Document remains in REQUIRES_REVIEW.`,
       triggered_by: "operator",
     });
 
@@ -372,7 +427,7 @@ router.post("/work-queue/cards/:findingId/accept", async (req, res) => {
       .where(eq(workQueueSessionsTable.id, finding.session_id));
 
     await db.update(workQueueFindingsTable)
-      .set({ status: "ACCEPTED", resolved_at: new Date() })
+      .set({ status: finalStatus, resolved_at: new Date() })
       .where(eq(workQueueFindingsTable.id, finding.id));
 
     const pendingCount = await db.select({ count: sql<number>`count(*)` })
@@ -382,7 +437,14 @@ router.post("/work-queue/cards/:findingId/accept", async (req, res) => {
         eq(workQueueFindingsTable.status, "PENDING")
       ));
 
-    if (Number(pendingCount[0].count) === 0) {
+    const unverifiedCount = await db.select({ count: sql<number>`count(*)` })
+      .from(workQueueFindingsTable)
+      .where(and(
+        eq(workQueueFindingsTable.session_id, finding.session_id),
+        eq(workQueueFindingsTable.status, "ACCEPTED_UNVERIFIED")
+      ));
+
+    if (Number(pendingCount[0].count) === 0 && Number(unverifiedCount[0].count) === 0) {
       await db.update(workQueueSessionsTable)
         .set({ status: "COMPLETE", completed_at: new Date() })
         .where(eq(workQueueSessionsTable.id, finding.session_id));
@@ -393,7 +455,13 @@ router.post("/work-queue/cards/:findingId/accept", async (req, res) => {
     const [updatedSession] = await db.select().from(workQueueSessionsTable)
       .where(eq(workQueueSessionsTable.id, finding.session_id));
 
-    return res.json({ finding: updatedFinding, cascaded: result.targets.length, session: updatedSession });
+    return res.json({
+      finding: updatedFinding,
+      cascaded: result.targets.length,
+      session: updatedSession,
+      compliance_verified: complianceVerified,
+      violations: complianceVerified ? [] : violations,
+    });
   } catch (error) {
     console.error("Failed to accept card:", error);
     return res.status(500).json({ error: "Failed to accept card" });
@@ -540,7 +608,7 @@ Rules for findings:
 - Maximum 10 findings per document.
 - Order findings: auto_fix first, then decision_card by severity (HIGH → MEDIUM → LOW).`;
 
-    const response = await anthropic.messages.create({
+    const response = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],

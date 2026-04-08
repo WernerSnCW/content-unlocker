@@ -2,6 +2,7 @@ import { db, acuTable, documentsTable, acuCandidatesTable, acuScanLogTable } fro
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "./claudeTimeout";
 
 interface ScanResult {
   document_id: string;
@@ -89,7 +90,7 @@ Return JSON array:
 
 Return ONLY the JSON array, no other text.`;
 
-  const response = await anthropic.messages.create({
+  const response = await claudeWithTimeout(anthropic, {
     model: "claude-sonnet-4-6",
     max_tokens: 8192,
     messages: [{ role: "user", content: prompt }],

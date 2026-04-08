@@ -3,6 +3,7 @@ import { db, leadIntelligenceTable, changelogTable, leadsTable } from "@workspac
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "../../lib/claudeTimeout";
 
 const ALLOWED_FIELDS = [
   "qualification_status", "higher_rate_taxpayer", "capital_available",
@@ -42,7 +43,7 @@ router.post("/leads/:leadId/intelligence/generate", async (req, res): Promise<vo
       inputSections += `\nCALL TRANSCRIPT:\n${transcriptText}\n`;
     }
 
-    const message = await anthropic.messages.create({
+    const message = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{

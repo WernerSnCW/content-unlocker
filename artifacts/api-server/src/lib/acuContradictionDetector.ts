@@ -2,6 +2,7 @@ import { db, acuTable, acuCandidatesTable, acuContradictionsTable } from "@works
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { claudeWithTimeout } from "./claudeTimeout";
 
 interface ContradictionResult {
   unit_a_id: string;
@@ -264,7 +265,7 @@ Return ONLY the JSON array, no other text.`;
 
   let llmResults: ContradictionResult[] = [];
   try {
-    const response = await anthropic.messages.create({
+    const response = await claudeWithTimeout(anthropic, {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],

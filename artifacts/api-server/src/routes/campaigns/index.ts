@@ -281,10 +281,10 @@ router.post("/campaigns/:id/generate", async (req, res): Promise<void> => {
         acuSection
       );
 
-      const anthropicModule = await import("@anthropic-ai/sdk");
-      const client = new anthropicModule.default();
+      const { claudeWithTimeout: claudeTimeout } = await import("../../lib/claudeTimeout");
+      const { anthropic: anthropicClient } = await import("@workspace/integrations-anthropic-ai");
 
-      const response = await client.messages.create({
+      const response = await claudeTimeout(anthropicClient, {
         model: "claude-sonnet-4-6",
         max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
