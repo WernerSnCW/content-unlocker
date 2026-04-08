@@ -54,8 +54,8 @@ export default function Leads() {
   const [page, setPage] = useState(1);
   const pageSize = 25;
   const { data: response, isLoading } = useListLeads({ search, page, page_size: pageSize });
-  const leads = response?.data;
-  const pagination = response?.pagination;
+  const leads = Array.isArray(response) ? response : response?.data;
+  const pagination = Array.isArray(response) ? undefined : response?.pagination;
   const queryClient = useQueryClient();
 
   const [modalOpen, setModalOpen] = useState(false);

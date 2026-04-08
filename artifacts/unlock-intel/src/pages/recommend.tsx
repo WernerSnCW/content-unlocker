@@ -127,9 +127,9 @@ export default function Recommend() {
   }, []);
 
   const { data: leadsResponse, isLoading: isLeadsLoading } = useListLeads({ search: searchQuery, page_size: 100 }, { query: { enabled: searchQuery.length > 0 } });
-  const leads = leadsResponse?.data;
+  const leads = Array.isArray(leadsResponse) ? leadsResponse : leadsResponse?.data;
   const { data: linkLeadsResponse } = useListLeads({ search: linkSearch, page_size: 100 }, { query: { enabled: linkSearch.length > 0 } });
-  const linkLeads = linkLeadsResponse?.data;
+  const linkLeads = Array.isArray(linkLeadsResponse) ? linkLeadsResponse : linkLeadsResponse?.data;
 
   const analyzeMutation = useAnalyzeTranscript();
   const rankMutation = useRankDocuments();

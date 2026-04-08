@@ -205,8 +205,8 @@ export const getListLeadsUrl = (params?: ListLeadsParams) => {
 export const listLeads = async (
   params?: ListLeadsParams,
   options?: RequestInit,
-): Promise<PaginatedLeads> => {
-  return customFetch<PaginatedLeads>(getListLeadsUrl(params), {
+): Promise<PaginatedLeads | Lead[]> => {
+  return customFetch<PaginatedLeads | Lead[]>(getListLeadsUrl(params), {
     ...options,
     method: "GET",
   });
