@@ -21,6 +21,8 @@ export const HealthCheckResponse = zod.object({
 export const ListLeadsQueryParams = zod.object({
   search: zod.coerce.string().optional(),
   stage: zod.coerce.string().optional(),
+  page: zod.coerce.number().int().min(1).optional().default(1),
+  page_size: zod.coerce.number().int().min(1).max(100).optional().default(25),
 });
 
 export const ListLeadsResponseItem = zod.object({

@@ -126,8 +126,10 @@ export default function Recommend() {
     }
   }, []);
 
-  const { data: leads, isLoading: isLeadsLoading } = useListLeads({ search: searchQuery }, { query: { enabled: searchQuery.length > 0 } });
-  const { data: linkLeads } = useListLeads({ search: linkSearch }, { query: { enabled: linkSearch.length > 0 } });
+  const { data: leadsResponse, isLoading: isLeadsLoading } = useListLeads({ search: searchQuery, page_size: 100 }, { query: { enabled: searchQuery.length > 0 } });
+  const leads = leadsResponse?.data;
+  const { data: linkLeadsResponse } = useListLeads({ search: linkSearch, page_size: 100 }, { query: { enabled: linkSearch.length > 0 } });
+  const linkLeads = linkLeadsResponse?.data;
 
   const analyzeMutation = useAnalyzeTranscript();
   const rankMutation = useRankDocuments();

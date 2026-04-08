@@ -1169,7 +1169,21 @@ export interface TemplateGenerationResponse {
 export type ListLeadsParams = {
   search?: string;
   stage?: string;
+  page?: number;
+  page_size?: number;
 };
+
+export interface PaginationMeta {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface PaginatedLeads {
+  data: Lead[];
+  pagination: PaginationMeta;
+}
 
 export type ListDocumentsParams = {
   tier?: number;

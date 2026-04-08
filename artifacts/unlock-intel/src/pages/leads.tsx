@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { Search, Plus, Loader2, Upload, Trash2 } from "lucide-react";
+import { Search, Plus, Loader2, Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
@@ -51,7 +51,11 @@ function parseCsv(text: string): Record<string, string>[] {
 
 export default function Leads() {
   const [search, setSearch] = useState("");
-  const { data: leads, isLoading } = useListLeads({ search });
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const { data: response, isLoading } = useListLeads({ search, page, page_size: pageSize });
+  const leads = response?.data;
+  const pagination = response?.pagination;
   const queryClient = useQueryClient();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -294,7 +298,7 @@ export default function Leads() {
           <Input 
             placeholder="Search by name or company..." 
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
           />
         </div>
@@ -354,6 +358,35 @@ export default function Leads() {
           </TableBody>
         </Table>
       </div>
+
+      {pagination && pagination.total_pages > 1 && (
+        <div className="flex items-center justify-between bg-card p-3 rounded-lg border">
+          <p className="text-sm text-muted-foreground">
+            Showing {((pagination.page - 1) * pagination.page_size) + 1}–{Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} leads
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pagination.page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+            </Button>
+            <span className="text-sm text-muted-foreground px-2">
+              Page {pagination.page} of {pagination.total_pages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pagination.page >= pagination.total_pages}
+              onClick={() => setPage(page + 1)}
+            >
+              Next <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

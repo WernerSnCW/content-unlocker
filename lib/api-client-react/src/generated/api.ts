@@ -74,6 +74,7 @@ import type {
   ListChangelogParams,
   ListDocumentsParams,
   ListLeadsParams,
+  PaginatedLeads,
   MarkBacklogDuplicateBody,
   NextAction,
   OutputTemplate,
@@ -204,8 +205,8 @@ export const getListLeadsUrl = (params?: ListLeadsParams) => {
 export const listLeads = async (
   params?: ListLeadsParams,
   options?: RequestInit,
-): Promise<Lead[]> => {
-  return customFetch<Lead[]>(getListLeadsUrl(params), {
+): Promise<PaginatedLeads> => {
+  return customFetch<PaginatedLeads>(getListLeadsUrl(params), {
     ...options,
     method: "GET",
   });

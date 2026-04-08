@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, leadsTable, changelogTable } from "@workspace/db";
-import { eq, ilike, and, sql, isNotNull } from "drizzle-orm";
+import { eq, ilike, and, sql, isNotNull, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ListLeadsQueryParams,
@@ -30,6 +30,8 @@ router.get("/leads", async (req, res): Promise<void> => {
   const params = ListLeadsQueryParams.safeParse(req.query);
   const search = params.success ? params.data.search : undefined;
   const stage = params.success ? params.data.stage : undefined;
+  const page = params.success ? params.data.page : 1;
+  const pageSize = params.success ? params.data.page_size : 25;
 
   const conditions = [];
   if (search) {
@@ -39,13 +41,26 @@ router.get("/leads", async (req, res): Promise<void> => {
     conditions.push(eq(leadsTable.pipeline_stage, stage));
   }
 
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [totalResult] = await db
+    .select({ count: count() })
+    .from(leadsTable)
+    .where(whereClause);
+
+  const total = totalResult.count;
+  const totalPages = Math.ceil(total / pageSize);
+  const offset = (page - 1) * pageSize;
+
   const leads = await db
     .select()
     .from(leadsTable)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(leadsTable.updated_at);
+    .where(whereClause)
+    .orderBy(leadsTable.updated_at)
+    .limit(pageSize)
+    .offset(offset);
 
-  const result = leads.map((l) => ({
+  const data = leads.map((l) => ({
     id: l.id,
     name: l.name,
     company: l.company,
@@ -64,7 +79,15 @@ router.get("/leads", async (req, res): Promise<void> => {
     updated_at: l.updated_at.toISOString(),
   }));
 
-  res.json(result);
+  res.json({
+    data,
+    pagination: {
+      page,
+      page_size: pageSize,
+      total,
+      total_pages: totalPages,
+    },
+  });
 });
 
 router.post("/leads", async (req, res): Promise<void> => {
