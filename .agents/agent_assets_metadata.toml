@@ -72,3 +72,9 @@ id = "Li07Txcc2n5vwBN_kHqYP"
 uri = "file://.local/build-reports/011c-work-queue-resolution.md"
 type = "text"
 title = "011c Build Report — Work Queue Resolution Endpoints"
+
+[[outputs]]
+id = "utNWQxh2WSExMotw4VYLW"
+uri = "file://attached_assets/codebase-overview.md"
+type = "text"
+title = "Complete Codebase Overview"
