@@ -16,6 +16,10 @@ export const beliefRegistryTable = pgTable("belief_registry", {
   is_hard_gate: boolean("is_hard_gate").default(false),
   primary_document_id: text("primary_document_id"),
   supporting_document_ids: jsonb("supporting_document_ids").default([]),
+  conversation_question: text("conversation_question"),
+  content_if_unresolved: text("content_if_unresolved"),
+  red_flag_signals: jsonb("red_flag_signals").default([]),
+  green_flag_signals: jsonb("green_flag_signals").default([]),
   created_at: timestamp("created_at").defaultNow(),
 });
 
