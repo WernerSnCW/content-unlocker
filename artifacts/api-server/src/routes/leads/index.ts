@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, leadsTable, changelogTable } from "@workspace/db";
-import { eq, ilike, and, sql, isNotNull, count } from "drizzle-orm";
+import { eq, ilike, and, sql, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   ListLeadsQueryParams,
@@ -44,11 +44,11 @@ router.get("/leads", async (req, res): Promise<void> => {
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [totalResult] = await db
-    .select({ count: count() })
+    .select({ count: sql<number>`count(*)` })
     .from(leadsTable)
     .where(whereClause);
 
-  const total = totalResult.count;
+  const total = Number(totalResult.count);
   const totalPages = Math.ceil(total / pageSize);
   const offset = (page - 1) * pageSize;
 
