@@ -78,3 +78,9 @@ id = "utNWQxh2WSExMotw4VYLW"
 uri = "file://attached_assets/codebase-overview.md"
 type = "text"
 title = "Complete Codebase Overview"
+
+[[outputs]]
+id = "QRtiHv8r8bW_O9lv4xCfs"
+uri = "file://attached_assets/health-check-output.md"
+type = "text"
+title = "Health Check Report — 050"
