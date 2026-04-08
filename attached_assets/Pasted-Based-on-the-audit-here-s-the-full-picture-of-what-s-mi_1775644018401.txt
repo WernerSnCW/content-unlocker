@@ -1,0 +1,25 @@
+Based on the audit, here's the full picture of what's missing from the project:
+
+Documents referenced in schema as existing (📁 — not uploaded)
+These are listed as ✅ in the schema but aren't in the Claude project. They may be on Google Drive or elsewhere.
+IDDocumentPriority550Play to Win V1🔴 High — Tier 1, everything derives from it560StoryBrand SB7 V1🔴 High — Tier 1, governs all narrative structure590Investor Narrative V1🟡 Medium095Manifesto ("You've Got A Problem")🟡 Medium — original long-form version540Intelligence Matrix V1🟡 Medium570Investor Reference Guide V1🟡 Medium580Play to Win — Investor Version V1🟡 Medium600Changelog Mar 2026🟢 Low — historical record only
+Plus the new document just uploaded: 095_BRIEF_Before_We_Speak_V1_CURRENT.md — registered above, needs adding to index and schema before the zip is finalised.
+
+Gap documents — not yet built (Claude can produce these)
+GAPDocumentUrgencyGAP-09Book 2 agent call script🔴 AI dialling starts mid-MayGAP-08Three video scripts🔴 Tom films week of May 12GAP-05Subscriber onboarding pack🔴 Needed before September launchGAP-01B2 awareness content suite🟡 Before JuneGAP-06Standard vs White Glove comparison🟡 Agents need for Day 7 closeGAP-02Bridge document (post-manifesto)🟡 Lower priority now 095-Brief existsGAP-04IFA briefing document + landing page🟡 Before IFA outreachGAP-03Advocacy / referral assets🟢 Post-launchGAP-07Adviser supplement for Pack 2🟢 Before round closesGAP-10Quarterly investor reporting template🟢 Before July 2027
+
+Summary
+To upload (you find and add): 550, 560, 590, 095 manifesto, 540, 570, 580, 600 — if they exist somewhere. If any are lost or never finalised, just tell me and I'll mark them accordingly in the schema.
+To build (Claude produces): The three red GAPs are the blocking ones — GAP-09, GAP-08, and GAP-05 in that order.
+To finalise before repackaging the zip: Register the new 095_BRIEF_Before_We_Speak_V1_CURRENT.md in both the index and schema, then rezip everything including that file.
+What do you want to do first — upload what you have, or start building the blocking GAPs?are you sure play to win not there it all should be there?12:23Let me check properly.Ran 2 commandsRan 2 commandsThey're genuinely not there. 55 files on disk — none of the 550, 560, 570, 580, 590, 540, 600, or 095 Manifesto documents exist in the project under any filename.
+The schema listed them as ✅ existing, but that was an error in the schema itself — they were marked as present when they weren't. That's one of the things the V2 schema corrected by introducing the 📁 status.
+A few possibilities:
+
+They exist in Google Drive or locally and were never uploaded to this Claude project
+They were built outside of Claude (e.g. in Word, Notion, another tool) and not brought in
+Some may not have been finalised — the schema entries may have been aspirational rather than confirmed
+
+The documents most likely to exist somewhere given the project maturity are 550 Play to Win and 560 StoryBrand SB7 — these are typically workshop outputs, often done in a document or deck separately. The 095 Manifesto almost certainly exists given it's referenced extensively across multiple documents.
+540, 570, 580, 590 are less certain — they may be drafts or may not have been built yet.
+Can you check locally or in Google Drive for any of these? If you find them, drop them in here and I'll register them, run a compliance check, and add them to the next zip. If any genuinely don't exist yet, tell me which ones and I'll build them.
