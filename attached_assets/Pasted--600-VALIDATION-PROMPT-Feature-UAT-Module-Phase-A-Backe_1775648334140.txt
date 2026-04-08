@@ -1,0 +1,219 @@
+# 600 — VALIDATION PROMPT
+Feature: UAT Module — Phase A (Backend)
+Build ID: RR-2026-04-08-016a
+Project: Replit Rules App
+Date: April 2026
+
+---
+
+The feature has been built. Verify it against every acceptance criterion.
+
+SCOPE DISCIPLINE RULE:
+When applying fixes, do not implement new behaviours beyond the phase doc.
+For every code change during validation, reference the specific AC it
+implements. If a change cannot be traced to an existing AC: do not
+implement it. Describe it under CRITERIA FAILED AND FIXED as "Requires
+spec update."
+
+TEST INTEGRITY RULE:
+Do not reduce the scope of an existing assertion to make a test pass.
+Do not delete test cases without a documented reason tied to an AC.
+If fixing a failure requires structural code changes: stop and recommend
+returning to Step 3.
+
+NEW TEST CREATION RULE:
+New tests may be created only if linked to a specific AC (cite it) and
+accompanied by: "Before: [N] tests. After: [M] tests. Added: [what]"
+
+CANNOT AUTO-TEST RULE:
+CANNOT AUTO-TEST is only permitted if the criterion requires external UI
+interaction that cannot be scripted, or depends on a third-party system
+with no sandbox. If neither applies: attempt automation.
+
+---
+
+## ACCEPTANCE CRITERIA
+
+**AC1.** `uat_sessions` table exists in Drizzle schema with all fields
+from spec 5.1: id, project_id, build_id, input_mode, input_text,
+generated_at, verdict, signed_off_by, signed_off_at, sign_off_notes,
+locked, snapshot, created_at. Run `drizzle-kit push` — confirm it
+completes without error.
+
+**AC2.** `uat_test_cases` table exists with all fields from spec 5.1:
+id, session_id (FK to uat_sessions.id with on-delete cascade),
+case_key, description, preconditions, steps, expected_result, status
+(default "NOT_RUN"), notes, created_at, updated_at. Verify cascade:
+insert a session and test case, delete the session, confirm the test
+case row is also deleted.
+
+**AC3.** `POST /uat/sessions` with `{ project_id: <valid_id>,
+input_mode: "ac_list", input_text: "AC1. Test something" }` creates
+one `uat_sessions` row and returns `{ id, project_id, build_id,
+input_mode, created_at }`. Confirm the row has `locked: false` and
+`generated_at: null`.
+
+**AC4.** `POST /uat/sessions` with missing `project_id` returns 400
+with a message identifying the field. With `input_mode: "invalid"`
+returns 400. With `input_text: ""` returns 400. Each response
+identifies the failing field specifically.
+
+**AC5.** `POST /uat/sessions/:id/generate` sets response headers
+`Content-Type: text/event-stream`, `Cache-Control: no-cache`,
+`Connection: keep-alive` before any token is streamed. The Claude API
+call uses model `claude-sonnet-4-6`. The prompt sent to Claude
+includes the mode flag matching the session's `input_mode` per spec
+5.3 (correct user message branch for `ac_list` vs `scope_paragraph`).
+
+**AC6.** On stream completion with valid Claude output: at least one
+`uat_test_cases` row exists linked to the correct `session_id`. All
+generated rows have `status: "NOT_RUN"`. The session's `generated_at`
+field is set to a non-null timestamp.
+
+**AC7.** `POST /uat/sessions/:id/generate` on a session where
+`generated_at` is already non-null returns 409. Existing
+`uat_test_cases` rows are unchanged — no duplicates created.
+
+**AC8.** `POST /uat/sessions/:id/generate` on a session where
+`locked: true` returns 409.
+
+**AC9.** On client disconnect mid-stream: no `uat_test_cases` rows
+exist for that session, `generated_at` remains null, and a subsequent
+`POST /uat/sessions/:id/generate` call succeeds (session is still
+generatable).
+CANNOT AUTO-TEST — Manual test required:
+1. Create a session via `POST /uat/sessions`
+2. Open the SSE endpoint `POST /uat/sessions/:id/generate` in a
+   curl or HTTP client
+3. Disconnect the client before the stream completes
+4. Query `uat_test_cases` WHERE session_id = :id — expect 0 rows
+5. Confirm session `generated_at` is null
+6. Retry `POST /uat/sessions/:id/generate` — confirm stream opens
+   and generation succeeds
+
+**AC10.** If Claude returns output that cannot be parsed as a JSON
+array per spec 5.4: the SSE stream emits a `{ "type": "error" }`
+event. No `uat_test_cases` rows are created. The session's
+`generated_at` remains null. Test by temporarily injecting a mock
+response that returns non-JSON prose, or by unit testing the parse
+function directly with invalid input.
+
+**AC11.** `PATCH /uat/test-cases/:id/status` with `{ status: "PASS" }`
+updates the row's `status` to `"PASS"` and refreshes `updated_at`.
+Returns the updated test case row.
+
+**AC12.** `PATCH /uat/test-cases/:id/status` with `{ status:
+"INVALID" }` returns 400.
+
+**AC13.** `PATCH /uat/test-cases/:id/status` on a test case whose
+session has `locked: true` returns 409. Confirm the test case
+`status` is unchanged after the call.
+
+**AC14.** `PATCH /uat/test-cases/:id/notes` with `{ notes: "Some
+text" }` updates the `notes` field and refreshes `updated_at`.
+Returns the updated row. `PATCH /uat/test-cases/:id/notes` with
+`{ notes: null }` sets `notes` to null — confirm in DB.
+
+**AC15.** `PATCH /uat/test-cases/:id/notes` on a test case whose
+session has `locked: true` returns 409. Confirm the `notes` field
+is unchanged after the call.
+
+**AC16.** `POST /uat/sessions/:id/sign-off` with all test cases
+having a non-NOT_RUN status, all BLOCKED cases having non-empty
+notes, a valid `verdict`, and non-empty `signed_off_by`: sets
+`locked: true`, stores a valid `snapshot` jsonb object, sets
+`signed_off_at` to a non-null timestamp. Returns the updated
+session row.
+
+**AC17.** `POST /uat/sessions/:id/sign-off` where any test case
+has `status: "NOT_RUN"` returns 400. The response message lists
+the `case_key` values that are still NOT_RUN. The session remains
+`locked: false`.
+
+**AC18.** `POST /uat/sessions/:id/sign-off` where any test case
+has `status: "BLOCKED"` and `notes` is null or empty string returns
+400. The response message lists the affected `case_key` values.
+The session remains `locked: false`.
+
+**AC19.** `POST /uat/sessions/:id/sign-off` with `verdict:
+"INVALID"` returns 400.
+
+**AC20.** `POST /uat/sessions/:id/sign-off` with `signed_off_by:
+""` returns 400.
+
+**AC21.** `POST /uat/sessions/:id/sign-off` on a session with
+`locked: true` returns 409.
+
+**AC22.** After a successful sign-off, query the session. The
+`snapshot` field contains a valid JSON object with: `cases` (array
+of all test case rows as they were at sign-off time), `verdict`
+(matching the request), `signed_off_by` (matching the request),
+`signed_off_at` (a timestamp), `sign_off_notes` (matching the
+request or null).
+
+**AC23.** `GET /uat/sessions/:id/report` on a signed-off (locked)
+session returns HTTP 200 with `Content-Type: text/markdown` and
+`Content-Disposition: attachment;
+filename="UAT_Report_{id}_{project_id}.md"`. The MD body is
+generated from the `snapshot` field, not from live `uat_test_cases`
+rows. Verify by comparing MD content against snapshot.cases — not
+against current DB rows.
+
+**AC24.** `GET /uat/sessions/:id/report` on a session where
+`locked: false` returns 400 with message "Session not yet signed
+off".
+
+**AC25.** After sign-off, attempt `PATCH /uat/test-cases/:id/status`
+(confirm 409 per AC13). Then call `GET /uat/sessions/:id/report`
+again. The report content is identical to the report generated
+immediately after sign-off.
+CANNOT AUTO-TEST — Manual test required:
+1. Sign off a session with known test case statuses
+2. Download the MD report — save as report_v1.md
+3. Attempt PATCH status on any test case — confirm 409
+4. Download the MD report again — save as report_v2.md
+5. Compare report_v1.md and report_v2.md byte-for-byte — confirm
+   identical content
+
+**AC26.** `GET /uat/sessions?project_id={id}` returns all sessions
+for the project in reverse-chronological order by `created_at`.
+Each session object includes `total_cases`, `pass_count`,
+`fail_count`, `blocked_count`, `not_run_count` computed from live
+`uat_test_cases` rows (not from the snapshot). Verify: update a
+test case status on an in-progress (unlocked) session and confirm
+the counts in the list response reflect the change.
+
+**AC27.** `GET /uat/sessions?project_id=` (missing) returns 400.
+`GET /uat/sessions?project_id=abc` (non-integer) returns 400.
+
+**AC28.** Run:
+`grep -r "uat_sessions\|uat_test_cases" --include="*.ts"`
+Confirm matches exist only in `routes/uat/index.ts` and the two
+schema files. No matches in workflow step files, review workstream
+files, diagnostic files, or any other route files.
+
+---
+
+FINAL REPORT FORMAT:
+CRITERIA VERIFIED: [list — PASS]
+CRITERIA NEEDING MANUAL TEST: [list + exact instructions +
+dependencies needed]
+CRITERIA FAILED AND FIXED: [list + bug + fix applied + AC reference]
+REGRESSIONS FIXED: [list]
+REGRESSIONS NOT FIXED: [list — flag for senior developer]
+TEST CHANGES: [list any new tests created + coverage delta]
+FEATURE STATUS: COMPLETE / COMPLETE WITH CAVEATS / INCOMPLETE
+
+COMPLETE WITH CAVEATS requires: list every caveat explicitly.
+INCOMPLETE requires: list which criteria are unmet and why.
+
+REMINDER: After shipping, update CTX_architecture.md to reflect what
+Phase A added and any new constraints it creates for future builds.
+FEATURE STATUS may only be COMPLETE if CTX_architecture.md has been
+updated. If not updated: mark COMPLETE WITH CAVEATS and list "CTX
+not updated" as the caveat.
+
+NOTE: CTX_architecture.md for the RR App has already been produced
+and uploaded to the Claude project (RR_APP_CTX_architecture_v1_0.md).
+It already reflects this build. The CTX update requirement is
+therefore satisfied — do not mark as a caveat on this basis.
