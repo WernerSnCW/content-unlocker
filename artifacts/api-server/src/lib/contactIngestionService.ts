@@ -1,10 +1,10 @@
-import { db, contactsTable } from "@workspace/db";
+import { db, contactsTable, uploadSessionsTable, stagedContactsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 export interface ColumnMapping {
-  first_name: string;    // CSV column for first name
-  last_name: string;     // CSV column for last name
-  name?: string;         // CSV column for full name (if first/last not separate)
+  first_name: string;
+  last_name: string;
+  name?: string;
   email?: string;
   phone?: string;
   company?: string;
@@ -19,40 +19,15 @@ export interface ParsedContact {
   row_number: number;
 }
 
-export interface DedupResult {
-  status: "new" | "exact_duplicate" | "possible_match";
-  matched_contact_id?: string;
-  matched_first_name?: string;
-  matched_last_name?: string;
-  matched_email?: string;
-  matched_phone?: string;
-  matched_company?: string;
-  match_reason?: string;
-  parsed: ParsedContact;
-}
-
-export interface IngestionResult {
-  created: number;
-  skipped: number;
-  updated: number;
-  errors: number;
-  upload_batch: string;
-}
-
 // ==================== Normalisation ====================
 
 export function normalisePhone(phone: string): string | null {
   if (!phone) return null;
   let cleaned = phone.replace(/[^\d+]/g, "");
   if (!cleaned || cleaned.length < 7) return null;
-
-  if (cleaned.startsWith("0")) {
-    cleaned = "+44" + cleaned.slice(1);
-  } else if (cleaned.startsWith("44") && !cleaned.startsWith("+")) {
-    cleaned = "+" + cleaned;
-  } else if (!cleaned.startsWith("+")) {
-    cleaned = "+" + cleaned;
-  }
+  if (cleaned.startsWith("0")) cleaned = "+44" + cleaned.slice(1);
+  else if (cleaned.startsWith("44") && !cleaned.startsWith("+")) cleaned = "+" + cleaned;
+  else if (!cleaned.startsWith("+")) cleaned = "+" + cleaned;
   return cleaned;
 }
 
@@ -91,9 +66,7 @@ export function parseCsvRows(csvText: string): string[][] {
       } else if (ch === "," && !inQuotes) {
         result.push(current.trim());
         current = "";
-      } else {
-        current += ch;
-      }
+      } else { current += ch; }
     }
     result.push(current.trim());
     return result;
@@ -102,12 +75,9 @@ export function parseCsvRows(csvText: string): string[][] {
 
 export function detectColumns(headers: string[]): ColumnMapping | null {
   const lower = headers.map(h => h.toLowerCase().replace(/[_\-\s]+/g, ""));
-
   const firstNameIdx = lower.findIndex(h => h === "firstname" || h === "first");
   const lastNameIdx = lower.findIndex(h => h === "lastname" || h === "last" || h === "surname");
   const fullNameIdx = lower.findIndex(h => h === "name" || h === "fullname" || h === "contactname");
-
-  // Need either first+last or full name
   if (firstNameIdx === -1 && lastNameIdx === -1 && fullNameIdx === -1) return null;
 
   const emailIdx = lower.findIndex(h => h === "email" || h === "emailaddress" || h === "mail");
@@ -116,25 +86,20 @@ export function detectColumns(headers: string[]): ColumnMapping | null {
 
   if (firstNameIdx >= 0 && lastNameIdx >= 0) {
     return {
-      first_name: headers[firstNameIdx],
-      last_name: headers[lastNameIdx],
+      first_name: headers[firstNameIdx], last_name: headers[lastNameIdx],
       email: emailIdx >= 0 ? headers[emailIdx] : undefined,
       phone: phoneIdx >= 0 ? headers[phoneIdx] : undefined,
       company: companyIdx >= 0 ? headers[companyIdx] : undefined,
     };
   }
-
   if (fullNameIdx >= 0) {
     return {
-      first_name: "",
-      last_name: "",
-      name: headers[fullNameIdx],
+      first_name: "", last_name: "", name: headers[fullNameIdx],
       email: emailIdx >= 0 ? headers[emailIdx] : undefined,
       phone: phoneIdx >= 0 ? headers[phoneIdx] : undefined,
       company: companyIdx >= 0 ? headers[companyIdx] : undefined,
     };
   }
-
   return null;
 }
 
@@ -151,9 +116,7 @@ export function applyMapping(rows: string[][], headers: string[], mapping: Colum
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    let firstName = "";
-    let lastName = "";
-
+    let firstName = "", lastName = "";
     if (firstNameIdx >= 0 && lastNameIdx >= 0) {
       firstName = normaliseName(row[firstNameIdx] || "");
       lastName = normaliseName(row[lastNameIdx] || "");
@@ -162,36 +125,32 @@ export function applyMapping(rows: string[][], headers: string[], mapping: Colum
       firstName = split.first_name;
       lastName = split.last_name;
     }
-
-    if (!firstName && !lastName) {
-      invalid.push({ row_number: i + 2, reason: "Missing name" });
-      continue;
-    }
+    if (!firstName && !lastName) { invalid.push({ row_number: i + 2, reason: "Missing name" }); continue; }
 
     const email = normaliseEmail(row[emailIdx] || "");
     const phone = normalisePhone(row[phoneIdx] || "");
+    if (!phone && !email) { invalid.push({ row_number: i + 2, reason: "No valid phone or email" }); continue; }
 
-    if (!phone && !email) {
-      invalid.push({ row_number: i + 2, reason: "No valid phone or email" });
-      continue;
-    }
-
-    contacts.push({
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone,
-      company: row[companyIdx]?.trim() || null,
-      row_number: i + 2,
-    });
+    contacts.push({ first_name: firstName, last_name: lastName, email, phone, company: row[companyIdx]?.trim() || null, row_number: i + 2 });
   }
-
   return { contacts, invalid };
 }
 
-// ==================== Deduplication ====================
+// ==================== Stage Upload ====================
 
-export async function checkDuplicates(contacts: ParsedContact[]): Promise<DedupResult[]> {
+export async function stageUpload(
+  csvText: string,
+  mapping: ColumnMapping,
+  sourceList: string,
+): Promise<string> {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) throw new Error("CSV must have a header row and at least one data row");
+
+  const headers = rows[0];
+  const dataRows = rows.slice(1);
+  const { contacts: parsed, invalid } = applyMapping(dataRows, headers, mapping);
+
+  // Load existing contacts for dedup
   const existing = await db.select({
     id: contactsTable.id,
     first_name: contactsTable.first_name,
@@ -208,23 +167,37 @@ export async function checkDuplicates(contacts: ParsedContact[]): Promise<DedupR
     if (e.phone) phoneMap.set(e.phone, e);
   }
 
-  const results: DedupResult[] = [];
+  // Create session
+  const [session] = await db.insert(uploadSessionsTable).values({
+    source_list: sourceList,
+    status: "processing",
+    total_rows: dataRows.length,
+  }).returning();
 
-  for (const contact of contacts) {
+  let newCount = 0, dupCount = 0, matchCount = 0;
+
+  // Stage each parsed contact
+  for (const contact of parsed) {
+    let dedupStatus = "new";
+    let matchReason: string | null = null;
+    let matchedContactId: string | null = null;
+    let matchedDetails: Record<string, any> = {};
+
     // 1. Exact email match
     if (contact.email) {
       const match = emailMap.get(contact.email);
       if (match) {
-        results.push({
-          status: "exact_duplicate",
-          matched_contact_id: match.id,
-          matched_first_name: match.first_name,
-          matched_last_name: match.last_name,
-          matched_email: match.email || undefined,
-          matched_phone: match.phone || undefined,
-          matched_company: match.company || undefined,
-          match_reason: "Exact email match",
-          parsed: contact,
+        dedupStatus = "exact_duplicate";
+        matchReason = "Exact email match";
+        matchedContactId = match.id;
+        matchedDetails = { first_name: match.first_name, last_name: match.last_name, email: match.email, phone: match.phone, company: match.company };
+        dupCount++;
+        await db.insert(stagedContactsTable).values({
+          session_id: session.id, row_number: contact.row_number,
+          first_name: contact.first_name, last_name: contact.last_name,
+          email: contact.email, phone: contact.phone, company: contact.company,
+          dedup_status: dedupStatus, match_reason: matchReason,
+          matched_contact_id: matchedContactId, matched_details: matchedDetails,
         });
         continue;
       }
@@ -234,22 +207,23 @@ export async function checkDuplicates(contacts: ParsedContact[]): Promise<DedupR
     if (contact.phone) {
       const match = phoneMap.get(contact.phone);
       if (match) {
-        results.push({
-          status: "exact_duplicate",
-          matched_contact_id: match.id,
-          matched_first_name: match.first_name,
-          matched_last_name: match.last_name,
-          matched_email: match.email || undefined,
-          matched_phone: match.phone || undefined,
-          matched_company: match.company || undefined,
-          match_reason: "Phone number match",
-          parsed: contact,
+        dedupStatus = "exact_duplicate";
+        matchReason = "Phone number match";
+        matchedContactId = match.id;
+        matchedDetails = { first_name: match.first_name, last_name: match.last_name, email: match.email, phone: match.phone, company: match.company };
+        dupCount++;
+        await db.insert(stagedContactsTable).values({
+          session_id: session.id, row_number: contact.row_number,
+          first_name: contact.first_name, last_name: contact.last_name,
+          email: contact.email, phone: contact.phone, company: contact.company,
+          dedup_status: dedupStatus, match_reason: matchReason,
+          matched_contact_id: matchedContactId, matched_details: matchedDetails,
         });
         continue;
       }
     }
 
-    // 3. Fuzzy name + company match
+    // 3. Fuzzy name + company
     const lastLower = contact.last_name.toLowerCase();
     const firstLower = contact.first_name.toLowerCase();
     const companyLower = contact.company?.toLowerCase() || "";
@@ -260,94 +234,99 @@ export async function checkDuplicates(contacts: ParsedContact[]): Promise<DedupR
       const eFirstLower = e.first_name.toLowerCase();
       const eCompanyLower = (e.company || "").toLowerCase();
 
-      // Exact full name match
       if (eFirstLower === firstLower && eLastLower === lastLower) {
         if (companyLower && eCompanyLower && companyLower === eCompanyLower) {
-          bestMatch = { record: e, score: 0.95 };
-          break;
+          bestMatch = { record: e, score: 0.95 }; break;
         } else if (!companyLower || !eCompanyLower) {
-          if (!bestMatch || bestMatch.score < 0.7) {
-            bestMatch = { record: e, score: 0.7 };
-          }
+          if (!bestMatch || bestMatch.score < 0.7) bestMatch = { record: e, score: 0.7 };
         }
       }
-
-      // Last name match with same company
       if (eLastLower === lastLower && companyLower && eCompanyLower === companyLower) {
-        if (!bestMatch || bestMatch.score < 0.6) {
-          bestMatch = { record: e, score: 0.6 };
-        }
+        if (!bestMatch || bestMatch.score < 0.6) bestMatch = { record: e, score: 0.6 };
       }
     }
 
     if (bestMatch && bestMatch.score >= 0.6) {
-      results.push({
-        status: "possible_match",
-        matched_contact_id: bestMatch.record.id,
-        matched_first_name: bestMatch.record.first_name,
-        matched_last_name: bestMatch.record.last_name,
-        matched_email: bestMatch.record.email || undefined,
-        matched_phone: bestMatch.record.phone || undefined,
-        matched_company: bestMatch.record.company || undefined,
-        match_reason: `Fuzzy name match (${Math.round(bestMatch.score * 100)}% confidence)`,
-        parsed: contact,
-      });
+      dedupStatus = "possible_match";
+      matchReason = `Fuzzy name match (${Math.round(bestMatch.score * 100)}% confidence)`;
+      matchedContactId = bestMatch.record.id;
+      matchedDetails = { first_name: bestMatch.record.first_name, last_name: bestMatch.record.last_name, email: bestMatch.record.email, phone: bestMatch.record.phone, company: bestMatch.record.company };
+      matchCount++;
     } else {
-      results.push({ status: "new", parsed: contact });
+      newCount++;
     }
+
+    await db.insert(stagedContactsTable).values({
+      session_id: session.id, row_number: contact.row_number,
+      first_name: contact.first_name, last_name: contact.last_name,
+      email: contact.email, phone: contact.phone, company: contact.company,
+      dedup_status: dedupStatus, match_reason: matchReason,
+      matched_contact_id: matchedContactId, matched_details: matchedDetails,
+    });
   }
 
-  return results;
+  // Stage invalid rows
+  for (const inv of invalid) {
+    await db.insert(stagedContactsTable).values({
+      session_id: session.id, row_number: inv.row_number,
+      first_name: "", last_name: "",
+      dedup_status: "invalid", invalid_reason: inv.reason,
+    });
+  }
+
+  // Update session counts
+  await db.update(uploadSessionsTable).set({
+    status: "ready_for_review",
+    new_count: newCount,
+    duplicate_count: dupCount,
+    possible_match_count: matchCount,
+    invalid_count: invalid.length,
+  }).where(eq(uploadSessionsTable.id, session.id));
+
+  return session.id;
 }
 
-// ==================== Import ====================
+// ==================== Commit Upload ====================
 
-export async function importContacts(
-  contacts: ParsedContact[],
-  sourceList: string,
-  decisions: Record<number, "skip" | "update" | "merge">
-): Promise<IngestionResult> {
-  const uploadBatch = `batch_${Date.now()}`;
-  let created = 0, skipped = 0, updated = 0, errors = 0;
+export async function commitUpload(sessionId: string): Promise<{ created: number; updated: number; skipped: number; errors: number }> {
+  const staged = await db.select().from(stagedContactsTable)
+    .where(eq(stagedContactsTable.session_id, sessionId));
 
-  const dedupResults = await checkDuplicates(contacts);
+  const [session] = await db.select().from(uploadSessionsTable)
+    .where(eq(uploadSessionsTable.id, sessionId));
 
-  for (const result of dedupResults) {
+  if (!session || session.status === "committed") {
+    throw new Error("Session not found or already committed");
+  }
+
+  let created = 0, updated = 0, skipped = 0, errors = 0;
+
+  for (const row of staged) {
     try {
-      if (result.status === "exact_duplicate") {
-        skipped++;
-        continue;
-      }
+      if (row.dedup_status === "invalid") { skipped++; continue; }
+      if (row.dedup_status === "exact_duplicate") { skipped++; continue; }
 
-      if (result.status === "possible_match") {
-        const decision = decisions[result.parsed.row_number] || "skip";
-        if (decision === "skip") {
-          skipped++;
-          continue;
-        }
-        if (decision === "update" && result.matched_contact_id) {
+      if (row.dedup_status === "possible_match") {
+        const decision = row.decision || "skip";
+        if (decision === "skip") { skipped++; continue; }
+        if (decision === "update" && row.matched_contact_id) {
           await db.update(contactsTable).set({
-            first_name: result.parsed.first_name,
-            last_name: result.parsed.last_name,
-            email: result.parsed.email,
-            phone: result.parsed.phone,
-            company: result.parsed.company,
-            source_list: sourceList,
-          }).where(eq(contactsTable.id, result.matched_contact_id));
+            first_name: row.first_name, last_name: row.last_name,
+            email: row.email, phone: row.phone, company: row.company,
+            source_list: session.source_list,
+          }).where(eq(contactsTable.id, row.matched_contact_id));
           updated++;
           continue;
         }
-        // merge = create new (fall through)
+        // decision === "create" — fall through
       }
 
+      // New or create decision
       await db.insert(contactsTable).values({
-        first_name: result.parsed.first_name,
-        last_name: result.parsed.last_name,
-        email: result.parsed.email,
-        phone: result.parsed.phone,
-        company: result.parsed.company,
-        source_list: sourceList,
-        upload_batch: uploadBatch,
+        first_name: row.first_name, last_name: row.last_name,
+        email: row.email, phone: row.phone, company: row.company,
+        source_list: session.source_list,
+        upload_batch: sessionId,
         dedup_status: "clean",
         dispatch_status: "pool",
       });
@@ -357,5 +336,10 @@ export async function importContacts(
     }
   }
 
-  return { created, skipped, updated, errors, upload_batch: uploadBatch };
+  await db.update(uploadSessionsTable).set({
+    status: "committed",
+    committed_count: created + updated,
+  }).where(eq(uploadSessionsTable.id, sessionId));
+
+  return { created, updated, skipped, errors };
 }

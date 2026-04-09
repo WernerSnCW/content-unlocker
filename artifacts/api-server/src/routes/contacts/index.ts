@@ -1,18 +1,16 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable } from "@workspace/db";
-import { eq, or, sql, and, ilike } from "drizzle-orm";
+import { db, contactsTable, uploadSessionsTable, stagedContactsTable } from "@workspace/db";
+import { eq, or, sql, and, ilike, desc } from "drizzle-orm";
 import {
-  parseCsvRows,
-  detectColumns,
-  applyMapping,
-  checkDuplicates,
-  importContacts,
+  parseCsvRows, detectColumns, stageUpload, commitUpload,
   type ColumnMapping,
 } from "../../lib/contactIngestionService";
 
 const router: IRouter = Router();
 
-// GET /contacts — paginated list with search and filters
+// ==================== Contacts ====================
+
+// GET /contacts — paginated list
 router.get("/contacts", async (req, res): Promise<void> => {
   try {
     const search = typeof req.query.search === "string" ? req.query.search : undefined;
@@ -22,57 +20,60 @@ router.get("/contacts", async (req, res): Promise<void> => {
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.page_size as string) || 25));
 
     const conditions = [];
-    if (search) {
-      conditions.push(
-        or(
-          ilike(contactsTable.first_name, `%${search}%`),
-          ilike(contactsTable.last_name, `%${search}%`)
-        )!
-      );
-    }
+    if (search) conditions.push(or(ilike(contactsTable.first_name, `%${search}%`), ilike(contactsTable.last_name, `%${search}%`))!);
     if (status) conditions.push(eq(contactsTable.dispatch_status, status));
     if (source) conditions.push(eq(contactsTable.source_list, source));
-
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [totalResult] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(contactsTable)
-      .where(whereClause);
-
+    const [totalResult] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable).where(whereClause);
     const total = Number(totalResult.count);
-    const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
     const contacts = await db.select().from(contactsTable)
-      .where(whereClause)
-      .orderBy(contactsTable.created_at)
-      .limit(pageSize)
-      .offset(offset);
+      .where(whereClause).orderBy(contactsTable.created_at).limit(pageSize).offset(offset);
 
-    res.json({
-      data: contacts,
-      pagination: { page, page_size: pageSize, total, total_pages: totalPages },
-    });
+    res.json({ data: contacts, pagination: { page, page_size: pageSize, total, total_pages: Math.ceil(total / pageSize) } });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to fetch contacts" });
   }
 });
 
-// GET /contacts/sources — list distinct source_list values for filtering
+// GET /contacts/sources — distinct source lists
 router.get("/contacts/sources", async (req, res): Promise<void> => {
   try {
-    const sources = await db
-      .selectDistinct({ source_list: contactsTable.source_list })
-      .from(contactsTable);
+    const sources = await db.selectDistinct({ source_list: contactsTable.source_list }).from(contactsTable);
     res.json({ sources: sources.map(s => s.source_list).filter(Boolean) });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to fetch sources" });
   }
 });
 
-// POST /contacts/upload/preview — parse CSV, detect columns, run dedup preview
-router.post("/contacts/upload/preview", async (req, res): Promise<void> => {
+// GET /contacts/stats — pool statistics
+router.get("/contacts/stats", async (req, res): Promise<void> => {
+  try {
+    const stats = await db.select({ dispatch_status: contactsTable.dispatch_status, count: sql<number>`count(*)` })
+      .from(contactsTable).groupBy(contactsTable.dispatch_status);
+    const total = stats.reduce((sum, s) => sum + Number(s.count), 0);
+    res.json({ total, by_status: Object.fromEntries(stats.map(s => [s.dispatch_status, Number(s.count)])) });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch contact stats" });
+  }
+});
+
+// ==================== Upload Sessions ====================
+
+// GET /contacts/uploads — list upload sessions
+router.get("/contacts/uploads", async (req, res): Promise<void> => {
+  try {
+    const sessions = await db.select().from(uploadSessionsTable).orderBy(desc(uploadSessionsTable.created_at));
+    res.json({ sessions });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch upload sessions" });
+  }
+});
+
+// POST /contacts/uploads — start a new upload (parse CSV, stage contacts)
+router.post("/contacts/uploads", async (req, res): Promise<void> => {
   try {
     const { csv_text, column_mapping, source_list } = req.body;
 
@@ -80,134 +81,122 @@ router.post("/contacts/upload/preview", async (req, res): Promise<void> => {
       res.status(400).json({ error: "csv_text is required" });
       return;
     }
-
-    const rows = parseCsvRows(csv_text);
-    if (rows.length < 2) {
-      res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+    if (!source_list || typeof source_list !== "string") {
+      res.status(400).json({ error: "source_list name is required" });
       return;
     }
 
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
-
-    // Auto-detect or use provided mapping
+    // Auto-detect columns if not provided
     let mapping: ColumnMapping;
     if (column_mapping) {
       mapping = column_mapping;
     } else {
-      const detected = detectColumns(headers);
+      const rows = parseCsvRows(csv_text);
+      if (rows.length < 2) {
+        res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+        return;
+      }
+      const detected = detectColumns(rows[0]);
       if (!detected) {
         res.json({
           needs_mapping: true,
-          headers,
-          row_count: dataRows.length,
-          message: "Could not auto-detect column mapping. Please specify which columns map to name, email, phone, company.",
+          headers: rows[0],
+          row_count: rows.length - 1,
+          message: "Could not auto-detect column mapping. Please specify which columns map to first_name, last_name, email, phone, company.",
         });
         return;
       }
       mapping = detected;
     }
 
-    // Parse and normalise
-    const { contacts: parsed, invalid } = applyMapping(dataRows, headers, mapping);
+    const sessionId = await stageUpload(csv_text, mapping, source_list);
 
-    // Run dedup check
-    const dedupResults = await checkDuplicates(parsed);
-
-    const newContacts = dedupResults.filter(r => r.status === "new");
-    const exactDuplicates = dedupResults.filter(r => r.status === "exact_duplicate");
-    const possibleMatches = dedupResults.filter(r => r.status === "possible_match");
+    // Return session with staged data
+    const [session] = await db.select().from(uploadSessionsTable).where(eq(uploadSessionsTable.id, sessionId));
+    const staged = await db.select().from(stagedContactsTable).where(eq(stagedContactsTable.session_id, sessionId));
 
     res.json({
-      needs_mapping: false,
-      mapping,
-      headers,
-      preview: {
-        total_rows: dataRows.length,
-        new_contacts: newContacts.length,
-        exact_duplicates: exactDuplicates.length,
-        possible_matches: possibleMatches.length,
-        invalid: invalid.length,
-      },
-      new_contacts: newContacts.map(r => r.parsed),
-      exact_duplicates: exactDuplicates.map(r => ({
-        ...r.parsed,
-        matched_contact_id: r.matched_contact_id,
-        matched_first_name: r.matched_first_name,
-        matched_last_name: r.matched_last_name,
-        matched_email: r.matched_email,
-        matched_phone: r.matched_phone,
-        matched_company: r.matched_company,
-        match_reason: r.match_reason,
+      session,
+      staged: staged.map(s => ({
+        id: s.id,
+        row_number: s.row_number,
+        first_name: s.first_name,
+        last_name: s.last_name,
+        email: s.email,
+        phone: s.phone,
+        company: s.company,
+        dedup_status: s.dedup_status,
+        match_reason: s.match_reason,
+        matched_contact_id: s.matched_contact_id,
+        matched_details: s.matched_details,
+        decision: s.decision,
+        invalid_reason: s.invalid_reason,
       })),
-      possible_matches: possibleMatches.map(r => ({
-        ...r.parsed,
-        matched_contact_id: r.matched_contact_id,
-        matched_first_name: r.matched_first_name,
-        matched_last_name: r.matched_last_name,
-        matched_email: r.matched_email,
-        matched_phone: r.matched_phone,
-        matched_company: r.matched_company,
-        match_reason: r.match_reason,
-      })),
-      invalid,
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to preview upload" });
+    res.status(500).json({ error: err.message || "Failed to stage upload" });
   }
 });
 
-// POST /contacts/upload/confirm — import contacts with dedup decisions
-router.post("/contacts/upload/confirm", async (req, res): Promise<void> => {
+// GET /contacts/uploads/:sessionId — get session with staged contacts
+router.get("/contacts/uploads/:sessionId", async (req, res): Promise<void> => {
   try {
-    const { csv_text, column_mapping, source_list, decisions } = req.body;
+    const { sessionId } = req.params;
+    const [session] = await db.select().from(uploadSessionsTable).where(eq(uploadSessionsTable.id, sessionId));
+    if (!session) { res.status(404).json({ error: "Session not found" }); return; }
 
-    if (!csv_text || !column_mapping || !source_list) {
-      res.status(400).json({ error: "csv_text, column_mapping, and source_list are required" });
-      return;
-    }
+    const staged = await db.select().from(stagedContactsTable).where(eq(stagedContactsTable.session_id, sessionId));
 
-    const rows = parseCsvRows(csv_text);
-    if (rows.length < 2) {
-      res.status(400).json({ error: "CSV must have a header row and at least one data row" });
-      return;
-    }
-
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
-
-    const { contacts: parsed } = applyMapping(dataRows, headers, column_mapping);
-
-    const result = await importContacts(parsed, source_list, decisions || {});
-
-    res.json({
-      success: true,
-      ...result,
-    });
+    res.json({ session, staged });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to import contacts" });
+    res.status(500).json({ error: "Failed to fetch session" });
   }
 });
 
-// GET /contacts/stats — pool statistics
-router.get("/contacts/stats", async (req, res): Promise<void> => {
+// PATCH /contacts/uploads/:sessionId/decisions — set decisions for possible matches
+router.patch("/contacts/uploads/:sessionId/decisions", async (req, res): Promise<void> => {
   try {
-    const stats = await db
-      .select({
-        dispatch_status: contactsTable.dispatch_status,
-        count: sql<number>`count(*)`,
-      })
-      .from(contactsTable)
-      .groupBy(contactsTable.dispatch_status);
+    const { sessionId } = req.params;
+    const { decisions } = req.body; // { staged_contact_id: "skip" | "update" | "create" }
 
-    const total = stats.reduce((sum, s) => sum + Number(s.count), 0);
+    if (!decisions || typeof decisions !== "object") {
+      res.status(400).json({ error: "decisions object is required" });
+      return;
+    }
 
-    res.json({
-      total,
-      by_status: Object.fromEntries(stats.map(s => [s.dispatch_status, Number(s.count)])),
-    });
+    for (const [stagedId, decision] of Object.entries(decisions)) {
+      await db.update(stagedContactsTable)
+        .set({ decision: decision as string })
+        .where(eq(stagedContactsTable.id, stagedId));
+    }
+
+    res.json({ success: true, updated: Object.keys(decisions).length });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to fetch contact stats" });
+    res.status(500).json({ error: "Failed to update decisions" });
+  }
+});
+
+// POST /contacts/uploads/:sessionId/commit — import approved contacts
+router.post("/contacts/uploads/:sessionId/commit", async (req, res): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    const result = await commitUpload(sessionId);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to commit upload" });
+  }
+});
+
+// POST /contacts/uploads/:sessionId/cancel — cancel an upload session
+router.post("/contacts/uploads/:sessionId/cancel", async (req, res): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    await db.update(uploadSessionsTable)
+      .set({ status: "cancelled" })
+      .where(eq(uploadSessionsTable.id, sessionId));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to cancel session" });
   }
 });
 
