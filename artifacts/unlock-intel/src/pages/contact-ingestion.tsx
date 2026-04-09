@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Upload, CheckCircle, AlertTriangle, XCircle, Users, History, Database, ArrowRight, FileSpreadsheet, ShieldCheck, UserCheck, UserX, HelpCircle } from "lucide-react";
+import { Loader2, Upload, CheckCircle, AlertTriangle, XCircle, Users, History, Database, ArrowRight, FileSpreadsheet, ShieldCheck, UserCheck, UserX, HelpCircle, File } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
@@ -43,6 +43,10 @@ export default function ContactIngestion() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [activeTab, setActiveTab] = useState("upload");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchStats(); fetchSessions(); }, []);
 
@@ -52,6 +56,34 @@ export default function ContactIngestion() {
   const fetchSessions = async () => {
     try { const res = await fetch(`${API_BASE}/contacts/uploads`); const data = await res.json(); setSessions(data.sessions || []); } catch {}
   };
+
+  const readFile = useCallback((file: globalThis.File) => {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "csv" && ext !== "txt") {
+      alert("Please upload a .csv or .txt file");
+      return;
+    }
+    setFileName(file.name);
+    if (!sourceList) setSourceList(file.name.replace(/\.(csv|txt)$/i, "").replace(/[_-]/g, " "));
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (text) setCsvText(text);
+    };
+    reader.readAsText(file);
+  }, [sourceList]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) readFile(file);
+  }, [readFile]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [readFile]);
 
   const handleUpload = async (mapping?: any) => {
     setUploading(true); setNeedsMapping(false); setSession(null); setStaged([]); setCommitResult(null);
@@ -111,7 +143,7 @@ export default function ContactIngestion() {
 
   const resetUpload = () => {
     setSession(null); setStaged([]); setCommitResult(null); setCsvText(""); setSourceList("");
-    setNeedsMapping(false); setActiveTab("upload");
+    setNeedsMapping(false); setActiveTab("upload"); setFileName(null); setShowPaste(false);
   };
 
   const newContacts = staged.filter(s => s.dedup_status === "new");
@@ -221,46 +253,99 @@ export default function ContactIngestion() {
             <CardHeader>
               <CardTitle>Upload Contact List</CardTitle>
               <CardDescription>
-                Paste CSV data below. Supports both separate "first_name, last_name" columns and a single "name" column (auto-split).
+                Drop a CSV file or browse to select one. Supports both separate "first_name, last_name" columns and a single "name" column.
                 Every row needs at least a name and either an email or phone number.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Source List Name <span className="text-destructive">*</span></label>
-                  <Input value={sourceList} onChange={e => setSourceList(e.target.value)} placeholder="e.g. London HNW List March 2026" />
-                  <p className="text-xs text-muted-foreground">A label to identify this batch of contacts.</p>
-                </div>
-                <div className="flex items-end">
-                  <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1 w-full">
-                    <p className="font-medium text-foreground">Accepted formats:</p>
-                    <p>first_name, last_name, email, phone, company</p>
-                    <p>name, email, phone, company</p>
-                    <p>Custom headers (you'll map them)</p>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Source List Name <span className="text-destructive">*</span></label>
+                <Input value={sourceList} onChange={e => setSourceList(e.target.value)} placeholder="e.g. London HNW List March 2026" />
+                <p className="text-xs text-muted-foreground">A label to identify this batch of contacts. Auto-filled from filename.</p>
+              </div>
+
+              {/* Hidden file input */}
+              <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileSelect} />
+
+              {/* Drop zone */}
+              {!csvText.trim() ? (
+                <div
+                  className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
+                    ${dragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}`}
+                  onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="space-y-3">
+                    <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center ${dragging ? "bg-primary/10" : "bg-muted"}`}>
+                      <Upload className={`w-6 h-6 ${dragging ? "text-primary" : "text-muted-foreground"}`} />
+                    </div>
+                    <div>
+                      <p className="font-medium">{dragging ? "Drop your file here" : "Drop a CSV file here, or click to browse"}</p>
+                      <p className="text-sm text-muted-foreground mt-1">Accepts .csv and .txt files</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-4 pt-1">
+                      <Button variant="outline" size="sm" type="button" onClick={e => { e.stopPropagation(); setShowPaste(true); }}>
+                        Or paste CSV data
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">CSV Data <span className="text-destructive">*</span></label>
-                  {csvText.trim() && rowCount > 0 && (
-                    <span className="text-xs text-muted-foreground">{rowCount} data row{rowCount !== 1 ? "s" : ""} detected</span>
-                  )}
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {fileName ? (
+                        <Badge variant="outline" className="gap-1 py-1"><File className="w-3.5 h-3.5" /> {fileName}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="py-1">Pasted data</Badge>
+                      )}
+                      <span className="text-sm text-muted-foreground">{rowCount > 0 ? `${rowCount} data row${rowCount !== 1 ? "s" : ""}` : ""}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => { setCsvText(""); setFileName(null); setShowPaste(false); }}>
+                        Clear
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
+                        Choose different file
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="border rounded-lg bg-muted/30 max-h-48 overflow-auto">
+                    <pre className="p-3 text-xs font-mono whitespace-pre-wrap text-muted-foreground">{csvText.slice(0, 2000)}{csvText.length > 2000 ? "\n..." : ""}</pre>
+                  </div>
                 </div>
-                <Textarea value={csvText} onChange={e => setCsvText(e.target.value)}
-                  placeholder={"first_name,last_name,email,phone,company\nJohn,Smith,john@example.com,07700900123,Acme Corp\nJane,Doe,jane@example.com,07700900456,Beta Ltd\nBob,Wilson,bob@wilson.co.uk,02079460123,Wilson Capital"}
-                  rows={12} className="font-mono text-sm" />
-              </div>
+              )}
 
-              <div className="flex items-center gap-3">
+              {/* Paste fallback */}
+              {showPaste && !csvText.trim() && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Paste CSV Data</label>
+                    <Button variant="ghost" size="sm" onClick={() => setShowPaste(false)}>Cancel</Button>
+                  </div>
+                  <Textarea value={csvText} onChange={e => setCsvText(e.target.value)}
+                    placeholder={"first_name,last_name,email,phone,company\nJohn,Smith,john@example.com,07700900123,Acme Corp"}
+                    rows={8} className="font-mono text-sm" autoFocus />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground flex items-center gap-4">
+                  <span className="font-medium text-foreground">Accepted columns:</span>
+                  <span>first_name + last_name</span>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span>name (auto-split)</span>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span>email, phone, company</span>
+                </div>
                 <Button size="lg" onClick={() => handleUpload()} disabled={uploading || !csvText.trim() || !sourceList.trim()}>
                   {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
                   Upload & Analyse
                 </Button>
-                {uploading && <span className="text-sm text-muted-foreground">Parsing, normalising, and checking for duplicates...</span>}
               </div>
+              {uploading && <p className="text-sm text-muted-foreground text-center">Parsing, normalising, and checking for duplicates...</p>}
             </CardContent>
           </Card>
 
