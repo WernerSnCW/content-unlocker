@@ -41,6 +41,9 @@ export const leadsTable = pgTable("leads", {
   // External CRM link (for Pipedrive sync)
   pipedrive_person_id: integer("pipedrive_person_id").unique(),
 
+  // Link to contact pool (set when contact's first transcript is analysed)
+  contact_id: text("contact_id"),
+
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -1,0 +1,44 @@
+import { pgTable, text, boolean, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { randomUUID } from "crypto";
+
+export const contactsTable = pgTable("contacts", {
+  id: text("id").primaryKey().$defaultFn(() => `contact_${randomUUID().slice(0, 8)}`),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  company: text("company"),
+
+  // Ingestion tracking
+  source_list: text("source_list"), // name of the CSV/list this contact came from
+  upload_batch: text("upload_batch"), // batch ID for grouping uploads
+  dedup_status: text("dedup_status").default("clean"), // clean, duplicate, merged
+
+  // Campaign & dispatch
+  campaign_name: text("campaign_name"),
+  dispatch_status: text("dispatch_status").notNull().default("pool"), // pool, queued, dispatched, called, qualified, archived
+  dispatch_date: timestamp("dispatch_date", { withTimezone: true }),
+
+  // Call tracking
+  call_attempts: integer("call_attempts").notNull().default(0),
+  last_call_outcome: text("last_call_outcome"), // interested, no-interest, no-answer, callback-requested, meeting-booked, not-now
+  callback_date: timestamp("callback_date", { withTimezone: true }),
+  outreach_paused_until: timestamp("outreach_paused_until", { withTimezone: true }),
+  cool_off_until: timestamp("cool_off_until", { withTimezone: true }),
+
+  // External system IDs (null until pushed)
+  aircall_contact_id: integer("aircall_contact_id").unique(),
+  pipedrive_person_id: integer("pipedrive_person_id").unique(),
+  pipedrive_deal_id: integer("pipedrive_deal_id"),
+
+  // Link to intelligence layer (null until first transcript analysed)
+  lead_id: text("lead_id"),
+
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertContactSchema = createInsertSchema(contactsTable).omit({ id: true, created_at: true, updated_at: true });
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type Contact = typeof contactsTable.$inferSelect;

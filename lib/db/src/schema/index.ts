@@ -24,3 +24,4 @@ export * from "./document-health-scores";
 export * from "./lead-conversations";
 export * from "./integration-configs";
 export * from "./agents";
+export * from "./contacts";
