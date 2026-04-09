@@ -468,8 +468,38 @@ router.post("/recommendation/analyze", async (req, res): Promise<void> => {
 
   let intelligenceContext = "No intelligence profile available for this lead.";
   let beliefContext = "No belief states recorded for this lead.";
+  let personaContext = "";
+  let existingPersona: { name: string; confidence: number; evidence: string[] } | null = null;
 
   if (lead_id) {
+    const [leadForContext] = await db.select().from(leadsTable).where(eq(leadsTable.id, lead_id));
+
+    // Load existing persona data for merge
+    if (leadForContext) {
+      const detectedPersona = leadForContext.detected_persona;
+      const personaConfidence = leadForContext.persona_confidence;
+      if (detectedPersona) {
+        existingPersona = {
+          name: detectedPersona,
+          confidence: personaConfidence || 0,
+          evidence: [],
+        };
+        personaContext = `
+EXISTING PERSONA DETECTION:
+- Previously detected persona: ${detectedPersona}
+- Confidence: ${personaConfidence || 'unknown'}
+- Confirmed persona: ${leadForContext.confirmed_persona || 'not confirmed'}
+
+PERSONA MERGE RULES:
+- If the new transcript reinforces the existing persona, INCREASE confidence and ADD new evidence to the existing evidence list.
+- If the new transcript suggests a DIFFERENT persona with HIGHER confidence, update to the new persona.
+- If the new transcript has no persona signals, return the existing persona with "__KEEP__" as the confidence_score.
+- A confirmed_persona (manually set by operator) should NEVER be contradicted — if one exists, always return that persona name.
+${leadForContext.confirmed_persona ? `- CONFIRMED PERSONA: ${leadForContext.confirmed_persona} — this MUST be returned as the detected persona name.` : ''}
+`;
+      }
+    }
+
     const intelligenceRows = await db.select().from(leadIntelligenceTable)
       .where(eq(leadIntelligenceTable.lead_id, lead_id)).limit(1);
     const intelligence = intelligenceRows[0] || null;
@@ -539,6 +569,7 @@ LEAD CONTEXT:
 ${sendHistorySummary}
 ${intelligenceContext}
 ${beliefContext}
+${personaContext}
 ${questionsContext}
 PERSONA REFERENCE (compact):
 ${compactPersonaRef}
@@ -656,13 +687,37 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
     });
 
     // 0.1: Save transcript text to lead record
+    // Also save/merge persona detection
     if (lead_id) {
       try {
+        const newPersona = analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] };
+        const personaUpdates: any = { transcript_text: transcript };
+
+        if (newPersona.confidence_score !== "__KEEP__") {
+          // Check if we should update persona
+          const shouldUpdatePersona = !existingPersona
+            || newPersona.confidence_score > (existingPersona.confidence || 0)
+            || newPersona.name === existingPersona.name; // Reinforcing same persona
+
+          if (shouldUpdatePersona && newPersona.name !== "Unknown") {
+            personaUpdates.detected_persona = newPersona.name;
+            // If same persona, take the higher confidence
+            if (existingPersona && newPersona.name === existingPersona.name) {
+              personaUpdates.persona_confidence = Math.max(
+                newPersona.confidence_score || 0,
+                existingPersona.confidence || 0
+              );
+            } else {
+              personaUpdates.persona_confidence = newPersona.confidence_score;
+            }
+          }
+        }
+
         await db.update(leadsTable)
-          .set({ transcript_text: transcript })
+          .set(personaUpdates)
           .where(eq(leadsTable.id, lead_id));
       } catch (saveErr: any) {
-        req.log.warn({ err: saveErr, lead_id }, "Failed to save transcript_text to lead");
+        req.log.warn({ err: saveErr, lead_id }, "Failed to save transcript/persona to lead");
       }
     }
 
