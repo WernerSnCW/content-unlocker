@@ -32,12 +32,45 @@ export async function generateIntelligence(leadId: string): Promise<Intelligence
     throw new Error("Lead has no notes or transcript to analyse");
   }
 
+  // Fetch existing intelligence for merge context
+  const [existing] = await db.select().from(leadIntelligenceTable)
+    .where(eq(leadIntelligenceTable.lead_id, leadId));
+
   let inputSections = `INVESTOR NAME: ${lead.name}\n`;
   if (notes && notes.trim() !== "") {
     inputSections += `\nOPERATOR NOTES:\n${notes}\n`;
   }
   if (transcriptText && transcriptText.trim() !== "") {
     inputSections += `\nCALL TRANSCRIPT:\n${transcriptText}\n`;
+  }
+
+  // Build existing profile context for merge
+  let existingProfileContext = "";
+  if (existing) {
+    const profileFields: Record<string, any> = {};
+    for (const key of ALLOWED_FIELDS) {
+      const val = (existing as any)[key];
+      if (val !== null && val !== undefined) {
+        profileFields[key] = val;
+      }
+    }
+    if (Object.keys(profileFields).length > 0) {
+      existingProfileContext = `
+EXISTING INTELLIGENCE PROFILE (from previous analysis):
+${JSON.stringify(profileFields, null, 2)}
+
+MERGE RULES — CRITICAL:
+- This investor has been analysed before. The existing profile above contains established intelligence.
+- PRESERVE all existing non-null values UNLESS the new transcript explicitly contradicts them.
+- If the new transcript provides no signal for a field, return "__KEEP__" to preserve the existing value.
+- If the new transcript provides NEW information for a field that was previously null, set it.
+- If the new transcript CONTRADICTS an existing value (e.g. investor previously said they have an IFA but now says they do not), update it.
+- NEVER overwrite an established field with null just because it was not mentioned in this transcript.
+- For profile_summary: merge new insights with existing summary, do not replace it entirely.
+- For hot_button: only change if new transcript reveals a different or stronger emotional driver.
+- For SPIN fields: append or refine, do not erase.
+`;
+    }
   }
 
   const message = await claudeWithTimeout(anthropic, {
@@ -48,41 +81,43 @@ export async function generateIntelligence(leadId: string): Promise<Intelligence
       content: `You are analysing investor profile information to produce a structured intelligence record.
 
 ${inputSections}
+${existingProfileContext}
 Produce a structured JSON intelligence profile. Return JSON only — no other text.
 
 {
   "qualification_status": "QUALIFIED | DISQUALIFIED | INSUFFICIENT_DATA",
-  "higher_rate_taxpayer": true | false | null,
-  "capital_available": true | false | null,
-  "self_directed": true | false | null,
-  "open_to_early_stage_risk": true | false | null,
-  "qualification_notes": "string | null",
-  "cluster": "growth_seeker | preserver | legacy_builder | null",
-  "ifa_involved": true | false | null,
-  "already_done_eis": true | false | null,
-  "estate_above_2m": true | false | null,
-  "assets_abroad": true | false | null,
-  "vct_aim_experience": true | false | null,
-  "hot_button": "family_security | freedom | legacy | relief | significance | null",
-  "hot_button_confirmed": false,
-  "hot_button_quote": "exact quote from transcript if detected | null",
-  "spin_situation": "their current situation in one sentence | null",
-  "spin_problem": "the core problem they face | null",
-  "spin_implication": "what happens if they don't act | null",
-  "spin_need_payoff": "what success looks like for them | null",
-  "readiness_status": "READY_TO_CLOSE | OBJECTION_TO_RESOLVE | INFORMATION_GAP | NEEDS_NURTURING | null",
-  "primary_blocker": "description of main blocker if any | null",
-  "blocker_type": "dispositional | correctable_misconception | null",
-  "recommended_action": "specific recommended next action | null",
-  "profile_summary": "2-3 sentence plain English summary of this investor's profile, motivations, and recommended approach"
+  "higher_rate_taxpayer": true | false | null | "__KEEP__",
+  "capital_available": true | false | null | "__KEEP__",
+  "self_directed": true | false | null | "__KEEP__",
+  "open_to_early_stage_risk": true | false | null | "__KEEP__",
+  "qualification_notes": "string | null | __KEEP__",
+  "cluster": "growth_seeker | preserver | legacy_builder | null | __KEEP__",
+  "ifa_involved": true | false | null | "__KEEP__",
+  "already_done_eis": true | false | null | "__KEEP__",
+  "estate_above_2m": true | false | null | "__KEEP__",
+  "assets_abroad": true | false | null | "__KEEP__",
+  "vct_aim_experience": true | false | null | "__KEEP__",
+  "hot_button": "family_security | freedom | legacy | relief | significance | null | __KEEP__",
+  "hot_button_confirmed": true | false | "__KEEP__",
+  "hot_button_quote": "exact quote from transcript if detected | null | __KEEP__",
+  "spin_situation": "their current situation in one sentence | null | __KEEP__",
+  "spin_problem": "the core problem they face | null | __KEEP__",
+  "spin_implication": "what happens if they don't act | null | __KEEP__",
+  "spin_need_payoff": "what success looks like for them | null | __KEEP__",
+  "readiness_status": "READY_TO_CLOSE | OBJECTION_TO_RESOLVE | INFORMATION_GAP | NEEDS_NURTURING | null | __KEEP__",
+  "primary_blocker": "description of main blocker if any | null | __KEEP__",
+  "blocker_type": "dispositional | correctable_misconception | null | __KEEP__",
+  "recommended_action": "specific recommended next action | null | __KEEP__",
+  "profile_summary": "2-3 sentence plain English summary merging existing and new insights"
 }
 
 Rules:
-- Use null for any field where you have insufficient information.
+- Use "__KEEP__" for any field where the existing value should be preserved (no new signal in this transcript).
+- Use null ONLY for fields where you have no information AND there is no existing value to preserve.
 - qualification_status: QUALIFIED = higher rate taxpayer, capital available, self-directed, open to risk. DISQUALIFIED = clear disqualifier present. INSUFFICIENT_DATA = not enough info.
 - cluster: growth_seeker = focused on upside and returns. preserver = focused on capital protection and risk. legacy_builder = focused on IHT, estate, family wealth.
 - hot_button: the emotional driver. family_security = protecting family. freedom = financial independence. legacy = leaving something behind. relief = reducing tax burden. significance = making an impact.
-- profile_summary: write in plain English, third person, as if briefing a colleague before a call.`,
+- profile_summary: write in plain English, third person, as if briefing a colleague before a call. If an existing profile exists, merge new insights with it.`,
     }],
   });
 
@@ -94,15 +129,14 @@ Rules:
   if (!jsonMatch) throw new Error("No JSON object found in Claude response");
   parsed = JSON.parse(jsonMatch[0]);
 
+  // Build updates: skip __KEEP__ fields (preserve existing), skip null if existing has a value
   const updates: any = { last_updated: new Date() };
   for (const key of ALLOWED_FIELDS) {
-    if (parsed[key] !== undefined) {
-      updates[key] = parsed[key];
-    }
+    if (parsed[key] === undefined) continue;
+    if (parsed[key] === "__KEEP__") continue; // Preserve existing value
+    if (parsed[key] === null && existing && (existing as any)[key] !== null) continue; // Don't overwrite with null
+    updates[key] = parsed[key];
   }
-
-  const [existing] = await db.select().from(leadIntelligenceTable)
-    .where(eq(leadIntelligenceTable.lead_id, leadId));
 
   let row;
   let isNew = false;
