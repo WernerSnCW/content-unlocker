@@ -22,3 +22,5 @@ export * from "./work-queue-findings";
 export * from "./document-health-sessions";
 export * from "./document-health-scores";
 export * from "./lead-conversations";
+export * from "./integration-configs";
+export * from "./agents";
