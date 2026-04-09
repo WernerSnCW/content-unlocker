@@ -228,7 +228,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </span>
               )}
             </Link>
-            <Link href="/compliance-constants" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/settings" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
               <Settings className="w-5 h-5" />
             </Link>
           </div>

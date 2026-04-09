@@ -26,6 +26,7 @@ import ImportPage from "./pages/import";
 import TasksPage from "./pages/tasks";
 import WorkQueue from "./pages/work-queue";
 import DocumentHealth from "./pages/document-health";
+import IntegrationSettings from "./pages/settings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,6 +62,7 @@ function Router() {
         <Route path="/tasks" component={TasksPage} />
         <Route path="/work-queue" component={WorkQueue} />
         <Route path="/document-health" component={DocumentHealth} />
+        <Route path="/settings" component={IntegrationSettings} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
