@@ -24,6 +24,7 @@ import leadIntelligenceRouter from "./lead-intelligence";
 import workQueueRouter from "./work-queue";
 import documentHealthRouter from "./document-health";
 import settingsRouter from "./settings";
+import contactsRouter from "./contacts";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(leadIntelligenceRouter);
 router.use(workQueueRouter);
 router.use(documentHealthRouter);
 router.use(settingsRouter);
+router.use(contactsRouter);
 
 export default router;
