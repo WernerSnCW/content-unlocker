@@ -382,8 +382,14 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
     }
   }
 
+  // Build a map of filename -> transcript content for saving to leads
+  const transcriptContentMap = new Map<string, string>();
+  for (const item of transcripts) {
+    if (item.content) transcriptContentMap.set(item.filename, item.content);
+  }
+
   const allLeads = await db.select().from(leadsTable);
-  const enrichedResults = results.map((r: any) => {
+  for (const r of results as any[]) {
     if (r.investor_name && r.status === "success") {
       const qLower = r.investor_name.toLowerCase().trim();
       const qWords = qLower.split(/\s+/);
@@ -417,16 +423,26 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
 
       if (topMatches.length > 0 && topMatches[0].confidence >= 0.85) {
         r.lead_match = { matches: topMatches, status: "matched" };
+        // 0.1: Save transcript text to matched lead
+        const transcriptContent = transcriptContentMap.get(r.filename);
+        if (transcriptContent) {
+          try {
+            await db.update(leadsTable)
+              .set({ transcript_text: transcriptContent })
+              .where(eq(leadsTable.id, topMatches[0].lead_id));
+          } catch (saveErr: any) {
+            // Non-blocking — log and continue
+          }
+        }
       } else if (topMatches.length > 0) {
         r.lead_match = { matches: topMatches, status: "partial" };
       } else {
         r.lead_match = { matches: [], status: "none" };
       }
     }
-    return r;
-  });
+  }
 
-  res.json({ results: enrichedResults });
+  res.json({ results });
 });
 
 router.post("/recommendation/analyze", async (req, res): Promise<void> => {
@@ -638,6 +654,17 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
       blocking_objections: analysis.blocking_objections || [],
       objections: parsedObjections,
     });
+
+    // 0.1: Save transcript text to lead record
+    if (lead_id) {
+      try {
+        await db.update(leadsTable)
+          .set({ transcript_text: transcript })
+          .where(eq(leadsTable.id, lead_id));
+      } catch (saveErr: any) {
+        req.log.warn({ err: saveErr, lead_id }, "Failed to save transcript_text to lead");
+      }
+    }
 
     res.json({
       detected_persona: analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] },
