@@ -1,0 +1,17 @@
+[TRANSCRIPT FORMAT: Aircall]
+[INVESTOR SPEAKER: Duncan Stewart]
+[AGENT SPEAKER: Tom]
+[SPEAKERS NORMALISED: true]
+---
+[00:00:05] Agent: Duncan, good to speak again. How have you been since our last call?
+[00:00:10] Investor: Good thanks Tom. I've been reading through the document you sent about rolling EIS for BPR.
+[00:00:20] Agent: Great. What did you think?
+[00:00:24] Investor: Very interesting actually. The idea of using EIS as a BPR replacement hadn't occurred to me. My accountant hasn't mentioned it either. The two-year qualifying period works for us because we're not planning to do anything drastic in the next couple of years anyway.
+[00:00:48] Agent: That's good to hear. Have you had a chance to discuss it with your wife?
+[00:00:54] Investor: Yes, Margaret is on board. She's actually quite keen. She was worried about the estate tax situation and this seems like a practical solution.
+[00:01:08] Agent: And thinking about Unlock specifically as the platform to do this through, what's your sense?
+[00:01:16] Investor: Well I like that it's independent. No commissions, no AUM fees. That was a big concern with the HL funds — layers of fees eating into returns. The subscription model makes sense to me.
+[00:01:38] Agent: Have you thought about timing? We do have the founding round open at the moment.
+[00:01:44] Investor: I'm interested but I want to understand the exit path better. Where does the value go in five years? Who buys a company like Unlock?
+[00:01:58] Agent: Good question. The acquirer categories we've identified are data and analytics businesses — PitchBook, Morningstar, Bureau van Dijk. They're actively acquiring in this space.
+[00:02:12] Investor: That makes sense. I'd want to see more on that before committing. Can you send me the market analysis?

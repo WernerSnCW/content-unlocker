@@ -1,0 +1,19 @@
+[TRANSCRIPT FORMAT: Aircall]
+[INVESTOR SPEAKER: Duncan Stewart]
+[AGENT SPEAKER: Tom]
+[SPEAKERS NORMALISED: true]
+---
+[00:00:05] Agent: Hi Duncan, thanks for taking the call. I'm Tom from Unlock. How are you today?
+[00:00:12] Investor: Very well thank you Tom. I've been expecting your call actually.
+[00:00:18] Agent: Great. So I understand you've been looking at EIS investments. Can I ask what's driving your interest?
+[00:00:28] Investor: Well it's really about estate planning for me. My wife and I have been thinking about what happens to the family wealth. With the pension changes coming in April 2027, our estate plan is essentially broken. The pensions were going to pass outside the estate but now they won't.
+[00:01:05] Agent: That's a common concern we're hearing. How large is the estate if you don't mind me asking?
+[00:01:12] Investor: North of three million. The house is worth about one and a half, the pensions are another million, and then various ISAs and investments.
+[00:01:30] Agent: And do you have an IFA currently?
+[00:01:34] Investor: Yes, we use Hargreaves Lansdown for the ISAs but they don't really do individual EIS. They've mentioned some EIS funds but the fees looked quite steep.
+[00:01:52] Agent: Have you done any EIS investing before?
+[00:01:56] Investor: No, this would be our first. I've done some AIM investing through the ISA but nothing direct into private companies.
+[00:02:10] Agent: And in terms of risk appetite, how do you think about the potential downside with EIS?
+[00:02:18] Investor: Well I understand there's risk. But I've read that the tax relief means you're not really risking the full amount. Something like 38 pence in the pound?
+[00:02:32] Agent: That's exactly right. The effective loss after income tax relief and loss relief is about 38.5p per pound.
+[00:02:40] Investor: Yes, that's manageable. My main concern is really about leaving something for the children and grandchildren. That's what keeps me up at night.
