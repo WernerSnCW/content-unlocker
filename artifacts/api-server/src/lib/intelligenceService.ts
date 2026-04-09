@@ -1,5 +1,5 @@
-import { db, leadIntelligenceTable, changelogTable, leadsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, leadIntelligenceTable, changelogTable, leadsTable, leadConversationsTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { claudeWithTimeout } from "./claudeTimeout";
@@ -36,7 +36,33 @@ export async function generateIntelligence(leadId: string): Promise<Intelligence
   const [existing] = await db.select().from(leadIntelligenceTable)
     .where(eq(leadIntelligenceTable.lead_id, leadId));
 
+  // Fetch previous conversation summaries for context
+  let conversationHistory = "";
+  try {
+    const prevConversations = await db.select({
+      summary: leadConversationsTable.summary,
+      conversation_date: leadConversationsTable.conversation_date,
+    }).from(leadConversationsTable)
+      .where(eq(leadConversationsTable.lead_id, leadId))
+      .orderBy(desc(leadConversationsTable.conversation_date))
+      .limit(5);
+
+    if (prevConversations.length > 0) {
+      const summaries = prevConversations
+        .filter(c => c.summary)
+        .map((c, i) => `${i + 1}. [${c.conversation_date?.toISOString().split("T")[0] || "unknown"}]: ${c.summary}`);
+      if (summaries.length > 0) {
+        conversationHistory = `\nPREVIOUS CONVERSATION SUMMARIES (most recent first):\n${summaries.join("\n")}\n`;
+      }
+    }
+  } catch {
+    // Non-blocking — continue without conversation history
+  }
+
   let inputSections = `INVESTOR NAME: ${lead.name}\n`;
+  if (conversationHistory) {
+    inputSections += conversationHistory;
+  }
   if (notes && notes.trim() !== "") {
     inputSections += `\nOPERATOR NOTES:\n${notes}\n`;
   }
