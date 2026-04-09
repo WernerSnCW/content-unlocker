@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable } from "@workspace/db";
-import { eq, sql, and, ilike } from "drizzle-orm";
+import { eq, or, sql, and, ilike } from "drizzle-orm";
 import {
   parseCsvRows,
   detectColumns,
@@ -22,7 +22,14 @@ router.get("/contacts", async (req, res): Promise<void> => {
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.page_size as string) || 25));
 
     const conditions = [];
-    if (search) conditions.push(ilike(contactsTable.name, `%${search}%`));
+    if (search) {
+      conditions.push(
+        or(
+          ilike(contactsTable.first_name, `%${search}%`),
+          ilike(contactsTable.last_name, `%${search}%`)
+        )!
+      );
+    }
     if (status) conditions.push(eq(contactsTable.dispatch_status, status));
     if (source) conditions.push(eq(contactsTable.source_list, source));
 
@@ -125,13 +132,22 @@ router.post("/contacts/upload/preview", async (req, res): Promise<void> => {
       new_contacts: newContacts.map(r => r.parsed),
       exact_duplicates: exactDuplicates.map(r => ({
         ...r.parsed,
-        matched_name: r.matched_name,
+        matched_contact_id: r.matched_contact_id,
+        matched_first_name: r.matched_first_name,
+        matched_last_name: r.matched_last_name,
+        matched_email: r.matched_email,
+        matched_phone: r.matched_phone,
+        matched_company: r.matched_company,
         match_reason: r.match_reason,
       })),
       possible_matches: possibleMatches.map(r => ({
         ...r.parsed,
         matched_contact_id: r.matched_contact_id,
-        matched_name: r.matched_name,
+        matched_first_name: r.matched_first_name,
+        matched_last_name: r.matched_last_name,
+        matched_email: r.matched_email,
+        matched_phone: r.matched_phone,
+        matched_company: r.matched_company,
         match_reason: r.match_reason,
       })),
       invalid,

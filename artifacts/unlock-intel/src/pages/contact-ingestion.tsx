@@ -173,7 +173,7 @@ export default function ContactIngestion() {
             <Textarea
               value={csvText}
               onChange={e => setCsvText(e.target.value)}
-              placeholder={"name,email,phone,company\nJohn Smith,john@example.com,07700900123,Acme Corp\nJane Doe,jane@example.com,07700900456,Beta Ltd"}
+              placeholder={"first_name,last_name,email,phone,company\nJohn,Smith,john@example.com,07700900123,Acme Corp\nJane,Doe,jane@example.com,07700900456,Beta Ltd"}
               rows={10}
               className="font-mono text-sm"
             />
@@ -260,9 +260,11 @@ export default function ContactIngestion() {
               <Badge variant="default" className="text-sm py-1 px-3">
                 <CheckCircle className="w-3.5 h-3.5 mr-1" /> {preview.preview.new_contacts} new
               </Badge>
-              <Badge variant="secondary" className="text-sm py-1 px-3">
-                {preview.preview.exact_duplicates} duplicates (auto-skip)
-              </Badge>
+              {preview.preview.exact_duplicates > 0 && (
+                <Badge variant="secondary" className="text-sm py-1 px-3">
+                  {preview.preview.exact_duplicates} duplicates (auto-skip)
+                </Badge>
+              )}
               {preview.preview.possible_matches > 0 && (
                 <Badge variant="outline" className="text-sm py-1 px-3 border-yellow-500">
                   <AlertTriangle className="w-3.5 h-3.5 mr-1 text-yellow-500" /> {preview.preview.possible_matches} possible matches
@@ -274,6 +276,41 @@ export default function ContactIngestion() {
                 </Badge>
               )}
             </div>
+
+            {/* Exact duplicates — show details */}
+            {preview.exact_duplicates && preview.exact_duplicates.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Exact Duplicates (will be skipped)</h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>CSV Contact</TableHead>
+                      <TableHead>Existing Match</TableHead>
+                      <TableHead>Reason</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {preview.exact_duplicates.map((dup: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell>{dup.first_name} {dup.last_name}{dup.company ? ` (${dup.company})` : ""}</TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{dup.matched_first_name} {dup.matched_last_name}</span>
+                            {dup.matched_company && <span className="text-muted-foreground ml-1">({dup.matched_company})</span>}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {dup.matched_email && <span>{dup.matched_email}</span>}
+                            {dup.matched_email && dup.matched_phone && <span> | </span>}
+                            {dup.matched_phone && <span>{dup.matched_phone}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{dup.match_reason}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
             {/* Possible matches — user decides */}
             {preview.possible_matches && preview.possible_matches.length > 0 && (
@@ -291,8 +328,18 @@ export default function ContactIngestion() {
                   <TableBody>
                     {preview.possible_matches.map((pm: any) => (
                       <TableRow key={pm.row_number}>
-                        <TableCell className="font-medium">{pm.name}{pm.company ? ` (${pm.company})` : ""}</TableCell>
-                        <TableCell>{pm.matched_name}</TableCell>
+                        <TableCell className="font-medium">{pm.first_name} {pm.last_name}{pm.company ? ` (${pm.company})` : ""}</TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{pm.matched_first_name} {pm.matched_last_name}</span>
+                            {pm.matched_company && <span className="text-muted-foreground ml-1">({pm.matched_company})</span>}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {pm.matched_email && <span>{pm.matched_email}</span>}
+                            {pm.matched_email && pm.matched_phone && <span> | </span>}
+                            {pm.matched_phone && <span>{pm.matched_phone}</span>}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-muted-foreground text-sm">{pm.match_reason}</TableCell>
                         <TableCell>
                           <Select

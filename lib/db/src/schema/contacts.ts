@@ -5,7 +5,8 @@ import { randomUUID } from "crypto";
 
 export const contactsTable = pgTable("contacts", {
   id: text("id").primaryKey().$defaultFn(() => `contact_${randomUUID().slice(0, 8)}`),
-  name: text("name").notNull(),
+  first_name: text("first_name").notNull(),
+  last_name: text("last_name").notNull(),
   email: text("email"),
   phone: text("phone"),
   company: text("company"),
