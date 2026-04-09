@@ -116,6 +116,7 @@ Rules:
 - Use null ONLY for fields where you have no information AND there is no existing value to preserve.
 - qualification_status: QUALIFIED = higher rate taxpayer, capital available, self-directed, open to risk. DISQUALIFIED = clear disqualifier present. INSUFFICIENT_DATA = not enough info.
 - cluster: growth_seeker = focused on upside and returns. preserver = focused on capital protection and risk. legacy_builder = focused on IHT, estate, family wealth.
+- ifa_involved: true if the investor mentions ANY financial adviser, wealth manager, or platform relationship (e.g. Hargreaves Lansdown, St James's Place, a private wealth manager). This is about whether they have an existing advisory relationship, not whether that adviser handles EIS specifically.
 - hot_button: the emotional driver. family_security = protecting family. freedom = financial independence. legacy = leaving something behind. relief = reducing tax burden. significance = making an impact.
 - profile_summary: write in plain English, third person, as if briefing a colleague before a call. If an existing profile exists, merge new insights with it.`,
     }],
