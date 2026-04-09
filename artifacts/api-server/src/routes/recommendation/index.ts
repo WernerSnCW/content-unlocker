@@ -13,6 +13,7 @@ import {
 import personaGuide from "../../data/content/520_GUIDE_Investor_Personas_19_V1_CURRENT.md";
 import emailTemplates from "../../data/230_EMAILS_Pack1_Templates_V2_CURRENT.txt";
 import { resolveArchetype, VALID_ARCHETYPES } from "../../../../../lib/personas";
+import { runPostTranscriptPipeline } from "../../lib/analysisPipeline";
 import { generateBriefFromGap } from "../content/gaps";
 import { shouldExclude, getWorthItWeight, getPersonaRoute, getStageRule, DOCUMENT_RULES } from "../../data/document-usage-matrix";
 import { deriveMatrixFlags } from "../../lib/recommendation-context";
@@ -686,22 +687,19 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
       objections: parsedObjections,
     });
 
-    // 0.1: Save transcript text to lead record
-    // Also save/merge persona detection
+    // Save persona to lead record (immediate, before response)
     if (lead_id) {
       try {
         const newPersona = analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] };
-        const personaUpdates: any = { transcript_text: transcript };
+        const personaUpdates: any = {};
 
         if (newPersona.confidence_score !== "__KEEP__") {
-          // Check if we should update persona
           const shouldUpdatePersona = !existingPersona
             || newPersona.confidence_score > (existingPersona.confidence || 0)
-            || newPersona.name === existingPersona.name; // Reinforcing same persona
+            || newPersona.name === existingPersona.name;
 
           if (shouldUpdatePersona && newPersona.name !== "Unknown") {
             personaUpdates.detected_persona = newPersona.name;
-            // If same persona, take the higher confidence
             if (existingPersona && newPersona.name === existingPersona.name) {
               personaUpdates.persona_confidence = Math.max(
                 newPersona.confidence_score || 0,
@@ -713,14 +711,17 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
           }
         }
 
-        await db.update(leadsTable)
-          .set(personaUpdates)
-          .where(eq(leadsTable.id, lead_id));
+        if (Object.keys(personaUpdates).length > 0) {
+          await db.update(leadsTable)
+            .set(personaUpdates)
+            .where(eq(leadsTable.id, lead_id));
+        }
       } catch (saveErr: any) {
-        req.log.warn({ err: saveErr, lead_id }, "Failed to save transcript/persona to lead");
+        req.log.warn({ err: saveErr, lead_id }, "Failed to save persona to lead");
       }
     }
 
+    // Send response immediately — don't wait for pipeline
     res.json({
       detected_persona: analysis.detected_persona || { name: "Unknown", confidence_score: 0, evidence: [] },
       pipeline_stage: stage,
@@ -741,6 +742,23 @@ Return ONLY the JSON object, no markdown formatting, no code blocks.`,
       pipeline_stage_suggestion: analysis.pipeline_stage_suggestion || null,
       matrix_context: matrixContext,
     });
+
+    // 0.5: Fire post-transcript pipeline in background (don't block response)
+    if (lead_id) {
+      runPostTranscriptPipeline(lead_id, transcript)
+        .then((pipelineResult) => {
+          req.log.info({
+            leadId: lead_id,
+            transcriptSaved: pipelineResult.transcriptSaved,
+            intelligenceGenerated: !!pipelineResult.intelligence,
+            beliefsAnalysed: !!pipelineResult.beliefs,
+            errors: pipelineResult.errors,
+          }, "Post-transcript pipeline completed");
+        })
+        .catch((pipelineErr) => {
+          req.log.error({ err: pipelineErr, lead_id }, "Post-transcript pipeline failed");
+        });
+    }
   } catch (err: any) {
     req.log.error({ err }, "Claude API call failed");
     res.status(500).json({ error: "AI analysis failed. Please try again." });
