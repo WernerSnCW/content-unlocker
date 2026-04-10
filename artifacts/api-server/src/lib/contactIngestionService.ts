@@ -23,11 +23,22 @@ export interface ParsedContact {
 
 export function normalisePhone(phone: string): string | null {
   if (!phone) return null;
-  let cleaned = phone.replace(/[^\d+]/g, "");
+  // Strip everything except digits and leading +
+  let cleaned = phone.replace(/\s+/g, "").replace(/\(0\)/g, "").replace(/[^\d+]/g, "");
   if (!cleaned || cleaned.length < 7) return null;
-  if (cleaned.startsWith("0")) cleaned = "+44" + cleaned.slice(1);
-  else if (cleaned.startsWith("44") && !cleaned.startsWith("+")) cleaned = "+" + cleaned;
+
+  // Handle 0044 prefix (common in exports)
+  if (cleaned.startsWith("0044")) cleaned = "+44" + cleaned.slice(4);
+  // Handle 44 without +
+  else if (cleaned.startsWith("44") && !cleaned.startsWith("+") && cleaned.length >= 12) cleaned = "+" + cleaned;
+  // Handle UK domestic (0...)
+  else if (cleaned.startsWith("0")) cleaned = "+44" + cleaned.slice(1);
+  // Already has +
   else if (!cleaned.startsWith("+")) cleaned = "+" + cleaned;
+
+  // Basic UK validation: +44 followed by 10 digits
+  if (cleaned.startsWith("+44") && cleaned.length !== 13) return null;
+
   return cleaned;
 }
 
