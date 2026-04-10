@@ -41,9 +41,6 @@ export default function CallCommand() {
   const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
   const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCount, setSelectedCount] = useState<number>(50);
-  const [building, setBuilding] = useState(false);
-  const [buildResult, setBuildResult] = useState<any>(null);
   const [currentCallIndex, setCurrentCallIndex] = useState(0);
   const [staleCount, setStaleCount] = useState(0);
   const [clearing, setClearing] = useState(false);
@@ -127,21 +124,6 @@ export default function CallCommand() {
         setCallList(listData.contacts || []);
       }
     } catch {} finally { setLoading(false); }
-  };
-
-  const handleBuildList = async () => {
-    if (!activeCallListDef) return;
-    setBuilding(true); setBuildResult(null);
-    try {
-      const res = await fetch(`${API_BASE}/call-lists/${activeCallListDef.id}/fill-queue`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: selectedCount }),
-      });
-      const data = await res.json();
-      setBuildResult(data);
-      setCurrentCallIndex(0);
-      await loadAll();
-    } catch {} finally { setBuilding(false); }
   };
 
   const handleClearStale = async () => {
@@ -301,35 +283,11 @@ export default function CallCommand() {
         </Card>
       </div>
 
-      {/* BUILD LIST / PROGRESS BAR */}
+      {/* CREATE LIST / PROGRESS BAR */}
       {staleCount > 0 ? null : queuedCalls === 0 ? (
         <Card className="border-primary/30 bg-primary/[0.02]">
           <CardContent className="py-5">
-            {poolAvailable > 0 && activeCallListDef ? (
-              <div className="flex items-center justify-between gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <ListPlus className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Build your call list</p>
-                    <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Callbacks and follow-ups are included automatically.</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {[25, 50, 75, 100].map(n => (
-                    <Button key={n} variant={selectedCount === n ? "default" : "outline"} size="sm"
-                      className="w-12" onClick={() => setSelectedCount(n)}>
-                      {n}
-                    </Button>
-                  ))}
-                  <Button className="ml-2 gap-1.5" onClick={handleBuildList} disabled={building}>
-                    {building ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListPlus className="w-4 h-4" />}
-                    Build List
-                  </Button>
-                </div>
-              </div>
-            ) : poolAvailable === 0 ? (
+            {poolAvailable === 0 ? (
               <div className="flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -345,23 +303,17 @@ export default function CallCommand() {
             ) : (
               <div className="flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                    <ListPlus className="w-5 h-5 text-muted-foreground" />
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <ListPlus className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-semibold">Create a call list first</p>
-                    <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
+                    <p className="font-semibold">Ready to call</p>
+                    <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Create a call list to get started.</p>
                   </div>
                 </div>
-                <Button className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }}><ListPlus className="w-4 h-4" /> Create Call List</Button>
-              </div>
-            )}
-            {buildResult && (
-              <div className="mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 text-sm">
-                <span className="font-medium text-green-700 dark:text-green-400">{buildResult.dispatched} contacts added: </span>
-                <span className="text-green-600 dark:text-green-500">
-                  {buildResult.callbacks} callbacks, {buildResult.interested} follow-ups, {buildResult.retries} retries, {buildResult.fresh} fresh
-                </span>
+                <Button className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }}>
+                  <ListPlus className="w-4 h-4" /> Create Call List
+                </Button>
               </div>
             )}
           </CardContent>
@@ -384,8 +336,8 @@ export default function CallCommand() {
                   <div><p className="text-lg font-bold text-green-600">{callsCompleted}</p><p className="text-[10px] text-muted-foreground">Completed</p></div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleBuildList} disabled={building}>
-                {building ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListPlus className="w-3.5 h-3.5" />} Top Up
+              <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }}>
+                <ListPlus className="w-3.5 h-3.5" /> Top Up
               </Button>
             </div>
           </CardContent>
