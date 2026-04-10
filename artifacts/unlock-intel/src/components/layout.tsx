@@ -236,8 +236,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-auto p-8">
-          {children}
+        <div className="flex-1 overflow-auto p-8 relative">
+          <div className="pointer-events-none absolute -top-[120px] -right-[120px] w-[500px] h-[500px] rounded-full z-0"
+            style={{
+              background: "radial-gradient(circle, rgba(0, 87, 255, 0.08) 0%, rgba(0, 87, 255, 0.02) 50%, transparent 70%)",
+            }}
+          />
+          <div className="relative z-10">
+            {children}
+          </div>
         </div>
       </main>
     </div>
