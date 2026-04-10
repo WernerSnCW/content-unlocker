@@ -22,6 +22,7 @@ import {
   CheckSquare,
   Zap,
   FileSearch,
+  Headphones,
 } from "lucide-react";
 
 const API_BASE =
@@ -80,7 +81,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     {
       label: "Operations",
       items: [
-        { href: "/", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/", label: "Call Command Centre", icon: Headphones },
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
         { href: "/call-prep", label: "Call Prep", icon: Phone },
         { href: "/leads", label: "Lead Management", icon: Users },

@@ -28,6 +28,7 @@ import WorkQueue from "./pages/work-queue";
 import DocumentHealth from "./pages/document-health";
 import IntegrationSettings from "./pages/settings";
 import ContactIngestion from "./pages/contact-ingestion";
+import CallCommand from "./pages/call-command";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,7 +43,8 @@ function Router() {
   return (
     <AppLayout>
       <Switch>
-        <Route path="/" component={Dashboard} />
+        <Route path="/" component={CallCommand} />
+        <Route path="/dashboard" component={Dashboard} />
         <Route path="/recommend" component={Recommend} />
         <Route path="/leads" component={Leads} />
         <Route path="/leads/:id" component={LeadDetail} />
