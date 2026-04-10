@@ -70,6 +70,7 @@ export default function CallCommand() {
   const [newAgent, setNewAgent] = useState("");
   const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [carryOver, setCarryOver] = useState(false);
   const [sources, setSources] = useState<string[]>([]);
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const hour = new Date().getHours();
@@ -151,18 +152,18 @@ export default function CallCommand() {
     } catch {} finally { setClearing(false); }
   };
 
-  const handleCarryOver = async () => {
-    setClearing(true);
-    try {
-      await fetch(`${API_BASE}/call-lists/carry-over`, { method: "POST" });
-      await loadAll();
-    } catch {} finally { setClearing(false); }
-  };
-
   const handleCreateCallList = async () => {
     if (!newName.trim()) return;
     setCreating(true);
     try {
+      // If carrying over, re-date stale contacts to today first
+      let carriedOver = 0;
+      if (carryOver && staleCount > 0) {
+        const carryRes = await fetch(`${API_BASE}/call-lists/carry-over`, { method: "POST" });
+        const carryData = await carryRes.json();
+        carriedOver = carryData.carried_over || 0;
+      }
+
       const res = await fetch(`${API_BASE}/call-lists`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,15 +176,20 @@ export default function CallCommand() {
       const data = await res.json();
       const newCallList = data.campaign;
 
-      // Immediately fill the queue with contacts up to daily quota
+      // Fill remaining quota with fresh contacts
       if (newCallList?.id) {
-        await fetch(`${API_BASE}/call-lists/${newCallList.id}/fill-queue`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ count: parseInt(newQuota) || 100 }),
-        });
+        const quota = parseInt(newQuota) || 100;
+        const freshNeeded = Math.max(0, quota - carriedOver);
+        if (freshNeeded > 0) {
+          await fetch(`${API_BASE}/call-lists/${newCallList.id}/fill-queue`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count: freshNeeded }),
+          });
+        }
       }
 
       setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
+      setCarryOver(false);
       setCurrentCallIndex(0);
       await loadAll();
     } catch {} finally { setCreating(false); }
@@ -243,8 +249,7 @@ export default function CallCommand() {
                 {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 Start Fresh
               </Button>
-              <Button size="sm" className="gap-1.5" onClick={handleCarryOver} disabled={clearing}>
-                {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              <Button size="sm" className="gap-1.5" onClick={() => { setCarryOver(true); setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }} disabled={clearing}>
                 Keep &amp; Continue
               </Button>
             </div>
@@ -564,13 +569,21 @@ export default function CallCommand() {
       </div>
 
       {/* Create Call List Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCarryOver(false); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create Call List</DialogTitle>
             <DialogDescription>Define a call list to dispatch contacts from your pool to the call queue.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {carryOver && staleCount > 0 && (
+              <Card className="border-orange-500/50">
+                <CardContent className="py-2.5 px-3 text-sm">
+                  <span className="font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""}</span>
+                  <span className="text-muted-foreground"> from yesterday will be included. Remaining quota filled with fresh contacts.</span>
+                </CardContent>
+              </Card>
+            )}
             <div className="space-y-1">
               <label className="text-sm font-medium">Call List Name <span className="text-destructive">*</span></label>
               <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. London HNW Wave 1" />
