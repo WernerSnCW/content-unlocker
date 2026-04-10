@@ -260,7 +260,7 @@ export function applyMapping(rows: string[][], headers: string[], mapping: Colum
 
     const email = normaliseEmail(row[emailIdx] || "");
     const phone = normalisePhone(row[phoneIdx] || "");
-    if (!phone && !email) { invalid.push({ row_number: i + 2, reason: "No valid phone or email" }); continue; }
+    if (!phone) { invalid.push({ row_number: i + 2, reason: "Missing or invalid phone number (required for Aircall)" }); continue; }
 
     contacts.push({ first_name: firstName, last_name: lastName, email, phone, company: row[companyIdx]?.trim() || null, row_number: i + 2 });
   }
