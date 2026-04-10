@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,51 +6,56 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Link } from "wouter";
 import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
-  ArrowRight, Clock, AlertTriangle, Mail, MailWarning, CheckCircle,
-  XCircle, Upload, ListPlus, TrendingUp, Users, Headphones, ExternalLink,
-  MessageSquare, Timer, BarChart3, ChevronRight
+  ArrowRight, Clock, AlertTriangle, CheckCircle, XCircle, Upload,
+  ListPlus, TrendingUp, Users, Headphones, ExternalLink,
+  Timer, BarChart3, ChevronRight, User, Building2, Mail, MailWarning
 } from "lucide-react";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
 export default function CallCommand() {
   const [stats, setStats] = useState<any>(null);
+  const aircallRef = useRef<HTMLDivElement>(null);
+  const [aircallReady, setAircallReady] = useState(false);
+  const [aircallLoggedIn, setAircallLoggedIn] = useState(false);
+  const [onCall, setOnCall] = useState(false);
+  const [currentCallId, setCurrentCallId] = useState<string | null>(null);
+
   const agentName = "Tom"; // TODO: from auth/session
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
   const fetchStats = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/contacts/stats`);
-      setStats(await res.json());
-    } catch {}
+    try { const res = await fetch(`${API_BASE}/contacts/stats`); setStats(await res.json()); } catch {}
   };
 
   const poolSize = stats?.total || 0;
   const available = stats?.by_status?.pool || 0;
 
-  // Placeholder data — will be replaced with real API calls
+  // Placeholder data
   const queuedCalls = 0;
   const callbacksToday = 0;
   const followUps = 0;
   const retries = 0;
   const freshContacts = 0;
 
+  // Current contact being called (placeholder)
+  const currentContact: {
+    first_name: string; last_name: string; company: string;
+    phone: string; email: string | null; type: string;
+  } | null = null;
+
   const recentCalls: Array<{
     name: string; time: string; duration: string;
     outcome: string; transcriptStatus: string;
   }> = [];
 
-  const attentionItems: Array<{
-    type: string; message: string; action: string;
-  }> = [];
+  const attentionItems: Array<{ type: string; message: string; action: string }> = [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* ===== GREETING + SUMMARY ===== */}
+      {/* ===== GREETING ===== */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -58,15 +63,13 @@ export default function CallCommand() {
           </h1>
           <p className="text-muted-foreground mt-1">{today}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-sm font-medium">{queuedCalls} calls queued</p>
-            <p className="text-xs text-muted-foreground">{available.toLocaleString()} contacts in pool</p>
-          </div>
+        <div className="text-right">
+          <p className="text-sm font-medium">{queuedCalls} calls queued</p>
+          <p className="text-xs text-muted-foreground">{available.toLocaleString()} contacts in pool</p>
         </div>
       </div>
 
-      {/* ===== QUEUE BREAKDOWN CARDS ===== */}
+      {/* ===== QUEUE BREAKDOWN ===== */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className={callbacksToday > 0 ? "border-orange-300 dark:border-orange-700" : ""}>
           <CardContent className="pt-5 pb-4">
@@ -82,7 +85,6 @@ export default function CallCommand() {
             <p className="text-xs text-muted-foreground mt-2">Scheduled for today</p>
           </CardContent>
         </Card>
-
         <Card className={followUps > 0 ? "border-blue-300 dark:border-blue-700" : ""}>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between">
@@ -97,7 +99,6 @@ export default function CallCommand() {
             <p className="text-xs text-muted-foreground mt-2">Interested, awaiting action</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between">
@@ -112,7 +113,6 @@ export default function CallCommand() {
             <p className="text-xs text-muted-foreground mt-2">No answer, try again</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between">
@@ -129,58 +129,52 @@ export default function CallCommand() {
         </Card>
       </div>
 
-      {/* ===== MAIN CONTENT: QUEUE + AIRCALL ===== */}
+      {/* ===== MAIN CONTENT ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* TODAY'S QUEUE — takes 2 columns */}
+        {/* LEFT: Current Contact + Queue */}
         <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader>
+
+          {/* CURRENT CONTACT — the contact being called right now */}
+          <Card className="border-2 border-primary/20">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Phone className="w-5 h-5" /> Today's Queue
-                  </CardTitle>
-                  <CardDescription>Your prioritised call list for today.</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled>
-                    <ListPlus className="w-4 h-4 mr-1" /> Top Up
-                  </Button>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="w-5 h-5" /> Next Call
+                </CardTitle>
+                {currentContact && (
+                  <Badge variant="outline" className="text-xs">{currentContact.type}</Badge>
+                )}
               </div>
             </CardHeader>
             <CardContent>
-              {queuedCalls > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Last Outcome</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {/* Queue rows will appear here when campaign dispatch is built */}
-                    <TableRow>
-                      <TableCell><Badge variant="destructive" className="text-xs">1</Badge></TableCell>
-                      <TableCell className="font-medium">Example Contact</TableCell>
-                      <TableCell className="text-sm">Example Corp</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">Callback</Badge></TableCell>
-                      <TableCell className="text-sm text-muted-foreground">Requested callback</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm">
-                          Prep <ChevronRight className="w-3 h-3 ml-1" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+              {currentContact ? (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="w-7 h-7 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold">{currentContact.first_name} {currentContact.last_name}</h3>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {currentContact.company}</span>
+                        <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {currentContact.phone}</span>
+                        {currentContact.email ? (
+                          <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {currentContact.email}</span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-yellow-600"><MailWarning className="w-3.5 h-3.5" /> No email — ask on call</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Call prep context will go here — belief map, last conversation summary, etc. */}
+                  <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground mb-1">Call Prep</p>
+                    <p>Belief map, conversation history, and recommended talking points will appear here.</p>
+                  </div>
+                </div>
               ) : (
-                <div className="text-center py-12 space-y-4">
+                <div className="text-center py-8 space-y-4">
                   <div className="w-16 h-16 rounded-full bg-muted mx-auto flex items-center justify-center">
                     <Phone className="w-8 h-8 text-muted-foreground/50" />
                   </div>
@@ -213,13 +207,50 @@ export default function CallCommand() {
             </CardContent>
           </Card>
 
+          {/* QUEUE — remaining calls */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Headphones className="w-5 h-5" /> Queue ({queuedCalls} remaining)
+                  </CardTitle>
+                </div>
+                <Button variant="outline" size="sm" disabled>
+                  <ListPlus className="w-4 h-4 mr-1" /> Top Up
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {queuedCalls > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Company</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Last Outcome</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {/* Rows populate from campaign dispatch */}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No contacts in queue. Build your call list to load contacts here.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           {/* RECENT CALLS */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Headphones className="w-5 h-5" /> Recent Calls
+                <Clock className="w-5 h-5" /> Today's Calls
               </CardTitle>
-              <CardDescription>Live feed from Aircall. Calls appear here as they happen.</CardDescription>
             </CardHeader>
             <CardContent>
               {recentCalls.length > 0 ? (
@@ -239,74 +270,120 @@ export default function CallCommand() {
                         <TableCell className="font-medium">{call.name}</TableCell>
                         <TableCell className="text-sm">{call.time}</TableCell>
                         <TableCell className="text-sm">{call.duration}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{call.outcome}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={call.transcriptStatus === "processed" ? "default" : "secondary"} className="text-xs">
-                            {call.transcriptStatus}
-                          </Badge>
-                        </TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">{call.outcome}</Badge></TableCell>
+                        <TableCell><Badge variant={call.transcriptStatus === "processed" ? "default" : "secondary"} className="text-xs">{call.transcriptStatus}</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8">
-                  <Headphones className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No calls recorded today.</p>
-                  <p className="text-xs text-muted-foreground mt-1">Calls will appear here automatically via Aircall webhooks.</p>
+                <div className="text-center py-6">
+                  <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No calls yet today. Completed calls will appear here.</p>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* RIGHT COLUMN — Aircall Widget + Campaign Stats + Attention */}
+        {/* RIGHT COLUMN — Aircall Widget + Stats */}
         <div className="space-y-4">
 
-          {/* AIRCALL WIDGET */}
-          <Card className="border-green-200 dark:border-green-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <PhoneCall className="w-5 h-5 text-green-600" /> Aircall
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-lg bg-gradient-to-b from-slate-900 to-slate-800 p-4 text-white">
-                {/* Aircall phone widget representation */}
-                <div className="text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-green-500/20 mx-auto flex items-center justify-center">
-                    <Phone className="w-6 h-6 text-green-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-300">Power Dialer</p>
-                    <p className="text-xs text-slate-400 mt-1">Ready to dial</p>
-                  </div>
-                  <div className="border-t border-slate-700 pt-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Status</span>
-                      <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs">Available</Badge>
+          {/* AIRCALL WIDGET — embedded phone */}
+          <Card className="overflow-hidden">
+            <div className="bg-[#00B388] px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                  <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+                </svg>
+                <span className="text-white font-semibold text-sm">Aircall</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-white/20 text-white border-0 text-xs">
+                  {aircallLoggedIn ? "Connected" : "Not connected"}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Embedded Aircall Workspace */}
+            <div ref={aircallRef} className="bg-slate-50 dark:bg-slate-900" style={{ minHeight: "500px" }}>
+              {/* The Aircall Everywhere SDK will load the iframe here */}
+              {/* For now, show a placeholder that represents the embedded phone */}
+              <div className="flex flex-col items-center justify-center h-full py-8 space-y-4">
+                <div className="w-full max-w-[280px] mx-auto space-y-4 px-4">
+                  {/* Phone display */}
+                  <div className="rounded-xl bg-white dark:bg-slate-800 shadow-lg p-5 space-y-4">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-[#00B388]/10 mx-auto flex items-center justify-center mb-3">
+                        <PhoneCall className="w-8 h-8 text-[#00B388]" />
+                      </div>
+                      {currentContact ? (
+                        <>
+                          <p className="font-bold text-lg">{currentContact.first_name} {currentContact.last_name}</p>
+                          <p className="text-sm text-muted-foreground">{currentContact.phone}</p>
+                          <p className="text-xs text-muted-foreground">{currentContact.company}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-muted-foreground">Ready to call</p>
+                          <p className="text-xs text-muted-foreground">Load a contact from your queue</p>
+                        </>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Queue</span>
-                      <span className="text-slate-300">{queuedCalls} contacts loaded</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Calls today</span>
-                      <span className="text-slate-300">{recentCalls.length}</span>
+
+                    {/* Call button */}
+                    {!onCall ? (
+                      <Button
+                        className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-12 text-base"
+                        disabled={!currentContact}
+                      >
+                        <PhoneCall className="w-5 h-5 mr-2" />
+                        {currentContact ? "Call Now" : "No Contact Loaded"}
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-center">
+                          <Badge className="bg-green-100 text-green-700 border-green-200 animate-pulse">
+                            <Timer className="w-3 h-3 mr-1" /> On Call
+                          </Badge>
+                        </div>
+                        <Button variant="destructive" className="w-full h-10">
+                          <PhoneOff className="w-4 h-4 mr-2" /> End Call
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Status bar */}
+                    <div className="border-t pt-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Status</span>
+                        <span className="font-medium text-[#00B388]">Available</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Calls today</span>
+                        <span className="font-medium">{recentCalls.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Queue</span>
+                        <span className="font-medium">{queuedCalls} remaining</span>
+                      </div>
                     </div>
                   </div>
-                  <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 text-white text-xs" disabled>
-                    <PhoneCall className="w-3.5 h-3.5 mr-1" /> Start Dialing
-                  </Button>
+
+                  <p className="text-[10px] text-center text-muted-foreground">
+                    Aircall Everywhere widget will replace this placeholder.
+                    <br />Tags and notes are captured directly in the Aircall widget.
+                  </p>
                 </div>
               </div>
+            </div>
+
+            <div className="border-t px-4 py-2 bg-slate-50 dark:bg-slate-900">
               <a href="https://app.aircall.io" target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Open Aircall Dashboard <ExternalLink className="w-3 h-3" />
               </a>
-            </CardContent>
+            </div>
           </Card>
 
           {/* CAMPAIGN STATS */}
@@ -317,49 +394,9 @@ export default function CallCommand() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="text-center py-4">
-                  <p className="text-sm text-muted-foreground">No active campaign</p>
-                  <p className="text-xs text-muted-foreground mt-1">Set up a campaign to start dispatching contacts from your pool.</p>
-                </div>
-
-                {/* When active, show these stats */}
-                {false && (
-                  <>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Campaign</span>
-                        <span className="font-medium">London HNW Wave 1</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Daily quota</span>
-                        <span className="font-medium">50 / 50</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Called today</span>
-                        <span className="font-medium">23</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Connected</span>
-                        <span className="font-medium text-green-600">8</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Interested</span>
-                        <span className="font-medium text-blue-600">3</span>
-                      </div>
-                    </div>
-                    {/* Progress bar */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Progress</span>
-                        <span>46%</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div className="bg-primary rounded-full h-2" style={{ width: "46%" }}></div>
-                      </div>
-                    </div>
-                  </>
-                )}
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">No active campaign</p>
+                <p className="text-xs text-muted-foreground mt-1">Build a call list to start.</p>
               </div>
             </CardContent>
           </Card>
@@ -388,13 +425,13 @@ export default function CallCommand() {
                 <div className="text-center py-4">
                   <CheckCircle className="w-6 h-6 text-green-500/50 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">All clear</p>
-                  <p className="text-xs text-muted-foreground mt-1">Unmatched calls, failed jobs, and missing data will appear here.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Unmatched calls and errors will appear here.</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* QUICK STATS */}
+          {/* POOL OVERVIEW */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -422,10 +459,6 @@ export default function CallCommand() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Qualified</span>
                   <span className="font-medium text-green-600">{(stats?.by_status?.qualified || 0).toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">In cool-off</span>
-                  <span className="font-medium text-yellow-600">{(stats?.by_status?.archived || 0).toLocaleString()}</span>
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t">
