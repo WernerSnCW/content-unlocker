@@ -552,31 +552,35 @@ export default function CallCommand() {
               <p className="text-xs text-muted-foreground">Leave empty to draw from all available contacts.</p>
             </div>
             {/* Pool availability indicator */}
-            <div className={`rounded-lg p-3 text-sm flex items-center justify-between ${
+            <Card className={`${
               poolAvailable >= (parseInt(newQuota) || 100)
-                ? "bg-green-50 dark:bg-green-950/20"
+                ? "border-green-500/50"
                 : poolAvailable > 0
-                  ? "bg-yellow-50 dark:bg-yellow-950/20"
-                  : "bg-red-50 dark:bg-red-950/20"
+                  ? "border-yellow-500/50"
+                  : "border-destructive/50"
             }`}>
-              <div>
-                <span className="font-medium">{poolAvailable.toLocaleString()}</span>
-                <span className="text-muted-foreground"> contacts available in pool</span>
-                {poolAvailable < (parseInt(newQuota) || 100) && poolAvailable > 0 && (
-                  <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">Below daily quota of {parseInt(newQuota) || 100}</p>
+              <CardContent className="py-3 px-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm">
+                    <span className="font-bold">{poolAvailable.toLocaleString()}</span>
+                    <span className="text-muted-foreground"> contacts available in pool</span>
+                  </p>
+                  {poolAvailable < (parseInt(newQuota) || 100) && poolAvailable > 0 && (
+                    <p className="text-xs text-muted-foreground mt-0.5">Below daily quota of {parseInt(newQuota) || 100}</p>
+                  )}
+                  {poolAvailable === 0 && (
+                    <p className="text-xs text-destructive mt-0.5">No contacts available — upload a list first</p>
+                  )}
+                </div>
+                {poolAvailable < (parseInt(newQuota) || 100) && (
+                  <Link href="/contacts/upload">
+                    <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+                      <Upload className="w-3.5 h-3.5" /> Top Up
+                    </Button>
+                  </Link>
                 )}
-                {poolAvailable === 0 && (
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">No contacts available — upload a list first</p>
-                )}
-              </div>
-              {poolAvailable < (parseInt(newQuota) || 100) && (
-                <Link href="/contacts/upload">
-                  <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
-                    <Upload className="w-3.5 h-3.5" /> Top Up
-                  </Button>
-                </Link>
-              )}
-            </div>
+              </CardContent>
+            </Card>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
