@@ -25,6 +25,7 @@ import workQueueRouter from "./work-queue";
 import documentHealthRouter from "./document-health";
 import settingsRouter from "./settings";
 import contactsRouter from "./contacts";
+import campaignsDispatchRouter from "./campaigns-dispatch";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(workQueueRouter);
 router.use(documentHealthRouter);
 router.use(settingsRouter);
 router.use(contactsRouter);
+router.use(campaignsDispatchRouter);
 
 export default router;

@@ -27,3 +27,4 @@ export * from "./agents";
 export * from "./contacts";
 export * from "./upload-sessions";
 export * from "./staged-contacts";
+export * from "./campaign-config";

@@ -87,6 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/call-prep", label: "Call Prep", icon: Phone },
         { href: "/leads", label: "Lead Management", icon: Users },
         { href: "/contacts/upload", label: "Contact Ingestion", icon: Upload },
+        { href: "/call-list", label: "Call List", icon: Phone },
         { href: "/tasks", label: "Task Board", icon: CheckSquare },
         { href: "/work-queue", label: "Work Queue", icon: Zap },
       ],
