@@ -461,5 +461,8 @@ export async function commitUpload(sessionId: string): Promise<{ created: number
     committed_count: created + updated,
   }).where(eq(uploadSessionsTable.id, sessionId));
 
+  // Clean up staged records — session metadata preserved as audit trail
+  await db.delete(stagedContactsTable).where(eq(stagedContactsTable.session_id, sessionId));
+
   return { created, updated, skipped, errors };
 }
