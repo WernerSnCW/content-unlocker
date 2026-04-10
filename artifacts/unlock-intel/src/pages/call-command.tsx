@@ -45,6 +45,8 @@ export default function CallCommand() {
   const [building, setBuilding] = useState(false);
   const [buildResult, setBuildResult] = useState<any>(null);
   const [currentCallIndex, setCurrentCallIndex] = useState(0);
+  const [staleCount, setStaleCount] = useState(0);
+  const [clearing, setClearing] = useState(false);
   const aircallRef = useRef<HTMLDivElement>(null);
   // Agent picker (persisted in localStorage)
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -78,17 +80,20 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [callListDefsRes, poolRes, agentsRes, sourcesRes] = await Promise.all([
+      const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes] = await Promise.all([
         fetch(`${API_BASE}/call-lists`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
+        fetch(`${API_BASE}/call-lists/stale-count`),
       ]);
 
       const callListDefsData = await callListDefsRes.json();
       const poolData = await poolRes.json();
       const agentsData = await agentsRes.json();
       const sourcesData = await sourcesRes.json();
+      const staleData = await staleRes.json();
+      setStaleCount(staleData.stale_count || 0);
 
       const allCallListDefs = callListDefsData.call_lists || [];
       setCallListDefs(allCallListDefs);
@@ -136,6 +141,14 @@ export default function CallCommand() {
       setCurrentCallIndex(0);
       await loadAll();
     } catch {} finally { setBuilding(false); }
+  };
+
+  const handleClearStale = async () => {
+    setClearing(true);
+    try {
+      await fetch(`${API_BASE}/call-lists/reconcile`, { method: "POST" });
+      await loadAll();
+    } catch {} finally { setClearing(false); }
   };
 
   const handleCreateCallList = async () => {
@@ -205,6 +218,25 @@ export default function CallCommand() {
           </Link>
         </div>
       </div>
+
+      {/* STALE QUEUE PROMPT */}
+      {staleCount > 0 && (
+        <Card className="border-orange-500/50">
+          <CardContent className="py-3 px-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-orange-500 shrink-0" />
+              <div>
+                <p className="text-sm font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""} from a previous session still in queue</p>
+                <p className="text-xs text-muted-foreground">Continue where you left off, or clear them back to the pool.</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleClearStale} disabled={clearing}>
+              {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+              Start Fresh
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* QUEUE BREAKDOWN */}
       <div className="grid grid-cols-5 gap-3">

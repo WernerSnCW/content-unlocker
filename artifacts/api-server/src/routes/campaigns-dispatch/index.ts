@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, callListConfigsTable, contactsTable, agentsTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
 
 const router: IRouter = Router();
@@ -118,6 +118,23 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
   } catch (err: any) {
     res.status(err.message === "Campaign not found" ? 404 : 500)
       .json({ error: err.message });
+  }
+});
+
+// GET /call-lists/stale-count — count dispatched contacts from previous days still in queue
+router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [result] = await db.select({ count: sql<number>`count(*)` })
+      .from(contactsTable)
+      .where(and(
+        eq(contactsTable.dispatch_status, "dispatched"),
+        sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
+      ));
+    res.json({ stale_count: Number(result.count) });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to count stale contacts" });
   }
 });
 
