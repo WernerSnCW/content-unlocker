@@ -206,7 +206,7 @@ export default function ContactIngestion() {
   const possibleMatches = staged.filter(s => s.dedup_status === "possible_match");
   const invalidRows = staged.filter(s => s.dedup_status === "invalid");
   const pendingSessions = sessions.filter(s => s.status === "ready_for_review");
-  const rowCount = csvText.trim().split("\n").filter(l => l.trim()).length - 1;
+  const csvRowCount = csvText.trim().split("\n").filter(l => l.trim()).length - 1;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -359,7 +359,7 @@ export default function ContactIngestion() {
                       ) : (
                         <Badge variant="outline" className="py-1">Pasted data</Badge>
                       )}
-                      <span className="text-sm text-muted-foreground">{rowCount > 0 ? `${rowCount} data row${rowCount !== 1 ? "s" : ""}` : ""}</span>
+                      <span className="text-sm text-muted-foreground">{csvRowCount > 0 ? `${csvRowCount} data row${csvRowCount !== 1 ? "s" : ""}` : ""}</span>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost" size="sm" onClick={() => { setCsvText(""); setFileName(null); setShowPaste(false); }}>
