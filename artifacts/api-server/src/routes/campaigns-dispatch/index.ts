@@ -121,6 +121,35 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
   }
 });
 
+// GET /call-lists/today-outcomes — count contacts called today grouped by outcome
+router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rows = await db.select({
+      outcome: contactsTable.last_call_outcome,
+      count: sql<number>`count(*)`,
+    })
+      .from(contactsTable)
+      .where(and(
+        eq(contactsTable.dispatch_status, "called"),
+        sql`${contactsTable.updated_at}::date = ${today.toISOString().split("T")[0]}::date`,
+      ))
+      .groupBy(contactsTable.last_call_outcome);
+
+    const outcomes: Record<string, number> = {};
+    let total = 0;
+    for (const row of rows) {
+      const key = row.outcome || "unknown";
+      outcomes[key] = Number(row.count);
+      total += Number(row.count);
+    }
+    res.json({ total, outcomes });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch today's outcomes" });
+  }
+});
+
 // GET /call-lists/stale-count — count dispatched contacts from previous days still in queue
 router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
   try {

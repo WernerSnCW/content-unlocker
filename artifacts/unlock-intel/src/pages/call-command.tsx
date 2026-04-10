@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "wouter";
 import {
-  Phone, PhoneCall, PhoneMissed, CalendarClock, UserPlus,
-  ArrowRight, Clock, Upload,
+  Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
+  ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
   ListPlus, TrendingUp, Headphones, ExternalLink,
   User, Building2, Mail, MailWarning,
   Loader2
@@ -34,6 +34,7 @@ interface Agent {
 export default function CallCommand() {
   const [poolAvailable, setPoolAvailable] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
+  const [todayOutcomes, setTodayOutcomes] = useState<{ total: number; outcomes: Record<string, number> }>({ total: 0, outcomes: {} });
   const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
   const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,12 +75,13 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes] = await Promise.all([
+      const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes] = await Promise.all([
         fetch(`${API_BASE}/call-lists`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
         fetch(`${API_BASE}/call-lists/stale-count`),
+        fetch(`${API_BASE}/call-lists/today-outcomes`),
       ]);
 
       const callListDefsData = await callListDefsRes.json();
@@ -87,7 +89,9 @@ export default function CallCommand() {
       const agentsData = await agentsRes.json();
       const sourcesData = await sourcesRes.json();
       const staleData = await staleRes.json();
+      const outcomesData = await outcomesRes.json();
       setStaleCount(staleData.stale_count || 0);
+      setTodayOutcomes(outcomesData);
 
       const allCallListDefs = callListDefsData.call_lists || [];
       setCallListDefs(allCallListDefs);
@@ -232,39 +236,99 @@ export default function CallCommand() {
 
       {/* QUEUE COMPOSITION */}
       {queuedCalls > 0 && (
-        <div className="grid grid-cols-4 gap-3">
-          <Card className={queueCallbacks > 0 ? "border-orange-500/50" : ""}>
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex items-center gap-3">
-                <CalendarClock className="w-5 h-5 text-orange-500 shrink-0" />
-                <div><p className="text-2xl font-bold leading-none">{queueCallbacks}</p><p className="text-xs text-muted-foreground mt-0.5">Callbacks</p></div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={queueFollowUps > 0 ? "border-blue-500/50" : ""}>
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="w-5 h-5 text-blue-500 shrink-0" />
-                <div><p className="text-2xl font-bold leading-none">{queueFollowUps}</p><p className="text-xs text-muted-foreground mt-0.5">Follow-ups</p></div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex items-center gap-3">
-                <PhoneMissed className="w-5 h-5 text-slate-400 shrink-0" />
-                <div><p className="text-2xl font-bold leading-none">{queueRetries}</p><p className="text-xs text-muted-foreground mt-0.5">Retries</p></div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex items-center gap-3">
-                <UserPlus className="w-5 h-5 text-green-500 shrink-0" />
-                <div><p className="text-2xl font-bold leading-none">{queueFresh}</p><p className="text-xs text-muted-foreground mt-0.5">Fresh</p></div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Queue</p>
+          <div className="grid grid-cols-4 gap-3">
+            <Card className={queueCallbacks > 0 ? "border-orange-500/50" : ""}>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <CalendarClock className="w-5 h-5 text-orange-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{queueCallbacks}</p><p className="text-xs text-muted-foreground mt-0.5">Callbacks</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={queueFollowUps > 0 ? "border-blue-500/50" : ""}>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-blue-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{queueFollowUps}</p><p className="text-xs text-muted-foreground mt-0.5">Follow-ups</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <PhoneMissed className="w-5 h-5 text-slate-400 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{queueRetries}</p><p className="text-xs text-muted-foreground mt-0.5">Retries</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <UserPlus className="w-5 h-5 text-green-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{queueFresh}</p><p className="text-xs text-muted-foreground mt-0.5">Fresh</p></div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* TODAY'S OUTCOMES */}
+      {todayOutcomes.total > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today's Results</p>
+          <div className="grid grid-cols-6 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <Phone className="w-5 h-5 text-primary shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.total}</p><p className="text-xs text-muted-foreground mt-0.5">Called</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={(todayOutcomes.outcomes["interested"] || 0) > 0 ? "border-green-500/50" : ""}>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.outcomes["interested"] || 0}</p><p className="text-xs text-muted-foreground mt-0.5">Interested</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={(todayOutcomes.outcomes["meeting-booked"] || 0) > 0 ? "border-green-500/50" : ""}>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-green-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.outcomes["meeting-booked"] || 0}</p><p className="text-xs text-muted-foreground mt-0.5">Meetings</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <PhoneOff className="w-5 h-5 text-slate-400 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.outcomes["no-answer"] || 0}</p><p className="text-xs text-muted-foreground mt-0.5">No Answer</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <XCircle className="w-5 h-5 text-red-400 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.outcomes["no-interest"] || 0}</p><p className="text-xs text-muted-foreground mt-0.5">No Interest</p></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-3">
+                  <CalendarClock className="w-5 h-5 text-orange-500 shrink-0" />
+                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.outcomes["callback-requested"] || 0}</p><p className="text-xs text-muted-foreground mt-0.5">Callback</p></div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
@@ -446,8 +510,8 @@ export default function CallCommand() {
         </div>
       </div>
 
-      {/* UP NEXT + COMPLETED */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* UP NEXT */}
+      <div>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -487,20 +551,6 @@ export default function CallCommand() {
                 <p className="text-sm text-muted-foreground">{queuedCalls > 0 ? "No more contacts after this one." : "Queue is empty."}</p>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="w-4 h-4" /> Completed Today ({callsCompleted})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-6">
-              <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Call outcomes will appear here once Aircall webhooks are connected.</p>
-            </div>
           </CardContent>
         </Card>
       </div>
