@@ -46,6 +46,17 @@ export default function CallCommand() {
   const [buildResult, setBuildResult] = useState<any>(null);
   const [currentCallIndex, setCurrentCallIndex] = useState(0);
   const aircallRef = useRef<HTMLDivElement>(null);
+  // Agent picker (persisted in localStorage)
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [activeAgentId, setActiveAgentId] = useState<string>(() => localStorage.getItem("activeAgentId") || "");
+  const activeAgent = agents.find(a => a.id === activeAgentId) || null;
+  const agentName = activeAgent ? activeAgent.name.split(" ")[0] : "there";
+
+  const handleAgentChange = (id: string) => {
+    setActiveAgentId(id);
+    localStorage.setItem("activeAgentId", id);
+  };
+
   // Create call list dialog
   const [createOpen, setCreateOpen] = useState(false);
   const defaultListName = () => {
@@ -57,10 +68,7 @@ export default function CallCommand() {
   const [newAgent, setNewAgent] = useState("");
   const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-
-  const [agentName, setAgentName] = useState("there");
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
@@ -87,9 +95,13 @@ export default function CallCommand() {
       const active = allCallListDefs.find((c: CallListDef) => c.active);
       setActiveCallListDef(active || null);
 
-      const agentsList = agentsData.agents || [];
+      const agentsList = (agentsData.agents || []).filter((a: Agent) => a.active);
       setAgents(agentsList);
-      if (agentsList.length > 0) setAgentName(agentsList[0].name.split(" ")[0]);
+      // Auto-select first agent if none persisted or persisted one no longer exists
+      const storedId = localStorage.getItem("activeAgentId");
+      if (agentsList.length > 0 && (!storedId || !agentsList.find((a: Agent) => a.id === storedId))) {
+        handleAgentChange(agentsList[0].id);
+      }
 
       setSources(sourcesData.sources || []);
       setPoolAvailable(poolData.by_status?.pool || 0);
@@ -160,6 +172,19 @@ export default function CallCommand() {
           <p className="text-sm text-muted-foreground">{today}</p>
         </div>
         <div className="flex items-center gap-2">
+          {agents.length > 1 && (
+            <Select value={activeAgentId} onValueChange={handleAgentChange}>
+              <SelectTrigger className="w-[160px] h-8 text-sm">
+                <User className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                <SelectValue placeholder="Select agent..." />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Link href="/contacts/upload">
             <Button variant="outline" size="sm" className="gap-1.5"><Upload className="w-3.5 h-3.5" /> Upload Contacts</Button>
           </Link>
@@ -265,7 +290,7 @@ export default function CallCommand() {
                     <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
                   </div>
                 </div>
-                <Button className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setCreateOpen(true); }}><ListPlus className="w-4 h-4" /> Create Call List</Button>
+                <Button className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }}><ListPlus className="w-4 h-4" /> Create Call List</Button>
               </div>
             )}
             {buildResult && (
