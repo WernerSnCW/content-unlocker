@@ -48,6 +48,10 @@ export default function CallCommand() {
   const aircallRef = useRef<HTMLDivElement>(null);
   // Create call list dialog
   const [createOpen, setCreateOpen] = useState(false);
+  const defaultListName = () => {
+    const d = new Date();
+    return `${agentName} - ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
+  };
   const [newName, setNewName] = useState("");
   const [newQuota, setNewQuota] = useState("100");
   const [newAgent, setNewAgent] = useState("");
@@ -261,7 +265,7 @@ export default function CallCommand() {
                     <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
                   </div>
                 </div>
-                <Button className="gap-1.5 shrink-0" onClick={() => setCreateOpen(true)}><ListPlus className="w-4 h-4" /> Create Call List</Button>
+                <Button className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setCreateOpen(true); }}><ListPlus className="w-4 h-4" /> Create Call List</Button>
               </div>
             )}
             {buildResult && (
