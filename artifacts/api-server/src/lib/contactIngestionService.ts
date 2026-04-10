@@ -73,34 +73,154 @@ export function parseCsvRows(csvText: string): string[][] {
   });
 }
 
-export function detectColumns(headers: string[]): ColumnMapping | null {
-  const lower = headers.map(h => h.toLowerCase().replace(/[_\-\s]+/g, ""));
-  const firstNameIdx = lower.findIndex(h => h === "firstname" || h === "first");
-  const lastNameIdx = lower.findIndex(h => h === "lastname" || h === "last" || h === "surname");
-  const fullNameIdx = lower.findIndex(h => h === "name" || h === "fullname" || h === "contactname");
-  if (firstNameIdx === -1 && lastNameIdx === -1 && fullNameIdx === -1) return null;
+// Synonyms for each target field — scored by specificity
+const FIELD_SYNONYMS: Record<string, { exact: string[]; partial: string[] }> = {
+  first_name: {
+    exact: ["firstname", "first", "givenname", "forename", "fname"],
+    partial: ["first", "given", "fore"],
+  },
+  last_name: {
+    exact: ["lastname", "last", "surname", "familyname", "lname", "sname"],
+    partial: ["last", "sur", "family"],
+  },
+  name: {
+    exact: ["name", "fullname", "contactname", "contact", "investor", "investorname", "person"],
+    partial: ["name", "contact", "investor"],
+  },
+  email: {
+    exact: ["email", "emailaddress", "mail", "emailaddr", "emal", "emailid"],
+    partial: ["email", "mail"],
+  },
+  phone: {
+    exact: ["phone", "phonenumber", "telephone", "mobile", "tel", "cell", "cellphone",
+            "mobilenumber", "phoneno", "telnumber", "contactnumber", "directdial", "directline"],
+    partial: ["phone", "mobile", "tel", "cell", "dial", "direct"],
+  },
+  company: {
+    exact: ["company", "companyname", "organisation", "organization", "org", "firm",
+            "employer", "business", "businessname", "corp", "entity"],
+    partial: ["company", "org", "firm", "business", "employer"],
+  },
+};
 
-  const emailIdx = lower.findIndex(h => h === "email" || h === "emailaddress" || h === "mail");
-  const phoneIdx = lower.findIndex(h => h === "phone" || h === "phonenumber" || h === "telephone" || h === "mobile" || h === "tel");
-  const companyIdx = lower.findIndex(h => h === "company" || h === "organisation" || h === "organization" || h === "org" || h === "companyname");
+export interface ColumnSuggestion {
+  header: string;
+  suggested_field: string | null; // first_name, last_name, name, email, phone, company, or null
+  confidence: "high" | "medium" | "low" | "none";
+  alternatives: string[]; // other possible field matches
+}
 
-  if (firstNameIdx >= 0 && lastNameIdx >= 0) {
+export function suggestColumnMapping(headers: string[]): ColumnSuggestion[] {
+  const suggestions: ColumnSuggestion[] = [];
+  const usedFields = new Set<string>();
+
+  // Score each header against each field
+  const scored: Array<{ headerIdx: number; field: string; score: number }> = [];
+
+  for (let i = 0; i < headers.length; i++) {
+    const normalised = headers[i].toLowerCase().replace(/[_\-\s.]+/g, "").replace(/[^a-z0-9]/g, "");
+
+    for (const [field, synonyms] of Object.entries(FIELD_SYNONYMS)) {
+      let score = 0;
+
+      // Exact match on normalised header
+      if (synonyms.exact.includes(normalised)) {
+        score = 1.0;
+      }
+      // Partial match — header contains a synonym
+      else if (synonyms.partial.some(p => normalised.includes(p))) {
+        score = 0.6;
+      }
+      // Reverse partial — synonym contains the header
+      else if (synonyms.partial.some(p => p.includes(normalised)) && normalised.length >= 3) {
+        score = 0.4;
+      }
+
+      if (score > 0) {
+        scored.push({ headerIdx: i, field, score });
+      }
+    }
+  }
+
+  // Sort by score descending, then greedily assign best matches
+  scored.sort((a, b) => b.score - a.score);
+
+  const headerAssignments = new Map<number, { field: string; score: number; alternatives: string[] }>();
+
+  for (const s of scored) {
+    if (usedFields.has(s.field) && s.field !== "name") continue; // name can coexist if no first/last
+    if (headerAssignments.has(s.headerIdx)) {
+      // Add as alternative
+      const existing = headerAssignments.get(s.headerIdx)!;
+      if (!existing.alternatives.includes(s.field)) {
+        existing.alternatives.push(s.field);
+      }
+      continue;
+    }
+
+    headerAssignments.set(s.headerIdx, { field: s.field, score: s.score, alternatives: [] });
+    usedFields.add(s.field);
+  }
+
+  // If we have first_name and last_name, remove name from assignments
+  const assignedFields = new Set([...headerAssignments.values()].map(a => a.field));
+  if (assignedFields.has("first_name") && assignedFields.has("last_name")) {
+    for (const [idx, assignment] of headerAssignments) {
+      if (assignment.field === "name") {
+        headerAssignments.delete(idx);
+        break;
+      }
+    }
+  }
+
+  // Build suggestions for all headers
+  for (let i = 0; i < headers.length; i++) {
+    const assignment = headerAssignments.get(i);
+    if (assignment) {
+      suggestions.push({
+        header: headers[i],
+        suggested_field: assignment.field,
+        confidence: assignment.score >= 0.9 ? "high" : assignment.score >= 0.5 ? "medium" : "low",
+        alternatives: assignment.alternatives,
+      });
+    } else {
+      suggestions.push({
+        header: headers[i],
+        suggested_field: null,
+        confidence: "none",
+        alternatives: [],
+      });
+    }
+  }
+
+  return suggestions;
+}
+
+// Convert suggestions to a ColumnMapping (for backward compatibility)
+export function suggestionsToMapping(suggestions: ColumnSuggestion[]): ColumnMapping | null {
+  const map: Record<string, string> = {};
+  for (const s of suggestions) {
+    if (s.suggested_field) map[s.suggested_field] = s.header;
+  }
+
+  if (map.first_name && map.last_name) {
     return {
-      first_name: headers[firstNameIdx], last_name: headers[lastNameIdx],
-      email: emailIdx >= 0 ? headers[emailIdx] : undefined,
-      phone: phoneIdx >= 0 ? headers[phoneIdx] : undefined,
-      company: companyIdx >= 0 ? headers[companyIdx] : undefined,
+      first_name: map.first_name, last_name: map.last_name,
+      email: map.email, phone: map.phone, company: map.company,
     };
   }
-  if (fullNameIdx >= 0) {
+  if (map.name) {
     return {
-      first_name: "", last_name: "", name: headers[fullNameIdx],
-      email: emailIdx >= 0 ? headers[emailIdx] : undefined,
-      phone: phoneIdx >= 0 ? headers[phoneIdx] : undefined,
-      company: companyIdx >= 0 ? headers[companyIdx] : undefined,
+      first_name: "", last_name: "", name: map.name,
+      email: map.email, phone: map.phone, company: map.company,
     };
   }
   return null;
+}
+
+// Keep backward compat
+export function detectColumns(headers: string[]): ColumnMapping | null {
+  return suggestionsToMapping(suggestColumnMapping(headers));
 }
 
 export function applyMapping(rows: string[][], headers: string[], mapping: ColumnMapping): { contacts: ParsedContact[]; invalid: Array<{ row_number: number; reason: string }> } {

@@ -48,6 +48,14 @@ export default function ContactIngestion() {
   const [showPaste, setShowPaste] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Column mapping step
+  const [suggestions, setSuggestions] = useState<Array<{ header: string; suggested_field: string | null; confidence: string; alternatives: string[] }>>([]);
+  const [sampleData, setSampleData] = useState<Record<string, string>[]>([]);
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({}); // header -> field
+  const [analysing, setAnalysing] = useState(false);
+  const [showMapping, setShowMapping] = useState(false);
+  const [rowCount, setRowCount] = useState(0);
+
   useEffect(() => { fetchStats(); fetchSessions(); }, []);
 
   const fetchStats = async () => {
@@ -85,16 +93,62 @@ export default function ContactIngestion() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [readFile]);
 
-  const handleUpload = async (mapping?: any) => {
-    setUploading(true); setNeedsMapping(false); setSession(null); setStaged([]); setCommitResult(null);
+  const handleAnalyseFile = async () => {
+    setAnalysing(true); setSuggestions([]); setSampleData([]); setShowMapping(false);
+    try {
+      const res = await fetch(`${API_BASE}/contacts/uploads/suggest`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv_text: csvText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSuggestions(data.suggestions || []);
+      setSampleData(data.sample_data || []);
+      setRowCount(data.row_count || 0);
+      // Build initial mapping from suggestions
+      const mapping: Record<string, string> = {};
+      for (const s of data.suggestions || []) {
+        if (s.suggested_field) mapping[s.header] = s.suggested_field;
+      }
+      setFieldMapping(mapping);
+      setShowMapping(true);
+      setActiveTab("mapping");
+    } catch (err: any) {
+      alert(err.message || "Failed to analyse file");
+    } finally { setAnalysing(false); }
+  };
+
+  const handleConfirmMapping = async () => {
+    // Convert fieldMapping (header->field) to ColumnMapping format
+    const reversed: Record<string, string> = {};
+    for (const [header, field] of Object.entries(fieldMapping)) {
+      if (field && field !== "__none__") reversed[field] = header;
+    }
+
+    const mapping: any = {};
+    if (reversed.first_name && reversed.last_name) {
+      mapping.first_name = reversed.first_name;
+      mapping.last_name = reversed.last_name;
+    } else if (reversed.name) {
+      mapping.first_name = ""; mapping.last_name = "";
+      mapping.name = reversed.name;
+    } else {
+      alert("Please map at least a Name column (or First Name + Last Name)");
+      return;
+    }
+    if (reversed.email) mapping.email = reversed.email;
+    if (reversed.phone) mapping.phone = reversed.phone;
+    if (reversed.company) mapping.company = reversed.company;
+
+    setUploading(true); setSession(null); setStaged([]); setCommitResult(null);
     try {
       const res = await fetch(`${API_BASE}/contacts/uploads`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv_text: csvText, source_list: sourceList, column_mapping: mapping || undefined }),
+        body: JSON.stringify({ csv_text: csvText, source_list: sourceList, column_mapping: mapping }),
       });
       const data = await res.json();
-      if (data.needs_mapping) { setNeedsMapping(true); setHeaders(data.headers || []); return; }
-      setSession(data.session); setStaged(data.staged || []); setActiveTab("review");
+      if (data.needs_mapping) { alert("Mapping incomplete. Please check your column assignments."); return; }
+      setSession(data.session); setStaged(data.staged || []); setActiveTab("review"); setShowMapping(false);
       const defaults: Record<string, string> = {};
       for (const s of data.staged || []) { if (s.dedup_status === "possible_match") defaults[s.id] = "skip"; }
       setDecisions(defaults);
@@ -144,6 +198,7 @@ export default function ContactIngestion() {
   const resetUpload = () => {
     setSession(null); setStaged([]); setCommitResult(null); setCsvText(""); setSourceList("");
     setNeedsMapping(false); setActiveTab("upload"); setFileName(null); setShowPaste(false);
+    setSuggestions([]); setSampleData([]); setFieldMapping({}); setShowMapping(false);
   };
 
   const newContacts = staged.filter(s => s.dedup_status === "new");
@@ -213,6 +268,9 @@ export default function ContactIngestion() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="upload" className="gap-1"><Upload className="w-4 h-4" /> Upload</TabsTrigger>
+          <TabsTrigger value="mapping" className="gap-1" disabled={!showMapping}>
+            <FileSpreadsheet className="w-4 h-4" /> Map Columns
+          </TabsTrigger>
           <TabsTrigger value="review" className="gap-1" disabled={!session}>
             <ShieldCheck className="w-4 h-4" /> Review
             {session && session.status === "ready_for_review" && (
@@ -340,48 +398,88 @@ export default function ContactIngestion() {
                   <span className="text-muted-foreground/50">|</span>
                   <span>email, phone, company</span>
                 </div>
-                <Button size="lg" onClick={() => handleUpload()} disabled={uploading || !csvText.trim() || !sourceList.trim()}>
-                  {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                  Upload & Analyse
+                <Button size="lg" onClick={handleAnalyseFile} disabled={analysing || !csvText.trim() || !sourceList.trim()}>
+                  {analysing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                  Analyse File
                 </Button>
               </div>
-              {uploading && <p className="text-sm text-muted-foreground text-center">Parsing, normalising, and checking for duplicates...</p>}
+              {analysing && <p className="text-sm text-muted-foreground text-center">Reading file and detecting columns...</p>}
             </CardContent>
           </Card>
 
-          {/* Column Mapping */}
-          {needsMapping && (
-            <Card className="border-yellow-500">
+        </TabsContent>
+
+        {/* ===== MAPPING TAB ===== */}
+        <TabsContent value="mapping" className="space-y-4">
+          {showMapping && suggestions.length > 0 && (
+            <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><HelpCircle className="w-5 h-5 text-yellow-500" /> Column Mapping Required</CardTitle>
-                <CardDescription>We couldn't auto-detect your columns. Please map them manually.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {[
-                    { key: "first_name", label: "First Name" },
-                    { key: "last_name", label: "Last Name" },
-                    { key: "name", label: "Full Name (if single column)" },
-                    { key: "email", label: "Email" },
-                    { key: "phone", label: "Phone" },
-                    { key: "company", label: "Company" },
-                  ].map(field => (
-                    <div key={field.key} className="space-y-1">
-                      <label className="text-sm font-medium">{field.label}</label>
-                      <Select value={(manualMapping as any)[field.key]} onValueChange={v => setManualMapping(m => ({ ...m, [field.key]: v === "__none__" ? "" : v }))}>
-                        <SelectTrigger><SelectValue placeholder="Select column..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Not mapped --</SelectItem>
-                          {headers.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Map Your Columns</CardTitle>
+                    <CardDescription>
+                      We detected {rowCount} data rows. Review the suggested column mapping below and adjust if needed.
+                    </CardDescription>
+                  </div>
+                  <Button onClick={handleConfirmMapping} disabled={uploading}>
+                    {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                    Confirm & Process
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">Map either First Name + Last Name, or a single Full Name column. Email or Phone is required.</p>
-                <Button onClick={handleMappingSubmit} disabled={!manualMapping.first_name && !manualMapping.name}>
-                  Apply Mapping & Continue
-                </Button>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>CSV Column</TableHead>
+                      <TableHead>Sample Data</TableHead>
+                      <TableHead>Maps To</TableHead>
+                      <TableHead>Confidence</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {suggestions.map((s, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">{s.header}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-48 truncate">
+                          {sampleData.slice(0, 3).map(row => row[s.header]).filter(Boolean).join(", ")}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={fieldMapping[s.header] || "__none__"}
+                            onValueChange={v => setFieldMapping(m => ({ ...m, [s.header]: v === "__none__" ? "" : v }))}
+                          >
+                            <SelectTrigger className="w-44">
+                              <SelectValue placeholder="Not mapped" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">-- Not mapped --</SelectItem>
+                              <SelectItem value="first_name">First Name</SelectItem>
+                              <SelectItem value="last_name">Last Name</SelectItem>
+                              <SelectItem value="name">Full Name (auto-split)</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="phone">Phone</SelectItem>
+                              <SelectItem value="company">Company</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          {s.suggested_field && (
+                            <Badge variant={
+                              s.confidence === "high" ? "default" :
+                              s.confidence === "medium" ? "outline" : "secondary"
+                            } className="text-xs">
+                              {s.confidence}
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Required: First Name + Last Name (or Full Name). At least one of Email or Phone.
+                </p>
               </CardContent>
             </Card>
           )}

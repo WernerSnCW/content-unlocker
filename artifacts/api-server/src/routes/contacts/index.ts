@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, contactsTable, uploadSessionsTable, stagedContactsTable } from "@workspace/db";
 import { eq, or, sql, and, ilike, desc } from "drizzle-orm";
 import {
-  parseCsvRows, detectColumns, stageUpload, commitUpload,
+  parseCsvRows, detectColumns, suggestColumnMapping, stageUpload, commitUpload,
   type ColumnMapping,
 } from "../../lib/contactIngestionService";
 
@@ -72,6 +72,42 @@ router.get("/contacts/uploads", async (req, res): Promise<void> => {
   }
 });
 
+// POST /contacts/uploads/suggest — analyse CSV and suggest column mapping
+router.post("/contacts/uploads/suggest", async (req, res): Promise<void> => {
+  try {
+    const { csv_text } = req.body;
+    if (!csv_text || typeof csv_text !== "string") {
+      res.status(400).json({ error: "csv_text is required" });
+      return;
+    }
+
+    const rows = parseCsvRows(csv_text);
+    if (rows.length < 2) {
+      res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+      return;
+    }
+
+    const headers = rows[0];
+    const suggestions = suggestColumnMapping(headers);
+
+    // Include sample data rows so user can see what's in each column
+    const sampleRows = rows.slice(1, 4).map(row => {
+      const sample: Record<string, string> = {};
+      headers.forEach((h, i) => { sample[h] = row[i] || ""; });
+      return sample;
+    });
+
+    res.json({
+      headers,
+      suggestions,
+      sample_data: sampleRows,
+      row_count: rows.length - 1,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to analyse CSV" });
+  }
+});
+
 // POST /contacts/uploads — start a new upload (parse CSV, stage contacts)
 router.post("/contacts/uploads", async (req, res): Promise<void> => {
   try {
@@ -86,7 +122,7 @@ router.post("/contacts/uploads", async (req, res): Promise<void> => {
       return;
     }
 
-    // Auto-detect columns if not provided
+    // Column mapping is now required — user must confirm via suggest step
     let mapping: ColumnMapping;
     if (column_mapping) {
       mapping = column_mapping;
