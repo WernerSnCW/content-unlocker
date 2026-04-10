@@ -108,13 +108,7 @@ export default function CallCommand() {
   const callsCompleted = currentCallIndex;
   const upNext = callList.slice(currentCallIndex + 1, currentCallIndex + 6);
 
-  const attentionItems: Array<{ message: string; action: string }> = [];
-  if (!activeCallListDef && callListDefs.length === 0) {
-    attentionItems.push({ message: "No call list configured.", action: "Create one" });
-  }
-  if (poolAvailable === 0 && queuedCalls === 0) {
-    attentionItems.push({ message: "Contact pool is empty.", action: "Upload contacts" });
-  }
+  // No attention bar — guidance is built into the Build List card below
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -133,24 +127,6 @@ export default function CallCommand() {
           </Link>
         </div>
       </div>
-
-      {/* ATTENTION BAR */}
-      {attentionItems.length > 0 && (
-        <div className="rounded-lg border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-950/20 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0" />
-            <div className="flex-1 flex items-center gap-4 text-sm">
-              {attentionItems.map((item, i) => (
-                <span key={i}>{item.message}
-                  <Link href={item.action === "Create one" ? "/call-list" : "/contacts/upload"}>
-                    <button className="text-primary hover:underline ml-1">{item.action}</button>
-                  </Link>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* QUEUE BREAKDOWN */}
       <div className="grid grid-cols-5 gap-3">
@@ -248,7 +224,7 @@ export default function CallCommand() {
                     <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
                   </div>
                 </div>
-                <Link href="/call-list"><Button className="gap-1.5 shrink-0"><ListPlus className="w-4 h-4" /> Create CallListDef</Button></Link>
+                <Link href="/call-list"><Button className="gap-1.5 shrink-0"><ListPlus className="w-4 h-4" /> Create Call List</Button></Link>
               </div>
             )}
             {buildResult && (
