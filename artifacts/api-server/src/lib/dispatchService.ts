@@ -285,6 +285,7 @@ export async function getCallList(campaignId: string): Promise<any[]> {
     .where(and(
       eq(contactsTable.campaign_name, campaign.name),
       eq(contactsTable.dispatch_status, "dispatched"),
+      sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ))
     .orderBy(
       // Priority: callbacks first, then interested, then retries, then fresh
