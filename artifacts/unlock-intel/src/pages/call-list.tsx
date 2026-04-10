@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
-type Campaign = {
+type CallList = {
   id: string; name: string; daily_quota: number; active: boolean;
   assigned_agent_id: string | null; filter_criteria: any;
   total_dispatched: number; total_called: number; total_qualified: number;
@@ -20,7 +20,7 @@ type Campaign = {
 };
 
 type QueueStatus = {
-  campaign_id: string; campaign_name: string; daily_quota: number;
+  callList_id: string; callList_name: string; daily_quota: number;
   callbacks_due: number; interested_followups: number; retry_eligible: number;
   already_dispatched_today: number; fresh_needed: number; total_queued: number;
 };
@@ -35,10 +35,10 @@ type CallContact = {
 type Agent = { id: string; name: string; email: string | null; active: boolean };
 
 export default function CallList() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [callLists, setCallLists] = useState<CallList[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [selectedCallList, setSelectedCallList] = useState<CallList | null>(null);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [callList, setCallList] = useState<CallContact[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -47,7 +47,7 @@ export default function CallList() {
   const [poolAvailable, setPoolAvailable] = useState<number | null>(null);
   const [sources, setSources] = useState<string[]>([]);
 
-  // Create campaign dialog
+  // Create callList dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newQuota, setNewQuota] = useState("100");
@@ -55,14 +55,14 @@ export default function CallList() {
   const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => { fetchCampaigns(); fetchAgents(); fetchSources(); }, []);
+  useEffect(() => { fetchCallLists(); fetchAgents(); fetchSources(); }, []);
 
-  const fetchCampaigns = async () => {
+  const fetchCallLists = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/campaigns`);
+      const res = await fetch(`${API_BASE}/call-lists`);
       const data = await res.json();
-      setCampaigns(data.campaigns || []);
+      setCallLists(data.call_lists || []);
     } catch {} finally { setLoading(false); }
   };
 
@@ -74,15 +74,15 @@ export default function CallList() {
     try { const res = await fetch(`${API_BASE}/contacts/sources`); const data = await res.json(); setSources(data.sources || []); } catch {}
   };
 
-  const selectCampaign = async (campaign: Campaign) => {
-    setSelectedCampaign(campaign);
+  const selectCallList = async (callList: CallList) => {
+    setSelectedCallList(callList);
     setFillResult(null);
     setListLoading(true);
     try {
       const [statusRes, listRes, poolRes] = await Promise.all([
-        fetch(`${API_BASE}/campaigns/${campaign.id}/queue-status`),
-        fetch(`${API_BASE}/campaigns/${campaign.id}/call-list`),
-        fetch(`${API_BASE}/campaigns/${campaign.id}/pool-count`),
+        fetch(`${API_BASE}/call-lists/${callList.id}/queue-status`),
+        fetch(`${API_BASE}/call-lists/${callList.id}/call-list`),
+        fetch(`${API_BASE}/call-lists/${callList.id}/pool-count`),
       ]);
       setQueueStatus(await statusRes.json());
       const listData = await listRes.json();
@@ -93,21 +93,21 @@ export default function CallList() {
   };
 
   const handleFillQueue = async () => {
-    if (!selectedCampaign) return;
+    if (!selectedCallList) return;
     setFilling(true); setFillResult(null);
     try {
-      const res = await fetch(`${API_BASE}/campaigns/${selectedCampaign.id}/fill-queue`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/call-lists/${selectedCallList.id}/fill-queue`, { method: "POST" });
       const data = await res.json();
       setFillResult(data);
-      await selectCampaign(selectedCampaign);
+      await selectCallList(selectedCallList);
     } catch {} finally { setFilling(false); }
   };
 
   const handleReconcile = async () => {
     try {
-      const res = await fetch(`${API_BASE}/campaigns/reconcile`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/call-lists/reconcile`, { method: "POST" });
       const data = await res.json();
-      if (selectedCampaign) await selectCampaign(selectedCampaign);
+      if (selectedCallList) await selectCallList(selectedCallList);
       alert(`Reconciliation complete: ${data.reset_count} uncalled contacts returned to pool.`);
     } catch {}
   };
@@ -116,7 +116,7 @@ export default function CallList() {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch(`${API_BASE}/campaigns`, {
+      const res = await fetch(`${API_BASE}/call-lists`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newName.trim(),
@@ -126,7 +126,7 @@ export default function CallList() {
         }),
       });
       setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
-      await fetchCampaigns();
+      await fetchCallLists();
     } catch {} finally { setCreating(false); }
   };
 
@@ -151,35 +151,35 @@ export default function CallList() {
             <RefreshCw className="w-4 h-4 mr-1" /> Reconcile Yesterday
           </Button>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-1" /> New Campaign
+            <Plus className="w-4 h-4 mr-1" /> New Call List
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="campaigns">
+      <Tabs defaultValue="callLists">
         <TabsList>
-          <TabsTrigger value="campaigns"><Users className="w-4 h-4 mr-1" /> Campaigns</TabsTrigger>
-          <TabsTrigger value="queue" disabled={!selectedCampaign}><PhoneCall className="w-4 h-4 mr-1" /> Today's Queue</TabsTrigger>
+          <TabsTrigger value="callLists"><Users className="w-4 h-4 mr-1" /> CallLists</TabsTrigger>
+          <TabsTrigger value="queue" disabled={!selectedCallList}><PhoneCall className="w-4 h-4 mr-1" /> Today's Queue</TabsTrigger>
         </TabsList>
 
         {/* ===== CAMPAIGNS TAB ===== */}
-        <TabsContent value="campaigns" className="space-y-4">
+        <TabsContent value="callLists" className="space-y-4">
           {loading ? (
             <Card><CardContent className="py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></CardContent></Card>
-          ) : campaigns.length === 0 ? (
+          ) : callLists.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center space-y-3">
                 <Phone className="w-10 h-10 mx-auto text-muted-foreground opacity-50" />
-                <p className="text-lg font-medium">No campaigns yet</p>
-                <p className="text-muted-foreground">Create a campaign to start building call lists from your contact pool.</p>
-                <Button onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4 mr-1" /> Create Campaign</Button>
+                <p className="text-lg font-medium">No call lists yet</p>
+                <p className="text-muted-foreground">Create a call list to start building call lists from your contact pool.</p>
+                <Button onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4 mr-1" /> Create Call List</Button>
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {campaigns.map(c => (
-                <Card key={c.id} className={`cursor-pointer transition-shadow hover:shadow-md ${selectedCampaign?.id === c.id ? "ring-2 ring-primary" : ""}`}
-                  onClick={() => selectCampaign(c)}>
+              {callLists.map(c => (
+                <Card key={c.id} className={`cursor-pointer transition-shadow hover:shadow-md ${selectedCallList?.id === c.id ? "ring-2 ring-primary" : ""}`}
+                  onClick={() => selectCallList(c)}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{c.name}</CardTitle>
@@ -204,7 +204,7 @@ export default function CallList() {
                         <p className="text-xs text-muted-foreground">Qualified</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" className="w-full mt-3" onClick={(e) => { e.stopPropagation(); selectCampaign(c); }}>
+                    <Button variant="outline" size="sm" className="w-full mt-3" onClick={(e) => { e.stopPropagation(); selectCallList(c); }}>
                       View Queue <ArrowRight className="w-3 h-3 ml-1" />
                     </Button>
                   </CardContent>
@@ -216,15 +216,15 @@ export default function CallList() {
 
         {/* ===== QUEUE TAB ===== */}
         <TabsContent value="queue" className="space-y-4">
-          {selectedCampaign && (
+          {selectedCallList && (
             <>
               {/* Queue status */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>{selectedCampaign.name}</CardTitle>
-                      <CardDescription>Daily quota: {selectedCampaign.daily_quota} calls | Pool available: {poolAvailable ?? "..."}</CardDescription>
+                      <CardTitle>{selectedCallList.name}</CardTitle>
+                      <CardDescription>Daily quota: {selectedCallList.daily_quota} calls | Pool available: {poolAvailable ?? "..."}</CardDescription>
                     </div>
                     <Button onClick={handleFillQueue} disabled={filling}>
                       {filling ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
@@ -321,27 +321,27 @@ export default function CallList() {
             </>
           )}
 
-          {!selectedCampaign && (
+          {!selectedCallList && (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <Phone className="w-8 h-8 mx-auto mb-3 opacity-50" />
-                <p>Select a campaign from the Campaigns tab to see its call queue.</p>
+                <p>Select a callList from the CallLists tab to see its call queue.</p>
               </CardContent>
             </Card>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Create Campaign Dialog */}
+      {/* Create Call List Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create Campaign</DialogTitle>
-            <DialogDescription>Define a campaign to dispatch contacts from your pool to the call queue.</DialogDescription>
+            <DialogTitle>Create Call List</DialogTitle>
+            <DialogDescription>Define a callList to dispatch contacts from your pool to the call queue.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <label className="text-sm font-medium">Campaign Name <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">Call List Name <span className="text-destructive">*</span></label>
               <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. London HNW Wave 1" />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -383,7 +383,7 @@ export default function CallList() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
               {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Campaign
+              Create Call List
             </Button>
           </DialogFooter>
         </DialogContent>

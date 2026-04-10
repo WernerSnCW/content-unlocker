@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, campaignConfigsTable, contactsTable, agentsTable } from "@workspace/db";
+import { db, callListConfigsTable, contactsTable, agentsTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
 
@@ -7,28 +7,28 @@ const router: IRouter = Router();
 
 // ==================== Campaign CRUD ====================
 
-// GET /campaigns — list all campaigns
-router.get("/campaigns", async (req, res): Promise<void> => {
+// GET /call_lists — list all call_lists
+router.get("/call-lists", async (req, res): Promise<void> => {
   try {
-    const campaigns = await db.select().from(campaignConfigsTable).orderBy(desc(campaignConfigsTable.created_at));
+    const call_lists = await db.select().from(callListConfigsTable).orderBy(desc(callListConfigsTable.created_at));
 
     // Enrich with agent names
     const agents = await db.select().from(agentsTable);
     const agentMap = new Map(agents.map(a => [a.id, a]));
 
-    const enriched = campaigns.map(c => ({
+    const enriched = call_lists.map(c => ({
       ...c,
       agent: c.assigned_agent_id ? agentMap.get(c.assigned_agent_id) || null : null,
     }));
 
-    res.json({ campaigns: enriched });
+    res.json({ call_lists: enriched });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to fetch campaigns" });
+    res.status(500).json({ error: "Failed to fetch call_lists" });
   }
 });
 
-// POST /campaigns — create campaign
-router.post("/campaigns", async (req, res): Promise<void> => {
+// POST /call_lists — create campaign
+router.post("/call-lists", async (req, res): Promise<void> => {
   const { name, filter_criteria, daily_quota, assigned_agent_id } = req.body;
 
   if (!name || typeof name !== "string") {
@@ -37,7 +37,7 @@ router.post("/campaigns", async (req, res): Promise<void> => {
   }
 
   try {
-    const [created] = await db.insert(campaignConfigsTable).values({
+    const [created] = await db.insert(callListConfigsTable).values({
       name: name.trim(),
       filter_criteria: filter_criteria || {},
       daily_quota: daily_quota || 100,
@@ -50,8 +50,8 @@ router.post("/campaigns", async (req, res): Promise<void> => {
   }
 });
 
-// PATCH /campaigns/:id — update campaign
-router.patch("/campaigns/:id", async (req, res): Promise<void> => {
+// PATCH /call_lists/:id — update campaign
+router.patch("/call-lists/:id", async (req, res): Promise<void> => {
   const { id } = req.params;
   const { name, filter_criteria, daily_quota, assigned_agent_id, active } = req.body;
 
@@ -63,8 +63,8 @@ router.patch("/campaigns/:id", async (req, res): Promise<void> => {
     if (assigned_agent_id !== undefined) updates.assigned_agent_id = assigned_agent_id;
     if (active !== undefined) updates.active = active;
 
-    const [updated] = await db.update(campaignConfigsTable)
-      .set(updates).where(eq(campaignConfigsTable.id, id)).returning();
+    const [updated] = await db.update(callListConfigsTable)
+      .set(updates).where(eq(callListConfigsTable.id, id)).returning();
 
     if (!updated) { res.status(404).json({ error: "Campaign not found" }); return; }
     res.json({ campaign: updated });
@@ -73,11 +73,11 @@ router.patch("/campaigns/:id", async (req, res): Promise<void> => {
   }
 });
 
-// DELETE /campaigns/:id — delete campaign
-router.delete("/campaigns/:id", async (req, res): Promise<void> => {
+// DELETE /call_lists/:id — delete campaign
+router.delete("/call-lists/:id", async (req, res): Promise<void> => {
   const { id } = req.params;
   try {
-    const [deleted] = await db.delete(campaignConfigsTable).where(eq(campaignConfigsTable.id, id)).returning();
+    const [deleted] = await db.delete(callListConfigsTable).where(eq(callListConfigsTable.id, id)).returning();
     if (!deleted) { res.status(404).json({ error: "Campaign not found" }); return; }
     res.json({ success: true });
   } catch (err: any) {
@@ -87,8 +87,8 @@ router.delete("/campaigns/:id", async (req, res): Promise<void> => {
 
 // ==================== Queue & Dispatch ====================
 
-// GET /campaigns/:id/queue-status — get current queue breakdown
-router.get("/campaigns/:id/queue-status", async (req, res): Promise<void> => {
+// GET /call_lists/:id/queue-status — get current queue breakdown
+router.get("/call-lists/:id/queue-status", async (req, res): Promise<void> => {
   try {
     const status = await getQueueStatus(req.params.id);
     res.json(status);
@@ -98,8 +98,8 @@ router.get("/campaigns/:id/queue-status", async (req, res): Promise<void> => {
   }
 });
 
-// POST /campaigns/:id/fill-queue — dispatch contacts to fill today's queue
-router.post("/campaigns/:id/fill-queue", async (req, res): Promise<void> => {
+// POST /call_lists/:id/fill-queue — dispatch contacts to fill today's queue
+router.post("/call-lists/:id/fill-queue", async (req, res): Promise<void> => {
   try {
     const count = req.body.count ? parseInt(req.body.count) : undefined;
     const result = await fillQueue(req.params.id, count);
@@ -110,8 +110,8 @@ router.post("/campaigns/:id/fill-queue", async (req, res): Promise<void> => {
   }
 });
 
-// GET /campaigns/:id/call-list — get today's prioritised call list
-router.get("/campaigns/:id/call-list", async (req, res): Promise<void> => {
+// GET /call_lists/:id/call-list — get today's prioritised call list
+router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
   try {
     const contacts = await getCallList(req.params.id);
     res.json({ contacts, total: contacts.length });
@@ -121,8 +121,8 @@ router.get("/campaigns/:id/call-list", async (req, res): Promise<void> => {
   }
 });
 
-// POST /campaigns/reconcile — reset uncalled contacts from yesterday
-router.post("/campaigns/reconcile", async (req, res): Promise<void> => {
+// POST /call_lists/reconcile — reset uncalled contacts from yesterday
+router.post("/call-lists/reconcile", async (req, res): Promise<void> => {
   try {
     const resetCount = await reconcileUncalledContacts();
     res.json({ success: true, reset_count: resetCount });
@@ -131,11 +131,11 @@ router.post("/campaigns/reconcile", async (req, res): Promise<void> => {
   }
 });
 
-// GET /campaigns/:id/pool-count — how many contacts match the filter criteria
-router.get("/campaigns/:id/pool-count", async (req, res): Promise<void> => {
+// GET /call_lists/:id/pool-count — how many contacts match the filter criteria
+router.get("/call-lists/:id/pool-count", async (req, res): Promise<void> => {
   try {
-    const [campaign] = await db.select().from(campaignConfigsTable)
-      .where(eq(campaignConfigsTable.id, req.params.id));
+    const [campaign] = await db.select().from(callListConfigsTable)
+      .where(eq(callListConfigsTable.id, req.params.id));
 
     if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
 

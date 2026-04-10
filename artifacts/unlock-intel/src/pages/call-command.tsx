@@ -20,7 +20,7 @@ interface CallContact {
   last_call_outcome: string | null; priority: string;
 }
 
-interface Campaign {
+interface CallListDef {
   id: string; name: string; daily_quota: number; active: boolean;
 }
 
@@ -31,8 +31,8 @@ export default function CallCommand() {
   const [retries, setRetries] = useState(0);
   const [freshDispatched, setFreshDispatched] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
+  const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
+  const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedCount, setSelectedCount] = useState<number>(50);
   const [building, setBuilding] = useState(false);
@@ -51,20 +51,20 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [campaignsRes, poolRes, agentsRes] = await Promise.all([
-        fetch(`${API_BASE}/campaigns`),
+      const [callListDefsRes, poolRes, agentsRes] = await Promise.all([
+        fetch(`${API_BASE}/call-lists`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
       ]);
 
-      const campaignsData = await campaignsRes.json();
+      const callListDefsData = await callListDefsRes.json();
       const poolData = await poolRes.json();
       const agentsData = await agentsRes.json();
 
-      const allCampaigns = campaignsData.campaigns || [];
-      setCampaigns(allCampaigns);
-      const active = allCampaigns.find((c: Campaign) => c.active);
-      setActiveCampaign(active || null);
+      const allCallListDefs = callListDefsData.call_lists || [];
+      setCallListDefs(allCallListDefs);
+      const active = allCallListDefs.find((c: CallListDef) => c.active);
+      setActiveCallListDef(active || null);
 
       const agents = agentsData.agents || [];
       if (agents.length > 0) setAgentName(agents[0].name.split(" ")[0]);
@@ -73,8 +73,8 @@ export default function CallCommand() {
 
       if (active) {
         const [queueRes, listRes] = await Promise.all([
-          fetch(`${API_BASE}/campaigns/${active.id}/queue-status`),
-          fetch(`${API_BASE}/campaigns/${active.id}/call-list`),
+          fetch(`${API_BASE}/call-lists/${active.id}/queue-status`),
+          fetch(`${API_BASE}/call-lists/${active.id}/call-list`),
         ]);
         const queueData = await queueRes.json();
         const listData = await listRes.json();
@@ -89,10 +89,10 @@ export default function CallCommand() {
   };
 
   const handleBuildList = async () => {
-    if (!activeCampaign) return;
+    if (!activeCallListDef) return;
     setBuilding(true); setBuildResult(null);
     try {
-      const res = await fetch(`${API_BASE}/campaigns/${activeCampaign.id}/fill-queue`, {
+      const res = await fetch(`${API_BASE}/call-lists/${activeCallListDef.id}/fill-queue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ count: selectedCount }),
       });
@@ -109,8 +109,8 @@ export default function CallCommand() {
   const upNext = callList.slice(currentCallIndex + 1, currentCallIndex + 6);
 
   const attentionItems: Array<{ message: string; action: string }> = [];
-  if (!activeCampaign && campaigns.length === 0) {
-    attentionItems.push({ message: "No campaign configured.", action: "Create one" });
+  if (!activeCallListDef && callListDefs.length === 0) {
+    attentionItems.push({ message: "No call list configured.", action: "Create one" });
   }
   if (poolAvailable === 0 && queuedCalls === 0) {
     attentionItems.push({ message: "Contact pool is empty.", action: "Upload contacts" });
@@ -200,7 +200,7 @@ export default function CallCommand() {
       {queuedCalls === 0 ? (
         <Card className="border-primary/30 bg-primary/[0.02]">
           <CardContent className="py-5">
-            {poolAvailable > 0 && activeCampaign ? (
+            {poolAvailable > 0 && activeCallListDef ? (
               <div className="flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -244,11 +244,11 @@ export default function CallCommand() {
                     <ListPlus className="w-5 h-5 text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="font-semibold">Create a campaign first</p>
-                    <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a campaign to start dispatching.</p>
+                    <p className="font-semibold">Create a call list first</p>
+                    <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
                   </div>
                 </div>
-                <Link href="/call-list"><Button className="gap-1.5 shrink-0"><ListPlus className="w-4 h-4" /> Create Campaign</Button></Link>
+                <Link href="/call-list"><Button className="gap-1.5 shrink-0"><ListPlus className="w-4 h-4" /> Create CallListDef</Button></Link>
               </div>
             )}
             {buildResult && (

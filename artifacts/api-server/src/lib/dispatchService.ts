@@ -1,4 +1,4 @@
-import { db, contactsTable, campaignConfigsTable, agentsTable } from "@workspace/db";
+import { db, contactsTable, callListConfigsTable, agentsTable } from "@workspace/db";
 import { eq, and, or, sql, isNull, lte, ne, notInArray, inArray } from "drizzle-orm";
 
 export interface QueueStatus {
@@ -30,8 +30,8 @@ const COOL_OFF_DAYS = 28;
  * are already queued for today vs how many are needed to hit quota.
  */
 export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
-  const [campaign] = await db.select().from(campaignConfigsTable)
-    .where(eq(campaignConfigsTable.id, campaignId));
+  const [campaign] = await db.select().from(callListConfigsTable)
+    .where(eq(callListConfigsTable.id, campaignId));
 
   if (!campaign) throw new Error("Campaign not found");
 
@@ -113,8 +113,8 @@ export async function fillQueue(
   campaignId: string,
   count?: number
 ): Promise<DispatchResult> {
-  const [campaign] = await db.select().from(campaignConfigsTable)
-    .where(eq(campaignConfigsTable.id, campaignId));
+  const [campaign] = await db.select().from(callListConfigsTable)
+    .where(eq(callListConfigsTable.id, campaignId));
 
   if (!campaign) throw new Error("Campaign not found");
 
@@ -228,9 +228,9 @@ export async function fillQueue(
   }
 
   // Update campaign stats
-  await db.update(campaignConfigsTable).set({
-    total_dispatched: sql`${campaignConfigsTable.total_dispatched} + ${result.dispatched}`,
-  }).where(eq(campaignConfigsTable.id, campaignId));
+  await db.update(callListConfigsTable).set({
+    total_dispatched: sql`${callListConfigsTable.total_dispatched} + ${result.dispatched}`,
+  }).where(eq(callListConfigsTable.id, campaignId));
 
   return result;
 }
@@ -273,8 +273,8 @@ export async function reconcileUncalledContacts(): Promise<number> {
  * Get today's call list for a campaign — all dispatched contacts in priority order.
  */
 export async function getCallList(campaignId: string): Promise<any[]> {
-  const [campaign] = await db.select().from(campaignConfigsTable)
-    .where(eq(campaignConfigsTable.id, campaignId));
+  const [campaign] = await db.select().from(callListConfigsTable)
+    .where(eq(callListConfigsTable.id, campaignId));
 
   if (!campaign) throw new Error("Campaign not found");
 
