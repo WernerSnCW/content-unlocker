@@ -142,7 +142,7 @@ export default function CallCommand() {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      await fetch(`${API_BASE}/call-lists`, {
+      const res = await fetch(`${API_BASE}/call-lists`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newName.trim(),
@@ -151,7 +151,19 @@ export default function CallCommand() {
           filter_criteria: { source_lists: newSourceLists.length > 0 ? newSourceLists : undefined, exclude_outcomes: ["no-interest"] },
         }),
       });
+      const data = await res.json();
+      const newCallList = data.campaign;
+
+      // Immediately fill the queue with contacts up to daily quota
+      if (newCallList?.id) {
+        await fetch(`${API_BASE}/call-lists/${newCallList.id}/fill-queue`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ count: parseInt(newQuota) || 100 }),
+        });
+      }
+
       setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
+      setCurrentCallIndex(0);
       await loadAll();
     } catch {} finally { setCreating(false); }
   };
