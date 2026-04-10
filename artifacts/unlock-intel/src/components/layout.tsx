@@ -245,7 +245,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             width: "900px",
             height: "900px",
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(0, 87, 255, 0.07) 0%, rgba(0, 87, 255, 0.03) 35%, rgba(0, 87, 255, 0.01) 55%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(0, 87, 255, 0.15) 0%, rgba(0, 87, 255, 0.08) 35%, rgba(0, 87, 255, 0.03) 55%, transparent 70%)",
             zIndex: 0,
           }} />
           <div className="relative z-10">
