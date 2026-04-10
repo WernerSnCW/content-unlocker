@@ -186,22 +186,7 @@ export default function CallCommand() {
                         : "Upload a contact list to build your outreach pool."}
                     </p>
                   </div>
-                  <div className="flex items-center justify-center gap-3 pt-2">
-                    {poolSize === 0 ? (
-                      <Link href="/contacts/upload">
-                        <Button className="gap-2"><Upload className="w-4 h-4" /> Upload Contacts</Button>
-                      </Link>
-                    ) : (
-                      <>
-                        <Button className="gap-2" disabled>
-                          <ListPlus className="w-4 h-4" /> Build Your Call List
-                        </Button>
-                        <Link href="/contacts/upload">
-                          <Button variant="outline" className="gap-2"><Upload className="w-4 h-4" /> Upload More</Button>
-                        </Link>
-                      </>
-                    )}
-                  </div>
+                  <p className="text-xs text-muted-foreground pt-2">Use the Call List panel on the right to get started.</p>
                 </div>
               )}
             </CardContent>
@@ -210,16 +195,9 @@ export default function CallCommand() {
           {/* QUEUE — remaining calls */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Headphones className="w-5 h-5" /> Queue ({queuedCalls} remaining)
-                  </CardTitle>
-                </div>
-                <Button variant="outline" size="sm" disabled>
-                  <ListPlus className="w-4 h-4 mr-1" /> Top Up
-                </Button>
-              </div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Headphones className="w-5 h-5" /> Queue ({queuedCalls} remaining)
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {queuedCalls > 0 ? (
@@ -386,18 +364,93 @@ export default function CallCommand() {
             </div>
           </Card>
 
-          {/* CAMPAIGN STATS */}
-          <Card>
+          {/* CALL LIST BUILDER */}
+          <Card className={queuedCalls === 0 ? "border-primary/30 shadow-md" : ""}>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <BarChart3 className="w-5 h-5" /> Campaign
+                <ListPlus className="w-5 h-5" /> Your Call List
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-4">
-                <p className="text-sm text-muted-foreground">No active campaign</p>
-                <p className="text-xs text-muted-foreground mt-1">Build a call list to start.</p>
-              </div>
+              {queuedCalls > 0 ? (
+                <div className="space-y-4">
+                  {/* Progress */}
+                  <div>
+                    <div className="flex justify-between text-sm mb-1.5">
+                      <span className="font-medium">{queuedCalls} remaining</span>
+                      <span className="text-muted-foreground">of 50 target</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2.5">
+                      <div className="bg-[#00B388] rounded-full h-2.5 transition-all" style={{ width: `${Math.min(100, ((50 - queuedCalls) / 50) * 100)}%` }}></div>
+                    </div>
+                  </div>
+
+                  {/* Today's stats */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-2">
+                      <p className="text-lg font-bold text-green-700 dark:text-green-400">0</p>
+                      <p className="text-[10px] text-green-600 dark:text-green-500">Connected</p>
+                    </div>
+                    <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-2">
+                      <p className="text-lg font-bold text-blue-700 dark:text-blue-400">0</p>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-500">Interested</p>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 dark:bg-slate-950/20 p-2">
+                      <p className="text-lg font-bold text-slate-600 dark:text-slate-400">0</p>
+                      <p className="text-[10px] text-slate-500">No Answer</p>
+                    </div>
+                  </div>
+
+                  <Button variant="outline" className="w-full gap-2" disabled>
+                    <ListPlus className="w-4 h-4" /> Top Up Call List
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-center py-2">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 mx-auto flex items-center justify-center mb-3">
+                      <ListPlus className="w-6 h-6 text-primary" />
+                    </div>
+                    <p className="font-medium">No call list for today</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {available > 0
+                        ? `${available.toLocaleString()} contacts available in your pool`
+                        : "Upload contacts first to build a call list"}
+                    </p>
+                  </div>
+
+                  {available > 0 ? (
+                    <div className="space-y-3">
+                      {/* Quick build — just pick a number */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">How many calls today?</label>
+                        <div className="flex gap-2">
+                          {[25, 50, 75, 100].map(n => (
+                            <Button key={n} variant="outline" size="sm" className="flex-1 text-xs" disabled>
+                              {n}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Button className="w-full gap-2 h-11" disabled>
+                        <ListPlus className="w-4 h-4" /> Build Call List
+                      </Button>
+
+                      <p className="text-[10px] text-center text-muted-foreground">
+                        Selects contacts from your pool and loads them into your queue.
+                        Callbacks and follow-ups are added automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <Link href="/contacts/upload">
+                      <Button className="w-full gap-2 h-11">
+                        <Upload className="w-4 h-4" /> Upload Contacts
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
