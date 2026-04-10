@@ -302,7 +302,7 @@ export default function CallCommand() {
       </div>
 
       {/* BUILD LIST / PROGRESS BAR */}
-      {queuedCalls === 0 ? (
+      {staleCount > 0 ? null : queuedCalls === 0 ? (
         <Card className="border-primary/30 bg-primary/[0.02]">
           <CardContent className="py-5">
             {poolAvailable > 0 && activeCallListDef ? (
