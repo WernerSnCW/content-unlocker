@@ -122,12 +122,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen w-full text-foreground flex">
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-sidebar-primary rounded flex items-center justify-center">
-              <span className="text-sidebar-primary-foreground font-bold text-xs">U</span>
-            </div>
-            <span className="font-semibold text-sidebar-foreground tracking-tight">Unlock</span>
+        <div className="h-16 flex items-center px-5 border-b border-sidebar-border">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="Unlock" className="h-5 w-auto" />
           </div>
         </div>
 
