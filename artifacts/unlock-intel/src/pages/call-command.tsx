@@ -2,13 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "wouter";
 import {
-  Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
-  ArrowRight, Clock, AlertTriangle, Upload,
-  ListPlus, TrendingUp, Users, Headphones, ExternalLink,
-  Timer, User, Building2, Mail, MailWarning,
+  Phone, PhoneCall, PhoneMissed, CalendarClock, UserPlus,
+  ArrowRight, Clock, Upload,
+  ListPlus, TrendingUp, Headphones, ExternalLink,
+  User, Building2, Mail, MailWarning,
   Database, Loader2
 } from "lucide-react";
 
@@ -22,6 +25,10 @@ interface CallContact {
 
 interface CallListDef {
   id: string; name: string; daily_quota: number; active: boolean;
+}
+
+interface Agent {
+  id: string; name: string; email: string | null; active: boolean;
 }
 
 export default function CallCommand() {
@@ -39,7 +46,15 @@ export default function CallCommand() {
   const [buildResult, setBuildResult] = useState<any>(null);
   const [currentCallIndex, setCurrentCallIndex] = useState(0);
   const aircallRef = useRef<HTMLDivElement>(null);
-  const [onCall, setOnCall] = useState(false);
+  // Create call list dialog
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newQuota, setNewQuota] = useState("100");
+  const [newAgent, setNewAgent] = useState("");
+  const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
 
   const [agentName, setAgentName] = useState("there");
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -51,24 +66,28 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [callListDefsRes, poolRes, agentsRes] = await Promise.all([
+      const [callListDefsRes, poolRes, agentsRes, sourcesRes] = await Promise.all([
         fetch(`${API_BASE}/call-lists`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
+        fetch(`${API_BASE}/contacts/sources`),
       ]);
 
       const callListDefsData = await callListDefsRes.json();
       const poolData = await poolRes.json();
       const agentsData = await agentsRes.json();
+      const sourcesData = await sourcesRes.json();
 
       const allCallListDefs = callListDefsData.call_lists || [];
       setCallListDefs(allCallListDefs);
       const active = allCallListDefs.find((c: CallListDef) => c.active);
       setActiveCallListDef(active || null);
 
-      const agents = agentsData.agents || [];
-      if (agents.length > 0) setAgentName(agents[0].name.split(" ")[0]);
+      const agentsList = agentsData.agents || [];
+      setAgents(agentsList);
+      if (agentsList.length > 0) setAgentName(agentsList[0].name.split(" ")[0]);
 
+      setSources(sourcesData.sources || []);
       setPoolAvailable(poolData.by_status?.pool || 0);
 
       if (active) {
@@ -101,6 +120,24 @@ export default function CallCommand() {
       setCurrentCallIndex(0);
       await loadAll();
     } catch {} finally { setBuilding(false); }
+  };
+
+  const handleCreateCallList = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      await fetch(`${API_BASE}/call-lists`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          daily_quota: parseInt(newQuota) || 100,
+          assigned_agent_id: newAgent || null,
+          filter_criteria: { source_lists: newSourceLists.length > 0 ? newSourceLists : undefined, exclude_outcomes: ["no-interest"] },
+        }),
+      });
+      setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
+      await loadAll();
+    } catch {} finally { setCreating(false); }
   };
 
   const queuedCalls = callList.length;
@@ -224,7 +261,7 @@ export default function CallCommand() {
                     <p className="text-sm text-muted-foreground">{poolAvailable} contacts available. Set up a call list to start dispatching.</p>
                   </div>
                 </div>
-                <Link href="/call-list"><Button className="gap-1.5 shrink-0"><ListPlus className="w-4 h-4" /> Create Call List</Button></Link>
+                <Button className="gap-1.5 shrink-0" onClick={() => setCreateOpen(true)}><ListPlus className="w-4 h-4" /> Create Call List</Button>
               </div>
             )}
             {buildResult && (
@@ -438,6 +475,63 @@ export default function CallCommand() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Create Call List Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Call List</DialogTitle>
+            <DialogDescription>Define a call list to dispatch contacts from your pool to the call queue.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Call List Name <span className="text-destructive">*</span></label>
+              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. London HNW Wave 1" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Daily Quota</label>
+                <Input type="number" value={newQuota} onChange={e => setNewQuota(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Assigned Agent</label>
+                <Select value={newAgent} onValueChange={setNewAgent}>
+                  <SelectTrigger><SelectValue placeholder="Select agent..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Unassigned</SelectItem>
+                    {agents.filter(a => a.active).map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Source Lists (filter contacts from these lists)</label>
+              <div className="flex flex-wrap gap-2">
+                {sources.map(s => (
+                  <Badge key={s} variant={newSourceLists.includes(s) ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => setNewSourceLists(prev =>
+                      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                    )}>
+                    {s}
+                  </Badge>
+                ))}
+                {sources.length === 0 && <p className="text-sm text-muted-foreground">No contact lists uploaded yet.</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">Leave empty to draw from all available contacts.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateCallList} disabled={creating || !newName.trim()}>
+              {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create Call List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
