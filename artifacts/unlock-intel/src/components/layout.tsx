@@ -119,7 +119,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen w-full bg-background text-foreground flex">
+    <div className="min-h-screen w-full text-foreground flex">
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
