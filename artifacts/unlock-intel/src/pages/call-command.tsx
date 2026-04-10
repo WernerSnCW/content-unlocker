@@ -12,7 +12,7 @@ import {
   ArrowRight, Clock, Upload,
   ListPlus, TrendingUp, Headphones, ExternalLink,
   User, Building2, Mail, MailWarning,
-  Database, Loader2
+  Loader2
 } from "lucide-react";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
@@ -33,10 +33,6 @@ interface Agent {
 
 export default function CallCommand() {
   const [poolAvailable, setPoolAvailable] = useState(0);
-  const [callbacksToday, setCallbacksToday] = useState(0);
-  const [followUps, setFollowUps] = useState(0);
-  const [retries, setRetries] = useState(0);
-  const [freshDispatched, setFreshDispatched] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
   const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
   const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
@@ -110,17 +106,8 @@ export default function CallCommand() {
       setPoolAvailable(poolData.by_status?.pool || 0);
 
       if (active) {
-        const [queueRes, listRes] = await Promise.all([
-          fetch(`${API_BASE}/call-lists/${active.id}/queue-status`),
-          fetch(`${API_BASE}/call-lists/${active.id}/call-list`),
-        ]);
-        const queueData = await queueRes.json();
+        const listRes = await fetch(`${API_BASE}/call-lists/${active.id}/call-list`);
         const listData = await listRes.json();
-
-        setCallbacksToday(queueData.callbacks_due || 0);
-        setFollowUps(queueData.interested_followups || 0);
-        setRetries(queueData.retry_eligible || 0);
-        setFreshDispatched(queueData.already_dispatched_today || 0);
         setCallList(listData.contacts || []);
       }
     } catch {} finally { setLoading(false); }
@@ -182,7 +169,11 @@ export default function CallCommand() {
   const callsCompleted = currentCallIndex;
   const upNext = callList.slice(currentCallIndex + 1, currentCallIndex + 6);
 
-  // No attention bar — guidance is built into the Build List card below
+  // Queue composition derived from actual call list
+  const queueCallbacks = callList.filter(c => c.priority === "callback").length;
+  const queueFollowUps = callList.filter(c => c.priority === "follow-up").length;
+  const queueRetries = callList.filter(c => c.priority === "retry").length;
+  const queueFresh = callList.filter(c => c.priority === "fresh").length;
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -239,49 +230,43 @@ export default function CallCommand() {
         </Card>
       )}
 
-      {/* QUEUE BREAKDOWN */}
-      <div className="grid grid-cols-5 gap-3">
-        <Card className={callbacksToday > 0 ? "border-orange-300 dark:border-orange-700" : ""}>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-3">
-              <CalendarClock className="w-5 h-5 text-orange-500 shrink-0" />
-              <div><p className="text-2xl font-bold leading-none">{callbacksToday}</p><p className="text-xs text-muted-foreground mt-0.5">Callbacks</p></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className={followUps > 0 ? "border-blue-300 dark:border-blue-700" : ""}>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-5 h-5 text-blue-500 shrink-0" />
-              <div><p className="text-2xl font-bold leading-none">{followUps}</p><p className="text-xs text-muted-foreground mt-0.5">Follow-ups</p></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-3">
-              <PhoneMissed className="w-5 h-5 text-slate-400 shrink-0" />
-              <div><p className="text-2xl font-bold leading-none">{retries}</p><p className="text-xs text-muted-foreground mt-0.5">Retries</p></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-3">
-              <UserPlus className="w-5 h-5 text-green-500 shrink-0" />
-              <div><p className="text-2xl font-bold leading-none">{freshDispatched}</p><p className="text-xs text-muted-foreground mt-0.5">Fresh</p></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="flex items-center gap-3">
-              <Database className="w-5 h-5 text-muted-foreground shrink-0" />
-              <div><p className="text-2xl font-bold leading-none">{poolAvailable}</p><p className="text-xs text-muted-foreground mt-0.5">In Pool</p></div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* QUEUE COMPOSITION */}
+      {queuedCalls > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          <Card className={queueCallbacks > 0 ? "border-orange-500/50" : ""}>
+            <CardContent className="pt-4 pb-3 px-4">
+              <div className="flex items-center gap-3">
+                <CalendarClock className="w-5 h-5 text-orange-500 shrink-0" />
+                <div><p className="text-2xl font-bold leading-none">{queueCallbacks}</p><p className="text-xs text-muted-foreground mt-0.5">Callbacks</p></div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={queueFollowUps > 0 ? "border-blue-500/50" : ""}>
+            <CardContent className="pt-4 pb-3 px-4">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-5 h-5 text-blue-500 shrink-0" />
+                <div><p className="text-2xl font-bold leading-none">{queueFollowUps}</p><p className="text-xs text-muted-foreground mt-0.5">Follow-ups</p></div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <div className="flex items-center gap-3">
+                <PhoneMissed className="w-5 h-5 text-slate-400 shrink-0" />
+                <div><p className="text-2xl font-bold leading-none">{queueRetries}</p><p className="text-xs text-muted-foreground mt-0.5">Retries</p></div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-3 px-4">
+              <div className="flex items-center gap-3">
+                <UserPlus className="w-5 h-5 text-green-500 shrink-0" />
+                <div><p className="text-2xl font-bold leading-none">{queueFresh}</p><p className="text-xs text-muted-foreground mt-0.5">Fresh</p></div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* CREATE LIST / PROGRESS BAR */}
       {staleCount > 0 ? null : queuedCalls === 0 ? (
