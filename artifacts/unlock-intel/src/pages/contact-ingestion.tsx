@@ -201,6 +201,28 @@ export default function ContactIngestion() {
     setSuggestions([]); setSampleData([]); setFieldMapping({}); setShowMapping(false);
   };
 
+  // Parse CSV for table preview
+  const csvPreview = (() => {
+    if (!csvText.trim()) return null;
+    const lines = csvText.trim().split("\n").filter(l => l.trim());
+    if (lines.length < 2) return null;
+    const parseRow = (line: string) => {
+      const result: string[] = [];
+      let current = "", inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { if (inQuotes && line[i+1] === '"') { current += '"'; i++; } else inQuotes = !inQuotes; }
+        else if (ch === "," && !inQuotes) { result.push(current.trim()); current = ""; }
+        else current += ch;
+      }
+      result.push(current.trim());
+      return result;
+    };
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(1, 21).map(parseRow); // Show first 20 rows
+    return { headers, rows, totalRows: lines.length - 1 };
+  })();
+
   const newContacts = staged.filter(s => s.dedup_status === "new");
   const duplicates = staged.filter(s => s.dedup_status === "exact_duplicate");
   const possibleMatches = staged.filter(s => s.dedup_status === "possible_match");
@@ -370,9 +392,33 @@ export default function ContactIngestion() {
                       </Button>
                     </div>
                   </div>
-                  <div className="border rounded-lg bg-muted/30 max-h-48 overflow-auto">
-                    <pre className="p-3 text-xs font-mono whitespace-pre-wrap text-muted-foreground">{csvText.slice(0, 2000)}{csvText.length > 2000 ? "\n..." : ""}</pre>
-                  </div>
+                  {csvPreview && (
+                    <div className="border rounded-lg overflow-auto max-h-64">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs w-10 text-center">#</TableHead>
+                            {csvPreview.headers.map((h, i) => (
+                              <TableHead key={i} className="text-xs font-semibold">{h}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {csvPreview.rows.map((row, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs text-muted-foreground text-center">{i + 1}</TableCell>
+                              {csvPreview.headers.map((_, j) => (
+                                <TableCell key={j} className="text-xs">{row[j] || ""}</TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {csvPreview.totalRows > 20 && (
+                        <p className="text-xs text-muted-foreground text-center py-2">Showing first 20 of {csvPreview.totalRows} rows</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
