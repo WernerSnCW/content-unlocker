@@ -151,6 +151,14 @@ export default function CallCommand() {
     } catch {} finally { setClearing(false); }
   };
 
+  const handleCarryOver = async () => {
+    setClearing(true);
+    try {
+      await fetch(`${API_BASE}/call-lists/carry-over`, { method: "POST" });
+      await loadAll();
+    } catch {} finally { setClearing(false); }
+  };
+
   const handleCreateCallList = async () => {
     if (!newName.trim()) return;
     setCreating(true);
@@ -226,14 +234,20 @@ export default function CallCommand() {
             <div className="flex items-center gap-3">
               <Clock className="w-5 h-5 text-orange-500 shrink-0" />
               <div>
-                <p className="text-sm font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""} from a previous session still in queue</p>
-                <p className="text-xs text-muted-foreground">Continue where you left off, or clear them back to the pool.</p>
+                <p className="text-sm font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""} from a previous session</p>
+                <p className="text-xs text-muted-foreground">Include them in today's list or clear them back to the pool.</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleClearStale} disabled={clearing}>
-              {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-              Start Fresh
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleClearStale} disabled={clearing}>
+                {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Start Fresh
+              </Button>
+              <Button size="sm" className="gap-1.5" onClick={handleCarryOver} disabled={clearing}>
+                {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Keep &amp; Continue
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

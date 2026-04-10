@@ -138,6 +138,24 @@ router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
   }
 });
 
+// POST /call-lists/carry-over — re-date stale contacts to today so they join the new queue
+router.post("/call-lists/carry-over", async (req, res): Promise<void> => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const result = await db.update(contactsTable)
+      .set({ dispatch_date: new Date() })
+      .where(and(
+        eq(contactsTable.dispatch_status, "dispatched"),
+        sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
+      ))
+      .returning({ id: contactsTable.id });
+    res.json({ success: true, carried_over: result.length });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to carry over contacts" });
+  }
+});
+
 // POST /call_lists/reconcile — reset uncalled contacts from yesterday
 router.post("/call-lists/reconcile", async (req, res): Promise<void> => {
   try {
