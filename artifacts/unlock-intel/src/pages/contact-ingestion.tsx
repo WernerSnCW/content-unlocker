@@ -180,7 +180,16 @@ export default function ContactIngestion() {
     try {
       await saveDecisions();
       const res = await fetch(`${API_BASE}/contacts/uploads/${session.id}/commit`, { method: "POST" });
-      setCommitResult(await res.json()); await fetchStats(); await fetchSessions();
+      const result = await res.json();
+      setCommitResult(result);
+      await fetchStats(); await fetchSessions();
+      // Reset form state on success — keep commitResult visible on upload tab
+      if (!result.error) {
+        setSession(null); setStaged([]); setCsvText(""); setSourceList("");
+        setFileName(null); setShowPaste(false); setNeedsMapping(false);
+        setSuggestions([]); setSampleData([]); setFieldMapping({}); setShowMapping(false);
+        setActiveTab("upload");
+      }
     } catch (err: any) { setCommitResult({ error: err.message }); }
     finally { setCommitting(false); }
   };
@@ -310,20 +319,25 @@ export default function ContactIngestion() {
         {/* ===== UPLOAD TAB ===== */}
         <TabsContent value="upload" className="space-y-4">
           {commitResult && (
-            <Card className={commitResult.error ? "border-destructive" : "border-green-500"}>
+            <Card className={commitResult.error ? "border-destructive" : "border-green-500 bg-green-50 dark:bg-green-950/20"}>
               <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  {commitResult.error ? (
-                    <><XCircle className="w-6 h-6 text-destructive" /><div><p className="font-medium">Import Failed</p><p className="text-sm text-destructive">{commitResult.error}</p></div></>
-                  ) : (
-                    <><CheckCircle className="w-6 h-6 text-green-600" /><div>
-                      <p className="font-medium">Import Complete</p>
-                      <p className="text-sm text-muted-foreground">
-                        {commitResult.created} created, {commitResult.updated} updated, {commitResult.skipped} skipped
-                        {commitResult.errors > 0 && <span className="text-destructive">, {commitResult.errors} errors</span>}
-                      </p>
-                    </div></>
-                  )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {commitResult.error ? (
+                      <><XCircle className="w-6 h-6 text-destructive" /><div><p className="font-medium">Import Failed</p><p className="text-sm text-destructive">{commitResult.error}</p></div></>
+                    ) : (
+                      <><CheckCircle className="w-6 h-6 text-green-600" /><div>
+                        <p className="font-medium text-green-800 dark:text-green-300">Import Complete</p>
+                        <p className="text-sm text-green-700 dark:text-green-400">
+                          {commitResult.created} contact{commitResult.created !== 1 ? "s" : ""} added to your pool
+                          {commitResult.updated > 0 && `, ${commitResult.updated} updated`}
+                          {commitResult.skipped > 0 && `, ${commitResult.skipped} skipped`}
+                          {commitResult.errors > 0 && <span className="text-destructive">, {commitResult.errors} errors</span>}
+                        </p>
+                      </div></>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setCommitResult(null)}>Dismiss</Button>
                 </div>
               </CardContent>
             </Card>
