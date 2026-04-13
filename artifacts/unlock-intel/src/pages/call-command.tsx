@@ -436,7 +436,15 @@ export default function CallCommand() {
                       <h3 className="text-xl font-bold">{currentContact.first_name} {currentContact.last_name}</h3>
                       <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                         {currentContact.company && <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {currentContact.company}</span>}
-                        <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {currentContact.phone || "No phone"}</span>
+                        {currentContact.phone ? (
+                          <button className="flex items-center gap-1 text-primary hover:underline cursor-pointer"
+                            onClick={() => dial(currentContact.phone!)}
+                            title="Dial in Aircall">
+                            <PhoneCall className="w-3.5 h-3.5" /> {currentContact.phone}
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> No phone</span>
+                        )}
                         {currentContact.email ? (
                           <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {currentContact.email}</span>
                         ) : (
@@ -506,21 +514,10 @@ export default function CallCommand() {
               </div>
             ) : (
               <div className="flex-1 flex flex-col">
-                <div id="aircall-phone-container" className="flex-1 min-h-[376px]" />
+                <div id="aircall-phone-container" className="flex-1 min-h-[560px]" />
                 {aircallError && (
                   <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 border-t">
                     {aircallError}
-                  </div>
-                )}
-                {isLoggedIn && currentContact?.phone && callStatus === "idle" && (
-                  <div className="p-3 border-t">
-                    <Button
-                      className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-10"
-                      onClick={() => dial(currentContact.phone!)}
-                    >
-                      <PhoneCall className="w-4 h-4 mr-2" />
-                      Call {currentContact.first_name}
-                    </Button>
                   </div>
                 )}
               </div>
