@@ -111,10 +111,10 @@ export default function WebhookLog() {
                         {entry.contact_match || <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {entry.data_summary.raw_digits && <span>Phone: {entry.data_summary.raw_digits} </span>}
-                        {entry.data_summary.tag && <span>Tag: {entry.data_summary.tag} </span>}
+                        {entry.data_summary.raw_digits && <span>Phone: {String(entry.data_summary.raw_digits)} </span>}
+                        {entry.data_summary.tag && <span>Tag: {typeof entry.data_summary.tag === "object" ? JSON.stringify(entry.data_summary.tag) : String(entry.data_summary.tag)} </span>}
                         {entry.data_summary.duration != null && <span>Duration: {entry.data_summary.duration}s </span>}
-                        {entry.data_summary.comment && <span>Note: {entry.data_summary.comment.slice(0, 50)} </span>}
+                        {entry.data_summary.comment && <span>Note: {typeof entry.data_summary.comment === "object" ? JSON.stringify(entry.data_summary.comment).slice(0, 50) : String(entry.data_summary.comment).slice(0, 50)} </span>}
                       </TableCell>
                     </TableRow>
                     {expanded === i && (
