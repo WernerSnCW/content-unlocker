@@ -47,6 +47,7 @@ export default function CallCommand() {
 
   const handleCallEnded = useCallback(() => {
     setDialing(false);
+    setCurrentCallIndex(i => i + 1);
     loadAll();
   }, []);
 
