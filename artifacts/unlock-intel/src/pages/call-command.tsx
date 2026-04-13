@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,23 @@ export default function CallCommand() {
     enabled: aircallConfigured,
     onCallEnded: handleCallEnded,
   });
+
+  // Reset dialing flag when Aircall goes back to idle (e.g. dialpad closed before connecting)
+  const dialingRef = useRef(false);
+  useEffect(() => {
+    if (dialing) {
+      // Ignore the first idle→idle transition right after clicking dial
+      dialingRef.current = true;
+      return;
+    }
+    dialingRef.current = false;
+  }, [dialing]);
+
+  useEffect(() => {
+    if (callStatus === "idle" && dialingRef.current) {
+      setDialing(false);
+    }
+  }, [callStatus]);
 
   const handleDial = (phone: string) => {
     dial(phone);
