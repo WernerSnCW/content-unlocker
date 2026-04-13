@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,11 @@ import { Link } from "wouter";
 import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
   ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
-  ListPlus, TrendingUp, Headphones, ExternalLink,
+  ListPlus, TrendingUp, Headphones, ExternalLink, Settings,
   User, Building2, Mail, MailWarning,
   Loader2
 } from "lucide-react";
+import { useAircallPhone } from "@/hooks/use-aircall-phone";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
@@ -41,7 +42,19 @@ export default function CallCommand() {
   const [currentCallIndex, setCurrentCallIndex] = useState(0);
   const [staleCount, setStaleCount] = useState(0);
   const [clearing, setClearing] = useState(false);
-  const aircallRef = useRef<HTMLDivElement>(null);
+  const [aircallConfigured, setAircallConfigured] = useState(false);
+
+  const handleCallEnded = useCallback(() => {
+    // Call ended — agent will log outcome then click Next Contact
+    // Refresh outcomes to update Today's Results cards
+    loadAll();
+  }, []);
+
+  const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
+    containerId: "aircall-phone-container",
+    enabled: aircallConfigured,
+    onCallEnded: handleCallEnded,
+  });
   // Agent picker (persisted in localStorage)
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string>(() => localStorage.getItem("activeAgentId") || "");
@@ -75,13 +88,14 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes] = await Promise.all([
+      const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes, aircallRes] = await Promise.all([
         fetch(`${API_BASE}/call-lists`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
         fetch(`${API_BASE}/call-lists/stale-count`),
         fetch(`${API_BASE}/call-lists/today-outcomes`),
+        fetch(`${API_BASE}/settings/integrations/aircall`),
       ]);
 
       const callListDefsData = await callListDefsRes.json();
@@ -90,6 +104,8 @@ export default function CallCommand() {
       const sourcesData = await sourcesRes.json();
       const staleData = await staleRes.json();
       const outcomesData = await outcomesRes.json();
+      const aircallData = await aircallRes.json();
+      setAircallConfigured(!!aircallData.integration?.exists && !!aircallData.integration?.enabled);
       setStaleCount(staleData.stale_count || 0);
       setTodayOutcomes(outcomesData);
 
@@ -471,36 +487,46 @@ export default function CallCommand() {
                 <PhoneCall className="w-4 h-4 text-white" />
                 <span className="text-white font-semibold text-sm">Aircall</span>
               </div>
-              <Badge className="bg-white/20 text-white border-0 text-[10px]">Available</Badge>
+              <Badge className="bg-white/20 text-white border-0 text-[10px]">
+                {!aircallConfigured ? "Not Configured" :
+                 !isLoggedIn ? "Logged Out" :
+                 callStatus === "on_call" ? "On Call" :
+                 callStatus === "ringing" ? "Ringing" : "Available"}
+              </Badge>
             </div>
-            <div ref={aircallRef} className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-900">
-              <div className="w-full max-w-[260px] space-y-5">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-[#00B388]/10 mx-auto flex items-center justify-center mb-3">
-                    <PhoneCall className="w-8 h-8 text-[#00B388]" />
-                  </div>
-                  {currentContact ? (
-                    <>
-                      <p className="font-bold text-lg">{currentContact.first_name} {currentContact.last_name}</p>
-                      <p className="text-sm text-muted-foreground font-mono">{currentContact.phone}</p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Waiting for contact</p>
-                  )}
+
+            {!aircallConfigured ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-6">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
+                  <Settings className="w-8 h-8 text-muted-foreground/40" />
                 </div>
-                <Button
-                  className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-12 text-base rounded-full shadow-lg"
-                  disabled={!currentContact}>
-                  <PhoneCall className="w-5 h-5 mr-2" />
-                  {currentContact ? "Call" : "No Contact"}
-                </Button>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Calls today</span><span className="font-medium">{callsCompleted}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Queue</span><span className="font-medium">{queuedCalls - currentCallIndex} remaining</span></div>
-                </div>
+                <p className="font-medium">Aircall not configured</p>
+                <p className="text-sm text-muted-foreground mt-1 mb-3">Set up your Aircall credentials to enable calling.</p>
+                <Link href="/settings"><Button variant="outline" size="sm" className="gap-1.5"><Settings className="w-3.5 h-3.5" /> Go to Settings</Button></Link>
               </div>
-            </div>
-            <div className="border-t px-3 py-1.5 bg-slate-50 dark:bg-slate-900">
+            ) : (
+              <div className="flex-1 flex flex-col">
+                <div id="aircall-phone-container" className="flex-1 min-h-[376px]" />
+                {aircallError && (
+                  <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 border-t">
+                    {aircallError}
+                  </div>
+                )}
+                {isLoggedIn && currentContact?.phone && callStatus === "idle" && (
+                  <div className="p-3 border-t">
+                    <Button
+                      className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-10"
+                      onClick={() => dial(currentContact.phone!)}
+                    >
+                      <PhoneCall className="w-4 h-4 mr-2" />
+                      Call {currentContact.first_name}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="border-t px-3 py-1.5">
               <a href="https://app.aircall.io" target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
                 Aircall Dashboard <ExternalLink className="w-2.5 h-2.5" />
