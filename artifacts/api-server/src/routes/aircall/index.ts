@@ -173,24 +173,26 @@ async function handleCallEnded(data: any) {
     call_attempts: sql`${contactsTable.call_attempts} + 1`,
   }).where(eq(contactsTable.id, contact.id));
 
-  // Store conversation record (idempotent: check for existing by external_id)
-  const [existing] = await db.select({ id: leadConversationsTable.id })
-    .from(leadConversationsTable)
-    .where(eq(leadConversationsTable.external_id, String(callId)))
-    .limit(1);
+  // Store conversation record only if contact has a linked lead
+  if (contact.lead_id) {
+    const [existing] = await db.select({ id: leadConversationsTable.id })
+      .from(leadConversationsTable)
+      .where(eq(leadConversationsTable.external_id, String(callId)))
+      .limit(1);
 
-  if (!existing) {
-    await db.insert(leadConversationsTable).values({
-      lead_id: contact.lead_id || contact.id,
-      source: "aircall",
-      external_id: String(callId),
-      direction: direction === "inbound" ? "inbound" : "outbound",
-      duration_seconds: duration,
-      agent_name: agent?.name || "Unknown",
-      tags: tags.map((t: any) => t.name || t),
-      call_outcome: null, // Set when tags arrive
-      conversation_date: new Date(),
-    });
+    if (!existing) {
+      await db.insert(leadConversationsTable).values({
+        lead_id: contact.lead_id,
+        source: "aircall",
+        external_id: String(callId),
+        direction: direction === "inbound" ? "inbound" : "outbound",
+        duration_seconds: duration,
+        agent_name: agent?.name || "Unknown",
+        tags: tags.map((t: any) => t.name || t),
+        call_outcome: null, // Set when tags arrive
+        conversation_date: new Date(),
+      });
+    }
   }
 
   // If tags already present on the call, process them
