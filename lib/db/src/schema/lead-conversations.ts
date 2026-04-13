@@ -21,6 +21,7 @@ export const leadConversationsTable = pgTable("lead_conversations", {
   intelligence_delta: jsonb("intelligence_delta").default({}), // what changed in intelligence profile
   call_outcome: text("call_outcome"), // interested, no-interest, no-answer, callback-requested, meeting-booked, not-now
   agent_name: text("agent_name"),
+  agent_notes: text("agent_notes"), // caller's own notes from Aircall after-call work
   tags: jsonb("tags").default([]),
   processed_at: timestamp("processed_at", { withTimezone: true }),
   conversation_date: timestamp("conversation_date", { withTimezone: true }).notNull().defaultNow(),

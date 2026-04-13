@@ -145,6 +145,9 @@ router.post("/aircall/webhook", async (req, res): Promise<void> => {
     } else if (event === "call.tagged") {
       await handleCallTagged(data);
       res.status(200).json({ status: "processed", event: "call.tagged" });
+    } else if (event === "call.commented") {
+      await handleCallCommented(data);
+      res.status(200).json({ status: "processed", event: "call.commented" });
     } else if (event === "transcription.created") {
       await handleTranscriptionCreated(data);
       res.status(200).json({ status: "processed", event: "transcription.created" });
@@ -172,6 +175,7 @@ async function handleCallEnded(data: any) {
   const rawDigits = data.raw_digits || data.number?.digits || "";
   const aircallUserId = data.user?.id;
   const tags = data.tags || [];
+  const agentNotes = data.comments || data.note || null;
 
   // Find the contact
   const contact = await findContactByPhone(rawDigits);
@@ -204,6 +208,7 @@ async function handleCallEnded(data: any) {
       direction: direction === "inbound" ? "inbound" : "outbound",
       duration_seconds: duration,
       agent_name: agent?.name || "Unknown",
+      agent_notes: agentNotes,
       tags: tags.map((t: any) => t.name || t),
       call_outcome: null, // Set when tags arrive
       conversation_date: new Date(),
@@ -271,6 +276,22 @@ async function handleCallTagged(data: any) {
   }
 }
 
+async function handleCallCommented(data: any) {
+  const callId = data.call_id || data.id;
+  const comment = data.comment || data.content || data.text || "";
+  if (!callId || !comment) return;
+
+  // Update agent_notes on the conversation record
+  const [updated] = await db.update(leadConversationsTable)
+    .set({ agent_notes: comment })
+    .where(eq(leadConversationsTable.external_id, String(callId)))
+    .returning({ id: leadConversationsTable.id });
+
+  if (updated) {
+    console.log(`[Aircall Webhook] call.commented — stored agent notes for call ${callId}`);
+  }
+}
+
 async function handleTranscriptionCreated(data: any) {
   const callId = data.call_id || data.id;
   if (!callId) {
@@ -312,22 +333,31 @@ async function handleTranscriptionCreated(data: any) {
     transcriptText = transcriptionData.text;
   }
 
-  if (!transcriptText) {
-    console.warn(`[Aircall Webhook] transcription.created — empty transcript for call ${callId}`);
+  // Extract Aircall AI summary if available
+  const aircallSummary = transcriptionData?.transcription?.summary ||
+                         transcriptionData?.summary ||
+                         transcriptionData?.data?.summary || null;
+
+  if (!transcriptText && !aircallSummary) {
+    console.warn(`[Aircall Webhook] transcription.created — empty transcript and summary for call ${callId}`);
     return;
   }
 
-  // Update the conversation record with the transcript
+  // Build the update payload
+  const conversationUpdate: Record<string, any> = {};
+  if (transcriptText) conversationUpdate.transcript_text = transcriptText;
+  if (aircallSummary) conversationUpdate.summary = aircallSummary;
+
+  // Update the conversation record with transcript and summary
   const [updated] = await db.update(leadConversationsTable)
-    .set({ transcript_text: transcriptText })
+    .set(conversationUpdate)
     .where(eq(leadConversationsTable.external_id, String(callId)))
     .returning({ id: leadConversationsTable.id });
 
   if (updated) {
-    console.log(`[Aircall Webhook] transcription.created — stored transcript for call ${callId}`);
+    console.log(`[Aircall Webhook] transcription.created — stored transcript${aircallSummary ? " + summary" : ""} for call ${callId}`);
   } else {
     // No conversation record yet — call.ended might not have arrived first
-    // Try to find the contact from the call data and create the record
     const callResponse = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
       headers: { Authorization: auth },
     });
@@ -342,10 +372,11 @@ async function handleTranscriptionCreated(data: any) {
           source: "aircall",
           external_id: String(callId),
           direction: "outbound",
-          transcript_text: transcriptText,
+          transcript_text: transcriptText || null,
+          summary: aircallSummary || null,
           conversation_date: new Date(),
         });
-        console.log(`[Aircall Webhook] transcription.created — created conversation with transcript for call ${callId}`);
+        console.log(`[Aircall Webhook] transcription.created — created conversation with transcript${aircallSummary ? " + summary" : ""} for call ${callId}`);
       }
     }
   }
