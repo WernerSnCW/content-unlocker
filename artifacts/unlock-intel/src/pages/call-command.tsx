@@ -426,78 +426,138 @@ export default function CallCommand() {
       {/* NEXT CALL + AIRCALL */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div>
-          <Card className="h-full">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2"><Phone className="w-5 h-5" /> Next Call</CardTitle>
-                {currentContact && (
-                  <Badge variant="outline" className="text-xs">
-                    {currentContact.priority === "callback" ? "Callback" :
-                     currentContact.priority === "follow-up" ? "Follow-up" :
-                     currentContact.priority === "retry" ? "Retry" : "Fresh"}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {currentContact ? (
-                <div className="space-y-4">
+          <Card className="h-full overflow-hidden">
+            {currentContact ? (
+              <>
+                {/* SECTION 1: Contact Header */}
+                <div className="p-5 pb-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <User className="w-7 h-7 text-primary" />
+                    <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center shrink-0 text-primary font-bold text-lg">
+                      {currentContact.first_name[0]}{currentContact.last_name[0]}
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold">{currentContact.first_name} {currentContact.last_name}</h3>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                        {currentContact.company && <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {currentContact.company}</span>}
-                        {currentContact.phone ? (
-                          <button className="flex items-center gap-1 text-primary hover:underline cursor-pointer"
-                            onClick={() => handleDial(currentContact.phone!)}
-                            title="Dial in Aircall">
-                            <PhoneCall className="w-3.5 h-3.5" /> {currentContact.phone}
-                          </button>
-                        ) : (
-                          <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> No phone</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold truncate">{currentContact.first_name} {currentContact.last_name}</h3>
+                        <Badge variant="outline" className="text-xs shrink-0">
+                          {currentContact.priority === "callback" ? "Callback" :
+                           currentContact.priority === "follow-up" ? "Follow-up" :
+                           currentContact.priority === "retry" ? "Retry" : "Fresh"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-sm text-muted-foreground">
+                        {currentContact.company && (
+                          <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {currentContact.company}</span>
                         )}
+                        <span className="flex items-center gap-1 font-mono text-xs">
+                          <Phone className="w-3.5 h-3.5" /> {currentContact.phone || "No phone"}
+                        </span>
                         {currentContact.email ? (
                           <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" /> {currentContact.email}</span>
                         ) : (
                           <span className="flex items-center gap-1 text-yellow-600"><MailWarning className="w-3.5 h-3.5" /> No email</span>
                         )}
                       </div>
+                      {currentContact.call_attempts > 0 && (
+                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className="text-xs font-normal">
+                            {currentContact.call_attempts} attempt{currentContact.call_attempts !== 1 ? "s" : ""}
+                          </Badge>
+                          {currentContact.last_call_outcome && (
+                            <Badge variant="secondary" className="text-xs font-normal">
+                              Last: {currentContact.last_call_outcome}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {currentContact.call_attempts > 0 && (
-                    <div className="text-sm text-muted-foreground">
-                      Previous attempts: {currentContact.call_attempts}
-                      {currentContact.last_call_outcome && <span> | Last: {currentContact.last_call_outcome}</span>}
+                </div>
+
+                {/* SECTION 2: Call Action Bar */}
+                <div className="px-5 pb-4">
+                  {callStatus === "on_call" ? (
+                    <div className="w-full h-12 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center gap-2 text-primary font-semibold">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
+                      </span>
+                      Call In Progress
                     </div>
+                  ) : callStatus === "ringing" ? (
+                    <div className="w-full h-12 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center gap-2 text-blue-500 font-semibold">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-500 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+                      </span>
+                      Incoming Call
+                    </div>
+                  ) : dialing ? (
+                    <div className="w-full h-12 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center gap-2 text-amber-500 font-semibold">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Dialling...
+                    </div>
+                  ) : !aircallConfigured ? (
+                    <Link href="/settings" className="block">
+                      <Button variant="outline" className="w-full h-12" disabled>
+                        <Settings className="w-4 h-4 mr-2" /> Configure Aircall to call
+                      </Button>
+                    </Link>
+                  ) : !isLoggedIn ? (
+                    <Button variant="outline" className="w-full h-12" disabled>
+                      <PhoneOff className="w-4 h-4 mr-2" /> Log into Aircall first
+                    </Button>
+                  ) : !currentContact.phone ? (
+                    <Button variant="outline" className="w-full h-12" disabled>
+                      <PhoneOff className="w-4 h-4 mr-2" /> No Phone Number
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground text-base font-semibold shadow-lg shadow-primary/20"
+                      onClick={() => handleDial(currentContact.phone!)}
+                    >
+                      <PhoneCall className="w-5 h-5 mr-2" />
+                      Load Call
+                    </Button>
                   )}
-                  <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">Call Prep</p>
-                    <p>Belief map and conversation history will appear here once intelligence is available for this contact.</p>
+                  {aircallError && (
+                    <p className="text-xs text-destructive mt-1.5">{aircallError}</p>
+                  )}
+                </div>
+
+                {/* SECTION 3: Call Prep */}
+                <div className="px-5 pb-4">
+                  <div className="rounded-lg border border-border/50 bg-muted/30 p-4 text-sm">
+                    <p className="font-medium text-foreground mb-1 flex items-center gap-1.5">
+                      <Headphones className="w-4 h-4" /> Call Prep
+                    </p>
+                    <p className="text-muted-foreground">Belief map and conversation history will appear here once intelligence is available for this contact.</p>
                   </div>
+                </div>
+
+                {/* SECTION 4: Navigation */}
+                <div className="px-5 pb-4 flex items-center justify-between">
                   <div className="flex gap-2">
-                    <Button variant="outline" disabled={currentCallIndex <= 0}
+                    <Button variant="outline" size="sm" disabled={currentCallIndex <= 0}
                       onClick={() => { setCurrentCallIndex(i => Math.max(0, i - 1)); setDialing(false); }}>Previous</Button>
-                    <Button disabled={currentCallIndex >= queuedCalls - 1}
+                    <Button size="sm" disabled={currentCallIndex >= queuedCalls - 1}
                       onClick={() => { setCurrentCallIndex(i => i + 1); setDialing(false); }}>
                       Next Contact <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </div>
+                  <span className="text-xs text-muted-foreground">{currentCallIndex + 1} of {queuedCalls}</span>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
-                    <Phone className="w-8 h-8 text-muted-foreground/40" />
-                  </div>
-                  <p className="font-medium">No contact loaded</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {queuedCalls > 0 ? "Navigate through your call list." : "Build your call list to load contacts."}
-                  </p>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
+                  <Phone className="w-8 h-8 text-muted-foreground/40" />
                 </div>
-              )}
-            </CardContent>
+                <p className="font-medium">No contact loaded</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {queuedCalls > 0 ? "Navigate through your call list." : "Create a call list to get started."}
+                </p>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -529,22 +589,6 @@ export default function CallCommand() {
             ) : (
               <div className="flex-1 flex flex-col">
                 <div id="aircall-phone-container" className="flex-1 min-h-[560px]" />
-                {aircallError && (
-                  <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 border-t">
-                    {aircallError}
-                  </div>
-                )}
-                {isLoggedIn && currentContact?.phone && !dialing && callStatus === "idle" && (
-                  <div className="p-3 border-t">
-                    <Button
-                      className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-12 text-base rounded-full shadow-lg"
-                      onClick={() => handleDial(currentContact.phone!)}
-                    >
-                      <PhoneCall className="w-5 h-5 mr-2" />
-                      Call {currentContact.first_name}
-                    </Button>
-                  </div>
-                )}
               </div>
             )}
 
