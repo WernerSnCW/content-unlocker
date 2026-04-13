@@ -3,10 +3,12 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { randomUUID } from "crypto";
 import { leadsTable } from "./leads";
+import { contactsTable } from "./contacts";
 
 export const leadConversationsTable = pgTable("lead_conversations", {
   id: text("id").primaryKey().$defaultFn(() => randomUUID()),
-  lead_id: text("lead_id").notNull().references(() => leadsTable.id),
+  lead_id: text("lead_id").references(() => leadsTable.id), // nullable — set when lead exists
+  contact_id: text("contact_id").references(() => contactsTable.id), // nullable — set for contact-level calls
   source: text("source").notNull(), // aircall, fireflies, manual
   external_id: text("external_id"), // Aircall call ID, Fireflies meeting ID, etc.
   direction: text("direction"), // inbound, outbound
