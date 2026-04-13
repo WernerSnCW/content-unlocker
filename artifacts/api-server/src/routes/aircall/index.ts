@@ -52,6 +52,24 @@ function normalisePhone(phone: string): string {
   return phone.replace(/[\s\-\(\)]/g, "");
 }
 
+// Helper: extract external phone number from Aircall call data (tries many payload shapes)
+function extractPhone(data: any): string {
+  if (data?.raw_digits) return data.raw_digits;
+  if (data?.number?.digits) return data.number.digits;
+  // Tag/comment events sometimes nest the call object
+  if (data?.call?.raw_digits) return data.call.raw_digits;
+  if (data?.call?.number?.digits) return data.call.number.digits;
+  // Participants array — pick the external one
+  const participants = data?.participants || data?.call?.participants;
+  if (Array.isArray(participants)) {
+    const ext = participants.find((p: any) => p.participant_type === "external");
+    if (ext?.phone_number) return ext.phone_number;
+  }
+  // Contact object on the call
+  if (data?.contact?.phone_number) return data.contact.phone_number;
+  return "";
+}
+
 // Helper: find contact by phone number from call data
 async function findContactByPhone(phoneNumber: string) {
   if (!phoneNumber) return null;
@@ -219,7 +237,7 @@ async function handleCallEnded(data: any): Promise<string | null> {
   const callId = data.id || data.call_id;
   const duration = data.duration || 0;
   const direction = data.direction || "outbound";
-  const rawDigits = data.raw_digits || data.number?.digits || "";
+  const rawDigits = extractPhone(data);
   const aircallUserId = data.user?.id;
   const tags = data.tags || [];
   const agentNotes = data.comments || data.note || null;
@@ -285,17 +303,16 @@ async function handleCallEnded(data: any): Promise<string | null> {
 async function handleCallTagged(data: any): Promise<string | null> {
   const callId = data.call_id || data.id;
   const tag = data.tag;
-  const rawDigits = data.raw_digits || data.number?.digits || "";
 
-  if (!tag) return;
+  if (!tag) return null;
 
   const tagName = typeof tag === "string" ? tag : tag.name;
-  if (!tagName) return;
+  if (!tagName) return null;
 
-  // Try to find contact via phone number from the call data
-  let contact = await findContactByPhone(rawDigits);
+  // 1. Try phone number from the webhook payload
+  let contact = await findContactByPhone(extractPhone(data));
 
-  // If no phone in the tag event, try finding via the conversation record
+  // 2. Try finding via existing conversation record
   if (!contact && callId) {
     const [conv] = await db.select().from(leadConversationsTable)
       .where(eq(leadConversationsTable.external_id, String(callId)))
@@ -305,6 +322,24 @@ async function handleCallTagged(data: any): Promise<string | null> {
         .where(eq(contactsTable.id, conv.contact_id))
         .limit(1);
       contact = c || null;
+    }
+  }
+
+  // 3. Fallback: fetch call details from Aircall API for the phone number
+  if (!contact && callId) {
+    const auth = await getAircallAuth();
+    if (auth) {
+      try {
+        const resp = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
+          headers: { Authorization: auth },
+        });
+        if (resp.ok) {
+          const callData = await resp.json() as any;
+          contact = await findContactByPhone(extractPhone(callData?.call || callData));
+        }
+      } catch (err: any) {
+        console.warn(`[Aircall Webhook] call.tagged — API fallback failed: ${err.message}`);
+      }
     }
   }
 
@@ -412,7 +447,7 @@ async function handleTranscriptionCreated(data: any) {
     });
     if (callResponse.ok) {
       const callData = await callResponse.json() as any;
-      const rawDigits = callData?.call?.raw_digits || callData?.raw_digits || "";
+      const rawDigits = extractPhone(callData?.call || callData);
       const contact = await findContactByPhone(rawDigits);
       if (contact) {
         await db.insert(leadConversationsTable).values({
