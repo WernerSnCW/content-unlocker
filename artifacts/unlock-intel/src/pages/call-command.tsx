@@ -39,7 +39,8 @@ export default function CallCommand() {
   const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
   const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentCallIndex, setCurrentCallIndex] = useState(0);
+  const [currentCallIndex, setCurrentCallIndex] = useState(0); // queue position — only advances on call end
+  const [viewingIndex, setViewingIndex] = useState<number | null>(null); // temporary preview — null = show currentCallIndex
   const [staleCount, setStaleCount] = useState(0);
   const [clearing, setClearing] = useState(false);
   const [aircallConfigured, setAircallConfigured] = useState(false);
@@ -47,6 +48,7 @@ export default function CallCommand() {
 
   const handleCallEnded = useCallback(() => {
     setDialing(false);
+    setViewingIndex(null);
     setCurrentCallIndex(i => i + 1);
     loadAll();
 
@@ -195,12 +197,14 @@ export default function CallCommand() {
       setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
       setCarryOver(false);
       setCurrentCallIndex(0);
+      setViewingIndex(null);
       await loadAll();
     } catch {} finally { setCreating(false); }
   };
 
   const queuedCalls = callList.length;
-  const currentContact = callList[currentCallIndex] || null;
+  const activeIndex = viewingIndex ?? currentCallIndex;
+  const currentContact = callList[activeIndex] || null;
   const callsCompleted = currentCallIndex;
   const upNext = callList.slice(currentCallIndex + 1, currentCallIndex + 6);
 
@@ -538,14 +542,25 @@ export default function CallCommand() {
                 {/* SECTION 4: Navigation */}
                 <div className="px-5 pb-4 flex items-center justify-between">
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={currentCallIndex <= 0}
-                      onClick={() => { setCurrentCallIndex(i => Math.max(0, i - 1)); setDialing(false); }}>Previous</Button>
-                    <Button size="sm" disabled={currentCallIndex >= queuedCalls - 1}
-                      onClick={() => { setCurrentCallIndex(i => i + 1); setDialing(false); }}>
+                    {viewingIndex !== null && viewingIndex !== currentCallIndex ? (
+                      <Button variant="outline" size="sm" onClick={() => { setViewingIndex(null); setDialing(false); }}>
+                        ← Back to Queue
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled={activeIndex <= 0}
+                        onClick={() => { setViewingIndex(activeIndex - 1); setDialing(false); }}>Previous</Button>
+                    )}
+                    <Button size="sm" disabled={activeIndex >= queuedCalls - 1}
+                      onClick={() => { setViewingIndex(activeIndex + 1); setDialing(false); }}>
                       Next Contact <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </div>
-                  <span className="text-xs text-muted-foreground">{currentCallIndex + 1} of {queuedCalls}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {viewingIndex !== null && viewingIndex !== currentCallIndex
+                      ? <span className="text-amber-500">Previewing {activeIndex + 1} of {queuedCalls}</span>
+                      : <span>{activeIndex + 1} of {queuedCalls}</span>
+                    }
+                  </span>
                 </div>
               </>
             ) : (
@@ -625,7 +640,7 @@ export default function CallCommand() {
                 <TableBody>
                   {upNext.map((c, i) => (
                     <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setCurrentCallIndex(currentCallIndex + 1 + i)}>
+                      onClick={() => setViewingIndex(currentCallIndex + 1 + i)}>
                       <TableCell className="text-muted-foreground text-xs">{currentCallIndex + 2 + i}</TableCell>
                       <TableCell className="font-medium text-sm">{c.first_name} {c.last_name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
