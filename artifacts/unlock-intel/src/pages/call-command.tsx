@@ -68,22 +68,18 @@ export default function CallCommand() {
     onCallEnded: handleCallEnded,
   });
 
-  // Reset dialing flag when Aircall goes back to idle (e.g. dialpad closed before connecting)
-  const dialingRef = useRef(false);
+  // Auto-reset dialing if Aircall never transitions to on_call/ringing
+  const dialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (dialing) {
-      // Ignore the first idle→idle transition right after clicking dial
-      dialingRef.current = true;
-      return;
+    if (dialing && callStatus === "idle") {
+      dialTimeoutRef.current = setTimeout(() => setDialing(false), 15000);
+    } else if (callStatus !== "idle") {
+      // Call connected — clear the timeout
+      if (dialTimeoutRef.current) clearTimeout(dialTimeoutRef.current);
+      dialTimeoutRef.current = null;
     }
-    dialingRef.current = false;
-  }, [dialing]);
-
-  useEffect(() => {
-    if (callStatus === "idle" && dialingRef.current) {
-      setDialing(false);
-    }
-  }, [callStatus]);
+    return () => { if (dialTimeoutRef.current) clearTimeout(dialTimeoutRef.current); };
+  }, [dialing, callStatus]);
 
   const handleDial = (phone: string) => {
     dial(phone);
@@ -514,9 +510,12 @@ export default function CallCommand() {
                       Incoming Call
                     </div>
                   ) : dialing ? (
-                    <div className="w-full h-12 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center gap-2 text-amber-500 font-semibold">
+                    <div
+                      onClick={() => setDialing(false)}
+                      className="w-full h-12 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center gap-2 text-amber-500 font-semibold cursor-pointer hover:bg-amber-500/25 transition-colors"
+                    >
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Dialling...
+                      Dialling… <span className="text-xs opacity-60 ml-1">(click to cancel)</span>
                     </div>
                   ) : !aircallConfigured ? (
                     <Link href="/settings" className="block">
