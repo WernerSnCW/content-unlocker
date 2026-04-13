@@ -410,8 +410,8 @@ export default function CallCommand() {
       )}
 
       {/* NEXT CALL + AIRCALL */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <div className="lg:col-span-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div>
           <Card className="h-full">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -480,7 +480,7 @@ export default function CallCommand() {
         </div>
 
         {/* AIRCALL WIDGET */}
-        <div className="lg:col-span-2">
+        <div>
           <Card className="overflow-hidden h-full flex flex-col">
             <div className="bg-[#00B388] px-4 py-2.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
