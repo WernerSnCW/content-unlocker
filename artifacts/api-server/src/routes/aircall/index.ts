@@ -111,6 +111,46 @@ async function applyTagOutcome(contactId: string, tagName: string, tagMapping: T
   return mapping.outcome;
 }
 
+// ==================== Webhook Log (in-memory, for debugging) ====================
+
+interface WebhookLogEntry {
+  timestamp: string;
+  event: string;
+  status: string;
+  contact_match: string | null;
+  data_summary: Record<string, any>;
+  raw_body: any;
+}
+
+const webhookLog: WebhookLogEntry[] = [];
+const MAX_LOG_ENTRIES = 100;
+
+function logWebhook(event: string, status: string, contactMatch: string | null, data: any) {
+  webhookLog.unshift({
+    timestamp: new Date().toISOString(),
+    event,
+    status,
+    contact_match: contactMatch,
+    data_summary: {
+      call_id: data?.id || data?.call_id,
+      raw_digits: data?.raw_digits || data?.number?.digits,
+      direction: data?.direction,
+      duration: data?.duration,
+      tags: data?.tags?.map((t: any) => t.name || t),
+      user: data?.user?.name || data?.user?.id,
+      comment: data?.comments || data?.note,
+      tag: typeof data?.tag === "string" ? data.tag : data?.tag?.name,
+    },
+    raw_body: data,
+  });
+  if (webhookLog.length > MAX_LOG_ENTRIES) webhookLog.pop();
+}
+
+// GET /aircall/webhook-log — view recent webhook events
+router.get("/aircall/webhook-log", async (_req, res): Promise<void> => {
+  res.json({ entries: webhookLog, count: webhookLog.length });
+});
+
 // ==================== Webhook Endpoint ====================
 
 router.post("/aircall/webhook", async (req, res): Promise<void> => {
@@ -119,6 +159,7 @@ router.post("/aircall/webhook", async (req, res): Promise<void> => {
   const data = req.body?.data;
 
   if (!event || !data) {
+    logWebhook(event || "unknown", "ignored", null, req.body);
     res.status(200).json({ status: "ignored", reason: "no event or data" });
     return;
   }
@@ -140,22 +181,28 @@ router.post("/aircall/webhook", async (req, res): Promise<void> => {
 
   try {
     if (event === "call.ended") {
-      await handleCallEnded(data);
+      const result = await handleCallEnded(data);
+      logWebhook(event, "processed", result || null, data);
       res.status(200).json({ status: "processed", event: "call.ended" });
     } else if (event === "call.tagged") {
-      await handleCallTagged(data);
+      const result = await handleCallTagged(data);
+      logWebhook(event, "processed", result || null, data);
       res.status(200).json({ status: "processed", event: "call.tagged" });
     } else if (event === "call.commented") {
       await handleCallCommented(data);
+      logWebhook(event, "processed", null, data);
       res.status(200).json({ status: "processed", event: "call.commented" });
     } else if (event === "transcription.created") {
       await handleTranscriptionCreated(data);
+      logWebhook(event, "processed", null, data);
       res.status(200).json({ status: "processed", event: "transcription.created" });
     } else {
+      logWebhook(event, "ignored", null, data);
       res.status(200).json({ status: "ignored", event });
     }
   } catch (err: any) {
     console.error(`[Aircall Webhook] Error processing ${event}:`, err.message);
+    logWebhook(event, `error: ${err.message}`, null, data);
     // Still return 200 to prevent Aircall retries on our errors
     res.status(200).json({ status: "error", message: err.message });
   }
@@ -168,7 +215,7 @@ router.get("/aircall/webhook", async (_req, res): Promise<void> => {
 
 // ==================== Event Handlers ====================
 
-async function handleCallEnded(data: any) {
+async function handleCallEnded(data: any): Promise<string | null> {
   const callId = data.id || data.call_id;
   const duration = data.duration || 0;
   const direction = data.direction || "outbound";
@@ -181,7 +228,7 @@ async function handleCallEnded(data: any) {
   const contact = await findContactByPhone(rawDigits);
   if (!contact) {
     console.warn(`[Aircall Webhook] call.ended — no contact found for ${rawDigits}`);
-    return;
+    return `no match: ${rawDigits}`;
   }
 
   // Find the agent
@@ -232,9 +279,10 @@ async function handleCallEnded(data: any) {
       }
     }
   }
+  return `${contact.first_name} ${contact.last_name} (${contact.id})`;
 }
 
-async function handleCallTagged(data: any) {
+async function handleCallTagged(data: any): Promise<string | null> {
   const callId = data.call_id || data.id;
   const tag = data.tag;
   const rawDigits = data.raw_digits || data.number?.digits || "";
@@ -262,7 +310,7 @@ async function handleCallTagged(data: any) {
 
   if (!contact) {
     console.warn(`[Aircall Webhook] call.tagged — no contact found for call ${callId}`);
-    return;
+    return `no match: call ${callId}`;
   }
 
   const tagMapping = await getTagMapping();
@@ -274,6 +322,7 @@ async function handleCallTagged(data: any) {
       .set({ call_outcome: outcome, tags: sql`COALESCE(${leadConversationsTable.tags}, '[]'::jsonb) || ${JSON.stringify([tagName])}::jsonb` })
       .where(eq(leadConversationsTable.external_id, String(callId)));
   }
+  return `${contact.first_name} ${contact.last_name} → ${outcome || tagName}`;
 }
 
 async function handleCallCommented(data: any) {
