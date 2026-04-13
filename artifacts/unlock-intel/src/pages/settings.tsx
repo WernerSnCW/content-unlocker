@@ -54,6 +54,23 @@ export default function Settings() {
   const [newAgentAircallId, setNewAgentAircallId] = useState<string>("");
   const [addingAgent, setAddingAgent] = useState(false);
 
+  // Tag mapping
+  interface TagMapping { aircall_tag: string; outcome: string; side_effect: string | null; }
+  const OUTCOMES = ["interested", "no-interest", "no-answer", "callback-requested", "meeting-booked", "not-now"];
+  const SIDE_EFFECTS = [
+    { value: "", label: "None" },
+    { value: "cool_off", label: "Cool-off (28 days)" },
+    { value: "callback", label: "Schedule callback (+1 day)" },
+  ];
+  const [tagMappings, setTagMappings] = useState<TagMapping[]>([
+    { aircall_tag: "interested", outcome: "interested", side_effect: null },
+    { aircall_tag: "no-interest", outcome: "no-interest", side_effect: null },
+    { aircall_tag: "no-answer", outcome: "no-answer", side_effect: "cool_off" },
+    { aircall_tag: "callback", outcome: "callback-requested", side_effect: "callback" },
+    { aircall_tag: "meeting-booked", outcome: "meeting-booked", side_effect: null },
+    { aircall_tag: "not-now", outcome: "not-now", side_effect: null },
+  ]);
+
   // Webhook URL
   const webhookUrl = `${window.location.origin}/api/aircall/webhook`;
 
@@ -76,6 +93,9 @@ export default function Settings() {
         setTranscriptionMode(cfg.transcription_mode || "ai_assist");
         setTranscriptionApiKey(cfg.transcription_api_key || "");
         setAircallEnabled(data.integration.enabled);
+        if (cfg.tag_mapping && Array.isArray(cfg.tag_mapping) && cfg.tag_mapping.length > 0) {
+          setTagMappings(cfg.tag_mapping);
+        }
       }
     } catch { /* ignore */ }
     finally { setAircallLoading(false); }
@@ -105,6 +125,7 @@ export default function Settings() {
             webhook_url: webhookUrl,
             transcription_mode: transcriptionMode,
             ...(transcriptionMode === "external" ? { transcription_api_key: transcriptionApiKey } : {}),
+            tag_mapping: tagMappings,
           },
           enabled: aircallEnabled,
         }),
@@ -294,6 +315,87 @@ export default function Settings() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Tag Mapping */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Tag Mapping</CardTitle>
+              <CardDescription>Map Aircall call tags to contact outcomes. These are used when webhook events arrive.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Aircall Tag</TableHead>
+                    <TableHead>Maps to Outcome</TableHead>
+                    <TableHead>Side Effect</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tagMappings.map((mapping, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Input
+                          value={mapping.aircall_tag}
+                          onChange={e => {
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], aircall_tag: e.target.value };
+                            setTagMappings(updated);
+                          }}
+                          placeholder="e.g. interested"
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={mapping.outcome}
+                          onValueChange={val => {
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], outcome: val };
+                            setTagMappings(updated);
+                          }}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={mapping.side_effect || ""}
+                          onValueChange={val => {
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], side_effect: val || null };
+                            setTagMappings(updated);
+                          }}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {SIDE_EFFECTS.map(s => <SelectItem key={s.value || "__none__"} value={s.value || "__none__"}>{s.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setTagMappings(prev => prev.filter((_, idx) => idx !== i))}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="flex items-center gap-2 mt-3">
+                <Button variant="outline" size="sm" onClick={() => setTagMappings(prev => [...prev, { aircall_tag: "", outcome: "no-answer", side_effect: null }])}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Mapping
+                </Button>
+                <Button size="sm" onClick={saveAircallConfig} disabled={aircallSaving}>
+                  {aircallSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Save Mappings
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

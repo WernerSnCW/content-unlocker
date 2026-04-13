@@ -26,6 +26,7 @@ import documentHealthRouter from "./document-health";
 import settingsRouter from "./settings";
 import contactsRouter from "./contacts";
 import campaignsDispatchRouter from "./campaigns-dispatch";
+import aircallRouter from "./aircall";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(documentHealthRouter);
 router.use(settingsRouter);
 router.use(contactsRouter);
 router.use(campaignsDispatchRouter);
+router.use(aircallRouter);
 
 export default router;
