@@ -43,10 +43,10 @@ export default function CallCommand() {
   const [staleCount, setStaleCount] = useState(0);
   const [clearing, setClearing] = useState(false);
   const [aircallConfigured, setAircallConfigured] = useState(false);
+  const [dialing, setDialing] = useState(false);
 
   const handleCallEnded = useCallback(() => {
-    // Call ended — agent will log outcome then click Next Contact
-    // Refresh outcomes to update Today's Results cards
+    setDialing(false);
     loadAll();
   }, []);
 
@@ -55,6 +55,11 @@ export default function CallCommand() {
     enabled: aircallConfigured,
     onCallEnded: handleCallEnded,
   });
+
+  const handleDial = (phone: string) => {
+    dial(phone);
+    setDialing(true);
+  };
   // Agent picker (persisted in localStorage)
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string>(() => localStorage.getItem("activeAgentId") || "");
@@ -438,7 +443,7 @@ export default function CallCommand() {
                         {currentContact.company && <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {currentContact.company}</span>}
                         {currentContact.phone ? (
                           <button className="flex items-center gap-1 text-primary hover:underline cursor-pointer"
-                            onClick={() => dial(currentContact.phone!)}
+                            onClick={() => handleDial(currentContact.phone!)}
                             title="Dial in Aircall">
                             <PhoneCall className="w-3.5 h-3.5" /> {currentContact.phone}
                           </button>
@@ -465,9 +470,9 @@ export default function CallCommand() {
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" disabled={currentCallIndex <= 0}
-                      onClick={() => setCurrentCallIndex(i => Math.max(0, i - 1))}>Previous</Button>
+                      onClick={() => { setCurrentCallIndex(i => Math.max(0, i - 1)); setDialing(false); }}>Previous</Button>
                     <Button disabled={currentCallIndex >= queuedCalls - 1}
-                      onClick={() => setCurrentCallIndex(i => i + 1)}>
+                      onClick={() => { setCurrentCallIndex(i => i + 1); setDialing(false); }}>
                       Next Contact <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </div>
@@ -518,6 +523,17 @@ export default function CallCommand() {
                 {aircallError && (
                   <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 border-t">
                     {aircallError}
+                  </div>
+                )}
+                {isLoggedIn && currentContact?.phone && !dialing && callStatus === "idle" && (
+                  <div className="p-3 border-t">
+                    <Button
+                      className="w-full bg-[#00B388] hover:bg-[#009B76] text-white h-12 text-base rounded-full shadow-lg"
+                      onClick={() => handleDial(currentContact.phone!)}
+                    >
+                      <PhoneCall className="w-5 h-5 mr-2" />
+                      Call {currentContact.first_name}
+                    </Button>
                   </div>
                 )}
               </div>
