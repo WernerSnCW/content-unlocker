@@ -49,6 +49,14 @@ export default function CallCommand() {
     setDialing(false);
     setCurrentCallIndex(i => i + 1);
     loadAll();
+
+    // Refresh burst: poll every 5s for 30s to catch webhook data
+    let refreshCount = 0;
+    const interval = setInterval(() => {
+      refreshCount++;
+      loadAll();
+      if (refreshCount >= 6) clearInterval(interval);
+    }, 5000);
   }, []);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
