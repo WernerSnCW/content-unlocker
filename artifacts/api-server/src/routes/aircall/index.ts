@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
 import { eq, or, sql, and, isNull } from "drizzle-orm";
+import { loadInvestor, processTranscript, saveEngineRun } from "../../engine/v2";
+import type { CallType } from "../../engine/v2";
 
 const router: IRouter = Router();
 
@@ -379,6 +381,44 @@ async function handleCallCommented(data: any) {
   }
 }
 
+// Infer the spec's call type from call duration. Defaults to cold_call.
+function inferCallType(durationSeconds: number | null | undefined): CallType {
+  const mins = Math.round((durationSeconds || 0) / 60);
+  if (mins >= 40) return "demo";
+  if (mins >= 20) return "opportunity";
+  return "cold_call";
+}
+
+// Run the V2 engine against a stored transcript and persist the output.
+// Returns a short status string for the webhook log.
+async function runEngineForConversation(
+  contactId: string,
+  conversationId: string,
+  transcript: string,
+): Promise<string> {
+  try {
+    const [conv] = await db.select().from(leadConversationsTable)
+      .where(eq(leadConversationsTable.id, conversationId))
+      .limit(1);
+    if (!conv) return `engine: conversation ${conversationId} not found`;
+
+    const callType = inferCallType(conv.duration_seconds);
+    const investor = await loadInvestor(contactId);
+    const output = processTranscript(transcript, callType, investor);
+    const runId = await saveEngineRun({ contactId, conversationId, callType, output });
+
+    // Tag the conversation with the engine version that processed it
+    await db.update(leadConversationsTable)
+      .set({ engine_version: output.engineVersion })
+      .where(eq(leadConversationsTable.id, conversationId));
+
+    return `engine ${output.engineVersion} run ${runId}: ${output.signalUpdates.length} signal updates, persona=${output.personaAssessment.persona}, next=${output.nextBestAction.actionType}`;
+  } catch (err: any) {
+    console.error("[Aircall Webhook] engine run failed:", err);
+    return `engine run failed: ${err.message}`;
+  }
+}
+
 async function handleTranscriptionCreated(data: any): Promise<string> {
   const callId = data.call_id || data.id;
   if (!callId) return "no call_id in payload";
@@ -472,9 +512,15 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
   const [updated] = await db.update(leadConversationsTable)
     .set(conversationUpdate)
     .where(eq(leadConversationsTable.external_id, String(callId)))
-    .returning({ id: leadConversationsTable.id });
+    .returning({ id: leadConversationsTable.id, contact_id: leadConversationsTable.contact_id });
 
-  if (updated) return `${summary} (updated existing)`;
+  if (updated) {
+    let engineStatus = "";
+    if (updated.contact_id && transcriptText) {
+      engineStatus = " | " + await runEngineForConversation(updated.contact_id, updated.id, transcriptText);
+    }
+    return `${summary} (updated existing)${engineStatus}`;
+  }
 
   // No conversation record yet — call.ended might not have arrived first.
   // Fetch call data so we can verify the call was made by one of our agents
@@ -495,7 +541,7 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
   const rawDigits = extractPhone(call);
   const contact = await findContactByPhone(rawDigits);
   if (!contact) return `no existing conversation AND no contact for phone ${rawDigits}`;
-  await db.insert(leadConversationsTable).values({
+  const [inserted] = await db.insert(leadConversationsTable).values({
     contact_id: contact.id,
     lead_id: contact.lead_id || null,
     source: "aircall",
@@ -505,8 +551,13 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
     transcript_text: transcriptText || null,
     summary: aircallSummary || null,
     conversation_date: new Date(),
-  });
-  return `${summary} (new conversation, contact ${contact.first_name} ${contact.last_name})`;
+  }).returning({ id: leadConversationsTable.id });
+
+  let engineStatus = "";
+  if (inserted && transcriptText) {
+    engineStatus = " | " + await runEngineForConversation(contact.id, inserted.id, transcriptText);
+  }
+  return `${summary} (new conversation, contact ${contact.first_name} ${contact.last_name})${engineStatus}`;
 }
 
 async function handleSummaryCreated(data: any): Promise<string> {
