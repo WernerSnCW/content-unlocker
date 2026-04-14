@@ -664,7 +664,7 @@ export default function Settings() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Input value={newAgentAircallId} onChange={e => setNewAgentAircallId(e.target.value)} placeholder="Aircall user ID (fetch users first)" />
+                    <Input value={newAgentAircallId} onChange={e => setNewAgentAircallId(e.target.value)} placeholder="Numeric Aircall user ID (e.g. 1543884)" />
                   )}
                 </div>
               </div>
