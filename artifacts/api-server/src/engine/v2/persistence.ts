@@ -180,7 +180,49 @@ export async function saveEngineRun(args: SaveEngineRunArgs): Promise<string> {
     await db.insert(engineInvestorStateTable).values(stateUpdate);
   }
 
+  // 4. Translate NBA timing → contact.callback_date (universal due-date mechanism).
+  // See ADR 001 for the full mapping. Only sets the date; does not overwrite
+  // a manually-set date that is further in the future.
+  const timing = output.nextBestAction?.timing;
+  const nextDate = resolveTimingToDate(timing);
+  if (nextDate) {
+    await db.update(contactsTable)
+      .set({ callback_date: nextDate })
+      .where(eq(contactsTable.id, contactId));
+  }
+
   return runId;
+}
+
+// Convert an NBA.timing string to an absolute callback_date, or null for
+// "immediate" / unrecognised values (which should leave callback_date alone
+// so the contact is eligible right away).
+function resolveTimingToDate(timing: string | undefined | null): Date | null {
+  if (!timing) return null;
+  const now = new Date();
+  switch (timing) {
+    case "immediate":
+      return null;
+    case "24_48_hours":
+      return addDays(now, 2);
+    case "scheduled":
+      // Operator will set the date explicitly via a separate flow.
+      return null;
+    default: {
+      // ISO date string or N_days pattern
+      const isoDate = Date.parse(timing);
+      if (!Number.isNaN(isoDate)) return new Date(isoDate);
+      const m = timing.match(/^(\d+)_days?$/);
+      if (m) return addDays(now, parseInt(m[1], 10));
+      return null;
+    }
+  }
+}
+
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
 }
 
 // ============ Convenience ============

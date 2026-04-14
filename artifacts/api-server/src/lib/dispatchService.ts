@@ -1,5 +1,6 @@
-import { db, contactsTable, callListConfigsTable, callListMembershipsTable } from "@workspace/db";
+import { db, contactsTable, callListConfigsTable, callListMembershipsTable, integrationConfigsTable } from "@workspace/db";
 import { eq, and, or, sql, isNull, lte, ne, inArray, notInArray } from "drizzle-orm";
+import { DEFAULT_MAX_CALL_ATTEMPTS } from "./tagModel";
 
 export interface QueueStatus {
   campaign_id: string;
@@ -22,7 +23,18 @@ export interface DispatchResult {
   errors: number;
 }
 
-const MAX_CALL_ATTEMPTS = 3;
+// Reads the max_call_attempts setting from the Aircall integration config.
+// Falls back to DEFAULT_MAX_CALL_ATTEMPTS if not set.
+async function getMaxCallAttempts(): Promise<number> {
+  try {
+    const [config] = await db.select().from(integrationConfigsTable)
+      .where(eq(integrationConfigsTable.provider, "aircall"));
+    const cfg = config?.config as Record<string, any>;
+    const v = Number(cfg?.max_call_attempts);
+    if (Number.isFinite(v) && v >= 1 && v <= 20) return v;
+  } catch { /* use default */ }
+  return DEFAULT_MAX_CALL_ATTEMPTS;
+}
 
 /**
  * Build the base eligibility conditions for a call list based on its filter criteria.
@@ -73,6 +85,14 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
   )`;
 
   const baseEligibility = buildEligibilityConditions(campaign, now);
+  const maxAttempts = await getMaxCallAttempts();
+
+  // Universal "not due yet" filter used by interested/retry buckets:
+  // eligible if callback_date IS NULL or callback_date <= now.
+  const dueFilter = or(
+    isNull(contactsTable.callback_date),
+    lte(contactsTable.callback_date, now),
+  );
 
   // 1. Callbacks due today (eligible, outcome=callback-requested, callback_date <= now)
   const [cbRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
@@ -83,20 +103,25 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
       ...baseEligibility,
     ));
 
-  // 2. Interested follow-ups
+  // 2. Interested follow-ups — respect scheduled callback_date
   const [intRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
     .where(and(
       unassignedSubq,
       eq(contactsTable.last_call_outcome, "interested"),
+      dueFilter,
       ...baseEligibility,
     ));
 
-  // 3. No-answer retries (under max attempts)
+  // 3. No-answer / hung-up retries (under max attempts, due)
   const [retryRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
     .where(and(
       unassignedSubq,
-      eq(contactsTable.last_call_outcome, "no-answer"),
-      sql`${contactsTable.call_attempts} < ${MAX_CALL_ATTEMPTS}`,
+      or(
+        eq(contactsTable.last_call_outcome, "no-answer"),
+        eq(contactsTable.last_call_outcome, "hung-up"),
+      ),
+      sql`${contactsTable.call_attempts} < ${maxAttempts}`,
+      dueFilter,
       ...baseEligibility,
     ));
 
@@ -190,6 +215,11 @@ export async function fillQueue(
     WHERE ${callListMembershipsTable.removed_at} IS NULL
   )`;
   const baseEligibility = buildEligibilityConditions(campaign, now);
+  const maxAttempts = await getMaxCallAttempts();
+  const dueFilter = or(
+    isNull(contactsTable.callback_date),
+    lte(contactsTable.callback_date, now),
+  );
 
   // 1. Callbacks
   const callbacks = await db.select().from(contactsTable)
@@ -211,12 +241,13 @@ export async function fillQueue(
     }
   }
 
-  // 2. Interested
+  // 2. Interested (respect scheduled callback_date)
   if (result.dispatched < toFill) {
     const interested = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
         eq(contactsTable.last_call_outcome, "interested"),
+        dueFilter,
         ...baseEligibility,
       ))
       .limit(toFill - result.dispatched);
@@ -232,13 +263,17 @@ export async function fillQueue(
     }
   }
 
-  // 3. Retries
+  // 3. Retries (no-answer / hung-up under max attempts, respecting due date)
   if (result.dispatched < toFill) {
     const retries = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
-        eq(contactsTable.last_call_outcome, "no-answer"),
-        sql`${contactsTable.call_attempts} < ${MAX_CALL_ATTEMPTS}`,
+        or(
+          eq(contactsTable.last_call_outcome, "no-answer"),
+          eq(contactsTable.last_call_outcome, "hung-up"),
+        ),
+        sql`${contactsTable.call_attempts} < ${maxAttempts}`,
+        dueFilter,
         ...baseEligibility,
       ))
       .limit(toFill - result.dispatched);
@@ -338,7 +373,10 @@ export async function getCallList(campaignId: string): Promise<any[]> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const rows = await db.select({ contact: contactsTable })
+  const rows = await db.select({
+    contact: contactsTable,
+    membershipCarriedFrom: callListMembershipsTable.carried_from_id,
+  })
     .from(callListMembershipsTable)
     .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
     .where(and(
@@ -348,10 +386,16 @@ export async function getCallList(campaignId: string): Promise<any[]> {
       sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ))
     .orderBy(
+      // Priority tiers:
+      //   1 callbacks, 2 interested, 3 retries, 4 fresh,
+      //   5 immediate_recall (carried_from_id set, retry-eligible outcome)
       sql`CASE
+        WHEN ${callListMembershipsTable.carried_from_id} IS NOT NULL
+             AND ${contactsTable.last_call_outcome} IN ('no-answer', 'hung-up')
+          THEN 5
         WHEN ${contactsTable.last_call_outcome} = 'callback-requested' THEN 1
         WHEN ${contactsTable.last_call_outcome} = 'interested' THEN 2
-        WHEN ${contactsTable.last_call_outcome} = 'no-answer' THEN 3
+        WHEN ${contactsTable.last_call_outcome} IN ('no-answer', 'hung-up') THEN 3
         ELSE 4
       END`,
       contactsTable.dispatch_date,
@@ -359,6 +403,13 @@ export async function getCallList(campaignId: string): Promise<any[]> {
 
   return rows.map(r => {
     const c = r.contact;
+    const isRecall = r.membershipCarriedFrom != null
+      && (c.last_call_outcome === "no-answer" || c.last_call_outcome === "hung-up");
+    const priority = isRecall ? "recall"
+      : c.last_call_outcome === "callback-requested" ? "callback"
+      : c.last_call_outcome === "interested" ? "follow-up"
+      : (c.last_call_outcome === "no-answer" || c.last_call_outcome === "hung-up") ? "retry"
+      : "fresh";
     return {
       id: c.id,
       first_name: c.first_name,
@@ -370,9 +421,7 @@ export async function getCallList(campaignId: string): Promise<any[]> {
       last_call_outcome: c.last_call_outcome,
       callback_date: c.callback_date,
       dispatch_status: c.dispatch_status,
-      priority: c.last_call_outcome === "callback-requested" ? "callback" :
-                c.last_call_outcome === "interested" ? "follow-up" :
-                c.last_call_outcome === "no-answer" ? "retry" : "fresh",
+      priority,
     };
   });
 }

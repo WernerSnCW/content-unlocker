@@ -54,22 +54,63 @@ export default function Settings() {
   const [newAgentAircallId, setNewAgentAircallId] = useState<string>("");
   const [addingAgent, setAddingAgent] = useState(false);
 
-  // Tag mapping
-  interface TagMapping { aircall_tag: string; outcome: string; side_effect: string | null; }
-  const OUTCOMES = ["interested", "no-interest", "no-answer", "callback-requested", "meeting-booked", "not-now"];
-  const SIDE_EFFECTS = [
-    { value: "", label: "None" },
-    { value: "cool_off", label: "Cool-off (28 days)" },
-    { value: "callback", label: "Schedule callback (+1 day)" },
+  // Tag mapping — canonical model, see docs/decisions/001-tag-outcome-side-effect-model.md
+  type Outcome =
+    | "interested" | "no-interest" | "no-answer" | "callback-requested"
+    | "meeting-booked" | "hung-up" | "do-not-call" | "does-not-exist";
+  type SideEffect =
+    | "none" | "cool_off" | "immediate_recall"
+    | "callback_1d" | "callback_2d" | "callback_3d" | "callback_7d"
+    | "exclude_from_campaign" | "global_exclude";
+  interface TagMapping { aircall_tag: string; outcome: Outcome; side_effect: SideEffect; }
+
+  const OUTCOMES: Outcome[] = [
+    "interested", "no-interest", "no-answer", "callback-requested",
+    "meeting-booked", "hung-up", "do-not-call", "does-not-exist",
   ];
+  const OUTCOME_LABELS: Record<Outcome, string> = {
+    "interested": "Interested",
+    "no-interest": "Not interested",
+    "no-answer": "No answer",
+    "callback-requested": "Callback requested",
+    "meeting-booked": "Meeting booked",
+    "hung-up": "Hung up",
+    "do-not-call": "Do not call",
+    "does-not-exist": "Number does not exist",
+  };
+  const SIDE_EFFECT_LABELS: Record<SideEffect, string> = {
+    "none": "None — return to pool",
+    "cool_off": "Cool-off for N days",
+    "immediate_recall": "Immediate recall (bottom of today's queue)",
+    "callback_1d": "Callback in 1 day",
+    "callback_2d": "Callback in 2 days",
+    "callback_3d": "Callback in 3 days",
+    "callback_7d": "Callback in 7 days",
+    "exclude_from_campaign": "Exclude from this campaign",
+    "global_exclude": "Archive — never call again",
+  };
+  const ALLOWED_SIDE_EFFECTS: Record<Outcome, SideEffect[]> = {
+    "interested": ["none"],
+    "no-interest": ["exclude_from_campaign", "cool_off", "none"],
+    "no-answer": ["cool_off", "immediate_recall", "none"],
+    "callback-requested": ["callback_1d", "callback_2d", "callback_3d", "callback_7d"],
+    "meeting-booked": ["none"],
+    "hung-up": ["cool_off", "immediate_recall", "none"],
+    "do-not-call": ["global_exclude"],
+    "does-not-exist": ["global_exclude"],
+  };
+
   const [tagMappings, setTagMappings] = useState<TagMapping[]>([
-    { aircall_tag: "interested", outcome: "interested", side_effect: null },
-    { aircall_tag: "no-interest", outcome: "no-interest", side_effect: null },
-    { aircall_tag: "no-answer", outcome: "no-answer", side_effect: "cool_off" },
-    { aircall_tag: "callback", outcome: "callback-requested", side_effect: "callback" },
-    { aircall_tag: "meeting-booked", outcome: "meeting-booked", side_effect: null },
-    { aircall_tag: "not-now", outcome: "not-now", side_effect: null },
+    { aircall_tag: "Cloudworkz", outcome: "interested", side_effect: "none" },
+    { aircall_tag: "Not Interested", outcome: "no-interest", side_effect: "exclude_from_campaign" },
+    { aircall_tag: "No Answer", outcome: "no-answer", side_effect: "immediate_recall" },
+    { aircall_tag: "Callbacks", outcome: "callback-requested", side_effect: "callback_1d" },
+    { aircall_tag: "DNC", outcome: "do-not-call", side_effect: "global_exclude" },
+    { aircall_tag: "demo", outcome: "meeting-booked", side_effect: "none" },
+    { aircall_tag: "Hung Up", outcome: "hung-up", side_effect: "cool_off" },
+    { aircall_tag: "DNE", outcome: "does-not-exist", side_effect: "global_exclude" },
   ]);
+  const [maxCallAttempts, setMaxCallAttempts] = useState<number>(3);
 
   // Webhook URL
   const webhookUrl = `${window.location.origin}/api/aircall/webhook`;
@@ -95,6 +136,9 @@ export default function Settings() {
         setAircallEnabled(data.integration.enabled);
         if (cfg.tag_mapping && Array.isArray(cfg.tag_mapping) && cfg.tag_mapping.length > 0) {
           setTagMappings(cfg.tag_mapping);
+        }
+        if (Number.isFinite(Number(cfg.max_call_attempts))) {
+          setMaxCallAttempts(Number(cfg.max_call_attempts));
         }
       }
     } catch { /* ignore */ }
@@ -126,6 +170,7 @@ export default function Settings() {
             transcription_mode: transcriptionMode,
             ...(transcriptionMode === "external" ? { transcription_api_key: transcriptionApiKey } : {}),
             tag_mapping: tagMappings,
+            max_call_attempts: maxCallAttempts,
           },
           enabled: aircallEnabled,
         }),
@@ -318,11 +363,39 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* Pool rules */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Pool Rules</CardTitle>
+              <CardDescription>Controls how contacts flow back into future call lists.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium w-48">Max call attempts</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={maxCallAttempts}
+                  onChange={e => setMaxCallAttempts(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                  className="h-8 w-24"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Upper limit on automatic retry dispatches per contact. Immediate recalls do not count.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Tag Mapping */}
           <Card>
             <CardHeader>
               <CardTitle>Tag Mapping</CardTitle>
-              <CardDescription>Map Aircall call tags to contact outcomes. These are used when webhook events arrive.</CardDescription>
+              <CardDescription>
+                Map Aircall call tags to canonical outcomes and side-effects.
+                Side-effect options are constrained to valid combinations per
+                <a href="/docs/decisions/001-tag-outcome-side-effect-model.md" className="underline mx-1">ADR 001</a>.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -353,27 +426,34 @@ export default function Settings() {
                         <Select
                           value={mapping.outcome}
                           onValueChange={val => {
+                            const nextOutcome = val as Outcome;
+                            const allowed = ALLOWED_SIDE_EFFECTS[nextOutcome];
+                            // If the current side_effect is no longer valid, reset to the first allowed.
+                            const nextSide = allowed.includes(mapping.side_effect) ? mapping.side_effect : allowed[0];
                             const updated = [...tagMappings];
-                            updated[i] = { ...updated[i], outcome: val };
+                            updated[i] = { ...updated[i], outcome: nextOutcome, side_effect: nextSide };
                             setTagMappings(updated);
                           }}>
                           <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {OUTCOMES.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                            {OUTCOMES.map(o => <SelectItem key={o} value={o}>{OUTCOME_LABELS[o]}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </TableCell>
                       <TableCell>
                         <Select
-                          value={mapping.side_effect || ""}
+                          value={mapping.side_effect}
                           onValueChange={val => {
                             const updated = [...tagMappings];
-                            updated[i] = { ...updated[i], side_effect: val || null };
+                            updated[i] = { ...updated[i], side_effect: val as SideEffect };
                             setTagMappings(updated);
-                          }}>
+                          }}
+                          disabled={ALLOWED_SIDE_EFFECTS[mapping.outcome].length <= 1}>
                           <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {SIDE_EFFECTS.map(s => <SelectItem key={s.value || "__none__"} value={s.value || "__none__"}>{s.label}</SelectItem>)}
+                            {ALLOWED_SIDE_EFFECTS[mapping.outcome].map(s =>
+                              <SelectItem key={s} value={s}>{SIDE_EFFECT_LABELS[s]}</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                       </TableCell>
@@ -388,7 +468,7 @@ export default function Settings() {
                 </TableBody>
               </Table>
               <div className="flex items-center gap-2 mt-3">
-                <Button variant="outline" size="sm" onClick={() => setTagMappings(prev => [...prev, { aircall_tag: "", outcome: "no-answer", side_effect: null }])}>
+                <Button variant="outline" size="sm" onClick={() => setTagMappings(prev => [...prev, { aircall_tag: "", outcome: "no-answer", side_effect: "cool_off" }])}>
                   <Plus className="w-4 h-4 mr-1" /> Add Mapping
                 </Button>
                 <Button size="sm" onClick={saveAircallConfig} disabled={aircallSaving}>

@@ -3,25 +3,20 @@ import { db, contactsTable, leadConversationsTable, integrationConfigsTable, age
 import { eq, or, sql, and, isNull } from "drizzle-orm";
 import { loadInvestor, processTranscript, saveEngineRun } from "../../engine/v2";
 import type { CallType } from "../../engine/v2";
+import {
+  DEFAULT_TAG_MAPPING,
+  DEFAULT_COOL_OFF_DAYS,
+  callbackDays,
+  isAllowedCombination,
+  type Outcome,
+  type SideEffect,
+  type TagMapping as CanonicalTagMapping,
+} from "../../lib/tagModel";
 
 const router: IRouter = Router();
 
-const COOL_OFF_DAYS = 28;
-
-interface TagMapping {
-  aircall_tag: string;
-  outcome: string;
-  side_effect: string | null;
-}
-
-const DEFAULT_TAG_MAPPING: TagMapping[] = [
-  { aircall_tag: "interested", outcome: "interested", side_effect: null },
-  { aircall_tag: "no-interest", outcome: "no-interest", side_effect: null },
-  { aircall_tag: "no-answer", outcome: "no-answer", side_effect: "cool_off" },
-  { aircall_tag: "callback", outcome: "callback-requested", side_effect: "callback" },
-  { aircall_tag: "meeting-booked", outcome: "meeting-booked", side_effect: null },
-  { aircall_tag: "not-now", outcome: "not-now", side_effect: null },
-];
+// TagMapping now imported from lib/tagModel.ts (canonical).
+type TagMapping = CanonicalTagMapping;
 
 // Helper: get Aircall API auth header
 async function getAircallAuth(): Promise<string | null> {
@@ -105,30 +100,76 @@ async function findAgentByAircallUser(aircallUserId: number) {
   return agent || null;
 }
 
-// Helper: apply tag outcome to contact
+// Helper: apply tag outcome + side-effect to contact.
+// Returns the canonical outcome string (for logging) or null if tag unknown.
 async function applyTagOutcome(contactId: string, tagName: string, tagMapping: TagMapping[]) {
   const mapping = tagMapping.find(m => m.aircall_tag.toLowerCase() === tagName.toLowerCase());
   if (!mapping) return null;
 
-  const updates: Record<string, any> = {
-    last_call_outcome: mapping.outcome,
-  };
+  // Defensive: reject invalid (outcome, side_effect) pairs. Fall back to "none"
+  // so we still record the outcome without applying a nonsensical effect.
+  const outcome = mapping.outcome as Outcome;
+  const sideEffect: SideEffect = isAllowedCombination(outcome, mapping.side_effect as SideEffect)
+    ? (mapping.side_effect as SideEffect)
+    : "none";
 
-  if (mapping.side_effect === "cool_off") {
-    const coolOffDate = new Date();
-    coolOffDate.setDate(coolOffDate.getDate() + COOL_OFF_DAYS);
-    updates.cool_off_until = coolOffDate;
-  } else if (mapping.side_effect === "callback") {
-    const callbackDate = new Date();
-    callbackDate.setDate(callbackDate.getDate() + 1);
-    updates.callback_date = callbackDate;
+  const now = new Date();
+  const updates: Record<string, any> = { last_call_outcome: outcome };
+
+  // Apply side-effect
+  switch (sideEffect) {
+    case "cool_off": {
+      const until = new Date(now);
+      until.setDate(until.getDate() + DEFAULT_COOL_OFF_DAYS);
+      updates.cool_off_until = until;
+      break;
+    }
+    case "callback_1d":
+    case "callback_2d":
+    case "callback_3d":
+    case "callback_7d": {
+      const days = callbackDays(sideEffect) || 1;
+      const callback = new Date(now);
+      callback.setDate(callback.getDate() + days);
+      updates.callback_date = callback;
+      break;
+    }
+    case "global_exclude": {
+      updates.dispatch_status = "archived";
+      break;
+    }
+    case "immediate_recall": {
+      // Re-dispatch the contact onto the same call list they were just on.
+      // Find the most recently closed membership (closed by call.ended) and
+      // open a fresh active one on the same list.
+      const [lastMembership] = await db.select().from(callListMembershipsTable)
+        .where(eq(callListMembershipsTable.contact_id, contactId))
+        .orderBy(sql`${callListMembershipsTable.removed_at} DESC NULLS LAST`)
+        .limit(1);
+      if (lastMembership) {
+        await db.insert(callListMembershipsTable).values({
+          call_list_id: lastMembership.call_list_id,
+          contact_id: contactId,
+          added_at: now,
+          carried_from_id: lastMembership.id,
+        });
+        updates.dispatch_status = "dispatched";
+        updates.dispatch_date = now;
+      }
+      break;
+    }
+    case "exclude_from_campaign":
+    case "none":
+      // No direct side-effect on the contact row. exclude_from_campaign is
+      // enforced by each call list's exclude_outcomes filter at fill time.
+      break;
   }
 
   await db.update(contactsTable)
     .set(updates)
     .where(eq(contactsTable.id, contactId));
 
-  return mapping.outcome;
+  return outcome;
 }
 
 // ==================== Webhook Log (in-memory, for debugging) ====================
