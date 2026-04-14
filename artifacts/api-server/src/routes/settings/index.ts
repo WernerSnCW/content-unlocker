@@ -60,8 +60,21 @@ router.post("/settings/integrations/:provider", async (req, res): Promise<void> 
 
     let row;
     if (existing) {
+      // Strip out any sensitive fields that look like they were echoed back
+      // from a masked GET response (e.g. "****abc1"). This prevents the
+      // frontend from overwriting real credentials with the masked placeholder.
+      const incomingConfig = { ...(config || {}) };
+      const sensitiveKeys = ["api_token", "api_key", "webhook_token", "webhook_secret",
+        "client_secret", "access_token", "refresh_token", "transcription_api_key"];
+      for (const k of sensitiveKeys) {
+        const v = incomingConfig[k];
+        if (typeof v === "string" && v.startsWith("****")) {
+          delete incomingConfig[k]; // keep existing
+        }
+      }
+
       // Merge config — don't overwrite fields not provided
-      const mergedConfig = { ...(existing.config as Record<string, any>), ...config };
+      const mergedConfig = { ...(existing.config as Record<string, any>), ...incomingConfig };
       const updates: any = { config: mergedConfig };
       if (enabled !== undefined) updates.enabled = enabled;
 

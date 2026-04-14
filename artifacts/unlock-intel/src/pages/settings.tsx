@@ -128,6 +128,13 @@ export default function Settings() {
     fetchAgents();
   }, []);
 
+  // Track whether credentials are stored so we can show "set / not set" badges
+  // without ever displaying the masked value in the input itself.
+  const [tokenIsSet, setTokenIsSet] = useState(false);
+  const [tokenLast4, setTokenLast4] = useState<string | null>(null);
+  const [webhookTokenIsSet, setWebhookTokenIsSet] = useState(false);
+  const [transcriptionKeyIsSet, setTranscriptionKeyIsSet] = useState(false);
+
   const fetchAircallConfig = async () => {
     setAircallLoading(true);
     try {
@@ -136,10 +143,19 @@ export default function Settings() {
       if (data.integration?.exists) {
         const cfg = data.integration.config;
         setAircallApiId(cfg.api_id || "");
-        setAircallApiToken(cfg.api_token || "");
-        setAircallWebhookToken(cfg.webhook_token || "");
+        // CRITICAL: do NOT load the masked token into the form state.
+        // If we did, saving the form would overwrite the real token in the DB
+        // with the "****abc1" placeholder, breaking authentication silently.
+        // Instead, leave the input empty and show a "set" badge.
+        setAircallApiToken("");
+        setTokenIsSet(typeof cfg.api_token === "string" && cfg.api_token.length > 0);
+        setTokenLast4(typeof cfg.api_token === "string" && cfg.api_token.startsWith("****")
+          ? cfg.api_token.slice(-4) : null);
+        setAircallWebhookToken("");
+        setWebhookTokenIsSet(typeof cfg.webhook_token === "string" && cfg.webhook_token.length > 0);
         setTranscriptionMode(cfg.transcription_mode || "ai_assist");
-        setTranscriptionApiKey(cfg.transcription_api_key || "");
+        setTranscriptionApiKey("");
+        setTranscriptionKeyIsSet(typeof cfg.transcription_api_key === "string" && cfg.transcription_api_key.length > 0);
         setAircallEnabled(data.integration.enabled);
         if (cfg.tag_mapping && Array.isArray(cfg.tag_mapping) && cfg.tag_mapping.length > 0) {
           setTagMappings(cfg.tag_mapping);
@@ -168,17 +184,25 @@ export default function Settings() {
   const saveAircallConfig = async () => {
     setAircallSaving(true);
     try {
+      // Only include sensitive fields if the user actually entered a new value.
+      // Empty string means "leave existing alone" — backend already strips
+      // masked values defensively as well.
+      const sensitiveFields: Record<string, string> = {};
+      if (aircallApiToken.trim()) sensitiveFields.api_token = aircallApiToken.trim();
+      if (aircallWebhookToken.trim()) sensitiveFields.webhook_token = aircallWebhookToken.trim();
+      if (transcriptionMode === "external" && transcriptionApiKey.trim()) {
+        sensitiveFields.transcription_api_key = transcriptionApiKey.trim();
+      }
+
       await fetch(`${API_BASE}/settings/integrations/aircall`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config: {
             api_id: aircallApiId,
-            api_token: aircallApiToken,
-            webhook_token: aircallWebhookToken,
+            ...sensitiveFields,
             webhook_url: webhookUrl,
             transcription_mode: transcriptionMode,
-            ...(transcriptionMode === "external" ? { transcription_api_key: transcriptionApiKey } : {}),
             tag_mapping: tagMappings,
             max_call_attempts: maxCallAttempts,
             cool_off_days: coolOffDays,
@@ -313,14 +337,34 @@ export default function Settings() {
                       <Input value={aircallApiId} onChange={e => setAircallApiId(e.target.value)} placeholder="Your Aircall API ID" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-sm font-medium">API Token</label>
-                      <Input type="password" value={aircallApiToken} onChange={e => setAircallApiToken(e.target.value)} placeholder="Your Aircall API Token" />
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        API Token
+                        {tokenIsSet && (
+                          <Badge variant="outline" className="text-xs h-5 font-normal">
+                            Set{tokenLast4 ? ` · ends ${tokenLast4}` : ""}
+                          </Badge>
+                        )}
+                      </label>
+                      <Input
+                        type="password"
+                        value={aircallApiToken}
+                        onChange={e => setAircallApiToken(e.target.value)}
+                        placeholder={tokenIsSet ? "Leave blank to keep existing token" : "Paste your Aircall API token"}
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-sm font-medium">Webhook Verification Token</label>
-                    <Input value={aircallWebhookToken} onChange={e => setAircallWebhookToken(e.target.value)} placeholder="Token for verifying Aircall webhook requests" />
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Webhook Verification Token
+                      {webhookTokenIsSet && <Badge variant="outline" className="text-xs h-5 font-normal">Set</Badge>}
+                    </label>
+                    <Input
+                      type="password"
+                      value={aircallWebhookToken}
+                      onChange={e => setAircallWebhookToken(e.target.value)}
+                      placeholder={webhookTokenIsSet ? "Leave blank to keep existing token" : "Token for verifying Aircall webhook requests"}
+                    />
                   </div>
 
                   <div className="space-y-1">
@@ -347,8 +391,16 @@ export default function Settings() {
                     </div>
                     {transcriptionMode === "external" && (
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Transcription API Key</label>
-                        <Input type="password" value={transcriptionApiKey} onChange={e => setTranscriptionApiKey(e.target.value)} placeholder="Whisper or Deepgram API key" />
+                        <label className="text-sm font-medium flex items-center gap-2">
+                          Transcription API Key
+                          {transcriptionKeyIsSet && <Badge variant="outline" className="text-xs h-5 font-normal">Set</Badge>}
+                        </label>
+                        <Input
+                          type="password"
+                          value={transcriptionApiKey}
+                          onChange={e => setTranscriptionApiKey(e.target.value)}
+                          placeholder={transcriptionKeyIsSet ? "Leave blank to keep existing key" : "Whisper or Deepgram API key"}
+                        />
                       </div>
                     )}
                   </div>
