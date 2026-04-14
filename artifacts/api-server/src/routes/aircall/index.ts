@@ -341,49 +341,45 @@ async function handleCallEnded(data: any): Promise<string | null> {
     return `no match: ${rawDigits}`;
   }
 
-  // Aircall webhook ordering is NOT guaranteed. call.tagged often arrives
-  // before call.ended. If the tag handler has already run a side-effect like
-  // immediate_recall, it will have:
-  //   - bumped dispatch_status back to 'dispatched'
-  //   - created a new active membership (with added_at AFTER this call's
-  //     started_at)
-  // We must not undo that. Use the call's started_at timestamp to scope our
-  // updates to state that belongs to THIS call only.
+  // Aircall webhook ordering is NOT guaranteed and webhooks are processed
+  // concurrently. call.tagged may arrive before call.ended and bump
+  // dispatch_status back to 'dispatched' via a side-effect like immediate_recall.
+  // We must use atomic conditional UPDATEs (no read-then-write) so concurrent
+  // tag-handler writes are not clobbered by us.
   const callStartTime = data.started_at ? new Date(data.started_at * 1000) : new Date();
+  const now = new Date();
 
-  // Always increment call_attempts (this call really happened).
-  // Only set dispatch_status='called' if the contact has not been re-dispatched
-  // since this call started.
-  const [contactRow] = await db.select().from(contactsTable)
-    .where(eq(contactsTable.id, contact.id))
-    .limit(1);
-  const reDispatchedSinceCall = contactRow?.dispatch_date && contactRow.dispatch_date > callStartTime;
+  // Always increment call_attempts — this call really happened.
+  await db.update(contactsTable)
+    .set({ call_attempts: sql`${contactsTable.call_attempts} + 1` })
+    .where(eq(contactsTable.id, contact.id));
 
-  await db.update(contactsTable).set({
-    ...(reDispatchedSinceCall ? {} : { dispatch_status: "called" }),
-    call_attempts: sql`${contactsTable.call_attempts} + 1`,
-  }).where(eq(contactsTable.id, contact.id));
+  // Set dispatch_status='called' ONLY if the contact has not been re-dispatched
+  // since this call started. The WHERE clause is evaluated atomically against
+  // the current row state, so a concurrent recall write can't be clobbered.
+  await db.update(contactsTable)
+    .set({ dispatch_status: "called" })
+    .where(and(
+      eq(contactsTable.id, contact.id),
+      or(
+        isNull(contactsTable.dispatch_date),
+        lte(contactsTable.dispatch_date, callStartTime),
+      ),
+    ));
 
-  // Close the membership that was active when THIS call started.
-  // Skip any membership added after the call (those were created by tag
-  // handlers running ahead of us — leave them alone).
+  // Close memberships that were active when THIS call started. Skip any added
+  // after the call started (those were created by tag handlers — leave them).
   try {
-    const [activeMembership] = await db.select().from(callListMembershipsTable)
+    const outcomeSnapshot = tags.length > 0
+      ? (typeof tags[0] === "string" ? tags[0] : tags[0].name)
+      : null;
+    await db.update(callListMembershipsTable)
+      .set({ removed_at: now, removal_reason: "called", outcome_at_removal: outcomeSnapshot })
       .where(and(
         eq(callListMembershipsTable.contact_id, contact.id),
         isNull(callListMembershipsTable.removed_at),
         lte(callListMembershipsTable.added_at, callStartTime),
-      ))
-      .limit(1);
-    if (activeMembership) {
-      // Use first tag as outcome snapshot if present (full mapping happens below)
-      const outcomeSnapshot = tags.length > 0
-        ? (typeof tags[0] === "string" ? tags[0] : tags[0].name)
-        : null;
-      await db.update(callListMembershipsTable)
-        .set({ removed_at: new Date(), removal_reason: "called", outcome_at_removal: outcomeSnapshot })
-        .where(eq(callListMembershipsTable.id, activeMembership.id));
-    }
+      ));
   } catch { /* ignore membership close failures */ }
 
   // Store conversation record (idempotent: check for existing by external_id)
