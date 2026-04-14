@@ -12,7 +12,7 @@ import {
   ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
   ListPlus, TrendingUp, Headphones, ExternalLink, Settings,
   User, Building2, Mail, MailWarning,
-  Loader2
+  Loader2, RefreshCw
 } from "lucide-react";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 
@@ -52,14 +52,24 @@ export default function CallCommand() {
     setCurrentCallIndex(i => i + 1);
     loadAll();
 
-    // Refresh burst: poll every 5s for 60s to catch webhook data
-    // (tags/outcomes can arrive 10-30s after call ends)
+    // Refresh burst tuned for slow tagging: operators may take 1-3 min to
+    // pick a tag in Aircall's wrap-up screen, and the immediate_recall side
+    // effect only fires after that. Poll every 5s for the first minute
+    // (catches fast tags), then every 15s for another 4 minutes.
     let refreshCount = 0;
-    const interval = setInterval(() => {
+    const fast = setInterval(() => {
       refreshCount++;
       loadAll();
-      if (refreshCount >= 12) clearInterval(interval);
+      if (refreshCount >= 12) clearInterval(fast);
     }, 5000);
+    let slowCount = 0;
+    const slow = setInterval(() => {
+      slowCount++;
+      loadAll();
+      if (slowCount >= 16) clearInterval(slow); // 16 * 15s = 4 min
+    }, 15000);
+    // Safety: ensure intervals are cleared after 5 min total
+    setTimeout(() => { clearInterval(fast); clearInterval(slow); }, 5 * 60 * 1000);
   }, []);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
@@ -643,9 +653,14 @@ export default function CallCommand() {
       <div>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Headphones className="w-4 h-4" /> Up Next ({Math.max(0, queuedCalls - currentCallIndex - 1)})
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Headphones className="w-4 h-4" /> Up Next ({Math.max(0, queuedCalls - currentCallIndex - 1)})
+              </CardTitle>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={loadAll} disabled={loading}>
+                <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {upNext.length > 0 ? (
