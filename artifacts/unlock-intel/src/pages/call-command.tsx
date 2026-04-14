@@ -661,7 +661,18 @@ export default function CallCommand() {
                 <TableBody>
                   {upNext.map((c, i) => (
                     <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setViewingIndex(currentCallIndex + 1 + i)}>
+                      onClick={() => {
+                        // Swap the clicked contact into the current slot so it becomes the next call
+                        const targetIdx = currentCallIndex + 1 + i;
+                        setCallList(prev => {
+                          if (!prev[targetIdx] || !prev[currentCallIndex]) return prev;
+                          const next = [...prev];
+                          [next[currentCallIndex], next[targetIdx]] = [next[targetIdx], next[currentCallIndex]];
+                          return next;
+                        });
+                        setViewingIndex(null);
+                        setDialing(false);
+                      }}>
                       <TableCell className="text-muted-foreground text-xs">{currentCallIndex + 2 + i}</TableCell>
                       <TableCell className="font-medium text-sm">{c.first_name} {c.last_name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
