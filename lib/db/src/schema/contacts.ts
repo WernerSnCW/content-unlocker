@@ -16,8 +16,7 @@ export const contactsTable = pgTable("contacts", {
   upload_batch: text("upload_batch"), // batch ID for grouping uploads
   dedup_status: text("dedup_status").default("clean"), // clean, duplicate, merged
 
-  // Campaign & dispatch
-  campaign_name: text("campaign_name"),
+  // Dispatch state (source of truth for list membership is call_list_memberships)
   dispatch_status: text("dispatch_status").notNull().default("pool"), // pool, queued, dispatched, called, qualified, archived
   dispatch_date: timestamp("dispatch_date", { withTimezone: true }),
 

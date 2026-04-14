@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, callListConfigsTable, contactsTable, agentsTable } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { db, callListConfigsTable, contactsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
+import { eq, and, desc, sql, isNull } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
 
 const router: IRouter = Router();
@@ -167,23 +167,59 @@ router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
   }
 });
 
-// POST /call-lists/carry-over — re-date stale contacts to today so they join the new queue
-// Optional body: { target_campaign_name } — reassigns stale contacts to the new list
+// POST /call-lists/carry-over — move stale dispatched contacts onto a target list
+// Required body: { target_call_list_id }
 router.post("/call-lists/carry-over", async (req, res): Promise<void> => {
   try {
+    const targetListId = req.body?.target_call_list_id?.toString().trim();
+    if (!targetListId) {
+      res.status(400).json({ error: "target_call_list_id is required" });
+      return;
+    }
+
+    const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const targetName = req.body?.target_campaign_name?.toString().trim();
-    const updates: Record<string, any> = { dispatch_date: new Date() };
-    if (targetName) updates.campaign_name = targetName;
-    const result = await db.update(contactsTable)
-      .set(updates)
+
+    // Find active memberships whose contacts are dispatched from a previous day
+    const stale = await db.select({
+      membership_id: callListMembershipsTable.id,
+      contact_id: callListMembershipsTable.contact_id,
+    })
+      .from(callListMembershipsTable)
+      .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
       .where(and(
+        isNull(callListMembershipsTable.removed_at),
         eq(contactsTable.dispatch_status, "dispatched"),
         sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
-      ))
-      .returning({ id: contactsTable.id });
-    res.json({ success: true, carried_over: result.length });
+      ));
+
+    let carriedOver = 0;
+    for (const row of stale) {
+      try {
+        // Close the old membership
+        await db.update(callListMembershipsTable)
+          .set({ removed_at: now, removal_reason: "carried_over" })
+          .where(eq(callListMembershipsTable.id, row.membership_id));
+
+        // Create a new membership on the target list
+        await db.insert(callListMembershipsTable).values({
+          call_list_id: targetListId,
+          contact_id: row.contact_id,
+          added_at: now,
+          carried_from_id: row.membership_id,
+        });
+
+        // Re-date the contact for today
+        await db.update(contactsTable)
+          .set({ dispatch_date: now })
+          .where(eq(contactsTable.id, row.contact_id));
+
+        carriedOver++;
+      } catch { /* skip on error */ }
+    }
+
+    res.json({ success: true, carried_over: carriedOver });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to carry over contacts" });
   }
@@ -199,7 +235,7 @@ router.post("/call-lists/reconcile", async (req, res): Promise<void> => {
   }
 });
 
-// GET /call_lists/:id/pool-count — how many contacts match the filter criteria
+// GET /call_lists/:id/pool-count — how many pool contacts match this list's filter
 router.get("/call-lists/:id/pool-count", async (req, res): Promise<void> => {
   try {
     const [campaign] = await db.select().from(callListConfigsTable)
@@ -207,21 +243,15 @@ router.get("/call-lists/:id/pool-count", async (req, res): Promise<void> => {
 
     if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
 
-    const criteria = campaign.filter_criteria as Record<string, any>;
-    const conditions = [eq(contactsTable.dispatch_status, "pool")];
-
-    if (criteria?.source_lists?.length > 0) {
-      conditions.push(sql`${contactsTable.source_list} IN (${sql.raw(criteria.source_lists.map((s: string) => `'${s}'`).join(","))})`);
+    const criteria = (campaign.filter_criteria || {}) as Record<string, any>;
+    const conditions: any[] = [eq(contactsTable.dispatch_status, "pool")];
+    if (Array.isArray(criteria.source_lists) && criteria.source_lists.length > 0) {
+      conditions.push(sql`${contactsTable.source_list} IN (${sql.raw(criteria.source_lists.map((s: string) => `'${s.replace(/'/g, "''")}'`).join(","))})`);
     }
 
-    const [result] = await db.select({ count: sql<number>`count(*)` })
-      .from(contactsTable)
-      .where(sql`${sql.raw(conditions.map((_, i) => `TRUE`).join(" AND "))}`);
-
-    // Simpler approach
     const [poolResult] = await db.select({ count: sql<number>`count(*)` })
       .from(contactsTable)
-      .where(eq(contactsTable.dispatch_status, "pool"));
+      .where(and(...conditions));
 
     res.json({ available: Number(poolResult.count) });
   } catch (err: any) {

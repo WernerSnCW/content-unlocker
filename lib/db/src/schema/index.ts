@@ -28,3 +28,4 @@ export * from "./contacts";
 export * from "./upload-sessions";
 export * from "./staged-contacts";
 export * from "./call-list-config";
+export * from "./call-list-memberships";

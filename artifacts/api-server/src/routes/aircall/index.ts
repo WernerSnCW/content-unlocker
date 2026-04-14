@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable } from "@workspace/db";
-import { eq, or, sql } from "drizzle-orm";
+import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
+import { eq, or, sql, and, isNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -257,6 +257,25 @@ async function handleCallEnded(data: any): Promise<string | null> {
     dispatch_status: "called",
     call_attempts: sql`${contactsTable.call_attempts} + 1`,
   }).where(eq(contactsTable.id, contact.id));
+
+  // Close the active call-list membership (if any) — snapshot the outcome
+  try {
+    const [activeMembership] = await db.select().from(callListMembershipsTable)
+      .where(and(
+        eq(callListMembershipsTable.contact_id, contact.id),
+        isNull(callListMembershipsTable.removed_at),
+      ))
+      .limit(1);
+    if (activeMembership) {
+      // Use first tag as outcome snapshot if present (full mapping happens below)
+      const outcomeSnapshot = tags.length > 0
+        ? (typeof tags[0] === "string" ? tags[0] : tags[0].name)
+        : null;
+      await db.update(callListMembershipsTable)
+        .set({ removed_at: new Date(), removal_reason: "called", outcome_at_removal: outcomeSnapshot })
+        .where(eq(callListMembershipsTable.id, activeMembership.id));
+    }
+  } catch { /* ignore membership close failures */ }
 
   // Store conversation record (idempotent: check for existing by external_id)
   const [existing] = await db.select({ id: leadConversationsTable.id })

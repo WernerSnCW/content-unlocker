@@ -188,13 +188,13 @@ export default function CallCommand() {
       const data = await res.json();
       const newCallList = data.campaign;
 
-      // If carrying over, re-date stale contacts AND reassign to the new list's name
+      // If carrying over, move stale memberships onto the new list
       let carriedOver = 0;
-      if (carryOver && staleCount > 0) {
+      if (carryOver && staleCount > 0 && newCallList?.id) {
         const carryRes = await fetch(`${API_BASE}/call-lists/carry-over`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_campaign_name: newName.trim() }),
+          body: JSON.stringify({ target_call_list_id: newCallList.id }),
         });
         const carryData = await carryRes.json();
         carriedOver = carryData.carried_over || 0;

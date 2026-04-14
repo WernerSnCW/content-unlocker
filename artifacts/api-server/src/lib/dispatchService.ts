@@ -1,5 +1,5 @@
-import { db, contactsTable, callListConfigsTable, agentsTable } from "@workspace/db";
-import { eq, and, or, sql, isNull, lte, ne, notInArray, inArray } from "drizzle-orm";
+import { db, contactsTable, callListConfigsTable, callListMembershipsTable } from "@workspace/db";
+import { eq, and, or, sql, isNull, lte, ne, inArray, notInArray } from "drizzle-orm";
 
 export interface QueueStatus {
   campaign_id: string;
@@ -23,11 +23,38 @@ export interface DispatchResult {
 }
 
 const MAX_CALL_ATTEMPTS = 3;
-const COOL_OFF_DAYS = 28;
+
+/**
+ * Build the base eligibility conditions for a call list based on its filter criteria.
+ * These conditions filter the contacts pool by source_list, exclude_outcomes, and cool-off.
+ * Does NOT include membership/dispatch_status filtering — caller adds that.
+ */
+function buildEligibilityConditions(campaign: any, now: Date) {
+  const conditions: any[] = [
+    or(isNull(contactsTable.cool_off_until), lte(contactsTable.cool_off_until, now)),
+  ];
+
+  const criteria = (campaign.filter_criteria || {}) as Record<string, any>;
+  if (Array.isArray(criteria.source_lists) && criteria.source_lists.length > 0) {
+    conditions.push(inArray(contactsTable.source_list, criteria.source_lists));
+  }
+
+  const excludeOutcomes = criteria.exclude_outcomes ?? ["no-interest"];
+  if (excludeOutcomes.length > 0) {
+    conditions.push(
+      or(
+        isNull(contactsTable.last_call_outcome),
+        notInArray(contactsTable.last_call_outcome, excludeOutcomes),
+      )!
+    );
+  }
+
+  return conditions;
+}
 
 /**
  * Get the current queue status for a campaign — how many contacts
- * are already queued for today vs how many are needed to hit quota.
+ * are already dispatched for today vs how many more are eligible to reach quota.
  */
 export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
   const [campaign] = await db.select().from(callListConfigsTable)
@@ -35,56 +62,62 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
 
   if (!campaign) throw new Error("Campaign not found");
 
+  const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 1. Callbacks due today
-  const [callbackResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(contactsTable)
+  // Contacts currently without an active membership — eligible to be picked up
+  const unassignedSubq = sql`${contactsTable.id} NOT IN (
+    SELECT ${callListMembershipsTable.contact_id} FROM ${callListMembershipsTable}
+    WHERE ${callListMembershipsTable.removed_at} IS NULL
+  )`;
+
+  const baseEligibility = buildEligibilityConditions(campaign, now);
+
+  // 1. Callbacks due today (eligible, outcome=callback-requested, callback_date <= now)
+  const [cbRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      unassignedSubq,
       eq(contactsTable.last_call_outcome, "callback-requested"),
-      lte(contactsTable.callback_date, new Date()),
-      ne(contactsTable.dispatch_status, "archived"),
+      lte(contactsTable.callback_date, now),
+      ...baseEligibility,
     ));
 
   // 2. Interested follow-ups
-  const [interestedResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(contactsTable)
+  const [intRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      unassignedSubq,
       eq(contactsTable.last_call_outcome, "interested"),
-      ne(contactsTable.dispatch_status, "archived"),
-      ne(contactsTable.dispatch_status, "qualified"),
+      ...baseEligibility,
     ));
 
-  // 3. No-answer retries (under max attempts, not in cool-off)
-  const [retryResult] = await db.select({ count: sql<number>`count(*)` })
-    .from(contactsTable)
+  // 3. No-answer retries (under max attempts)
+  const [retryRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      unassignedSubq,
       eq(contactsTable.last_call_outcome, "no-answer"),
       sql`${contactsTable.call_attempts} < ${MAX_CALL_ATTEMPTS}`,
-      or(
-        isNull(contactsTable.cool_off_until),
-        lte(contactsTable.cool_off_until, new Date()),
-      ),
-      ne(contactsTable.dispatch_status, "archived"),
+      ...baseEligibility,
     ));
 
-  // 4. Already dispatched today
-  const [dispatchedResult] = await db.select({ count: sql<number>`count(*)` })
+  // 4. Already dispatched today (active memberships on this list, dispatched today)
+  const [dispatchedRow] = await db.select({ count: sql<number>`count(*)` })
     .from(contactsTable)
+    .innerJoin(
+      callListMembershipsTable,
+      eq(callListMembershipsTable.contact_id, contactsTable.id),
+    )
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      eq(callListMembershipsTable.call_list_id, campaignId),
+      isNull(callListMembershipsTable.removed_at),
       eq(contactsTable.dispatch_status, "dispatched"),
       sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ));
 
-  const callbacks = Number(callbackResult.count);
-  const interested = Number(interestedResult.count);
-  const retries = Number(retryResult.count);
-  const dispatchedToday = Number(dispatchedResult.count);
+  const callbacks = Number(cbRow.count);
+  const interested = Number(intRow.count);
+  const retries = Number(retryRow.count);
+  const dispatchedToday = Number(dispatchedRow.count);
 
   const committed = callbacks + interested + retries + dispatchedToday;
   const freshNeeded = Math.max(0, campaign.daily_quota - committed);
@@ -103,15 +136,42 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
 }
 
 /**
+ * Dispatch a single contact to a call list: create an active membership and
+ * update the contact's denormalized dispatch_status/date. Safe against
+ * double-dispatch via the partial unique index on active memberships.
+ */
+async function dispatchContact(
+  contactId: string,
+  callListId: string,
+  now: Date,
+): Promise<boolean> {
+  try {
+    await db.insert(callListMembershipsTable).values({
+      call_list_id: callListId,
+      contact_id: contactId,
+      added_at: now,
+    });
+    await db.update(contactsTable)
+      .set({ dispatch_status: "dispatched", dispatch_date: now })
+      .where(eq(contactsTable.id, contactId));
+    return true;
+  } catch {
+    return false; // likely unique index violation — contact already has active membership
+  }
+}
+
+/**
  * Fill the call queue for a campaign. Pulls from 4 sources in priority order:
  * 1. Callbacks due today
  * 2. Interested follow-ups
  * 3. No-answer retries (under max attempts)
  * 4. Fresh contacts from pool matching campaign filters
+ *
+ * Eligibility: contact has no active membership AND matches filter_criteria.
  */
 export async function fillQueue(
   campaignId: string,
-  count?: number
+  count?: number,
 ): Promise<DispatchResult> {
   const [campaign] = await db.select().from(callListConfigsTable)
     .where(eq(callListConfigsTable.id, campaignId));
@@ -125,143 +185,139 @@ export async function fillQueue(
   const now = new Date();
   const result: DispatchResult = { dispatched: 0, callbacks: 0, interested: 0, retries: 0, fresh: 0, errors: 0 };
 
-  // 1. Mark callbacks as dispatched
+  const unassignedSubq = sql`${contactsTable.id} NOT IN (
+    SELECT ${callListMembershipsTable.contact_id} FROM ${callListMembershipsTable}
+    WHERE ${callListMembershipsTable.removed_at} IS NULL
+  )`;
+  const baseEligibility = buildEligibilityConditions(campaign, now);
+
+  // 1. Callbacks
   const callbacks = await db.select().from(contactsTable)
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      unassignedSubq,
       eq(contactsTable.last_call_outcome, "callback-requested"),
       lte(contactsTable.callback_date, now),
-      ne(contactsTable.dispatch_status, "dispatched"),
-      ne(contactsTable.dispatch_status, "archived"),
-    ));
+      ...baseEligibility,
+    ))
+    .limit(toFill);
 
   for (const cb of callbacks) {
-    try {
-      await db.update(contactsTable).set({ dispatch_status: "dispatched", dispatch_date: now })
-        .where(eq(contactsTable.id, cb.id));
+    if (result.dispatched >= toFill) break;
+    if (await dispatchContact(cb.id, campaignId, now)) {
       result.callbacks++;
       result.dispatched++;
-    } catch { result.errors++; }
-  }
-
-  // 2. Mark interested as dispatched
-  const interested = await db.select().from(contactsTable)
-    .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
-      eq(contactsTable.last_call_outcome, "interested"),
-      ne(contactsTable.dispatch_status, "dispatched"),
-      ne(contactsTable.dispatch_status, "archived"),
-      ne(contactsTable.dispatch_status, "qualified"),
-    ));
-
-  for (const int of interested) {
-    try {
-      await db.update(contactsTable).set({ dispatch_status: "dispatched", dispatch_date: now })
-        .where(eq(contactsTable.id, int.id));
-      result.interested++;
-      result.dispatched++;
-    } catch { result.errors++; }
-  }
-
-  // 3. Mark retries as dispatched
-  const retries = await db.select().from(contactsTable)
-    .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
-      eq(contactsTable.last_call_outcome, "no-answer"),
-      sql`${contactsTable.call_attempts} < ${MAX_CALL_ATTEMPTS}`,
-      or(isNull(contactsTable.cool_off_until), lte(contactsTable.cool_off_until, now)),
-      ne(contactsTable.dispatch_status, "dispatched"),
-      ne(contactsTable.dispatch_status, "archived"),
-    ));
-
-  for (const retry of retries) {
-    try {
-      await db.update(contactsTable).set({ dispatch_status: "dispatched", dispatch_date: now })
-        .where(eq(contactsTable.id, retry.id));
-      result.retries++;
-      result.dispatched++;
-    } catch { result.errors++; }
-  }
-
-  // 4. Fresh contacts from pool
-  const freshNeeded = toFill - result.dispatched;
-  if (freshNeeded > 0) {
-    // Build filter conditions based on campaign criteria
-    const filterConditions = [
-      eq(contactsTable.dispatch_status, "pool"),
-      or(isNull(contactsTable.cool_off_until), lte(contactsTable.cool_off_until, now)),
-    ];
-
-    // Apply source_list filter if specified
-    const criteria = campaign.filter_criteria as Record<string, any>;
-    if (criteria?.source_lists && Array.isArray(criteria.source_lists) && criteria.source_lists.length > 0) {
-      filterConditions.push(inArray(contactsTable.source_list, criteria.source_lists));
+    } else {
+      result.errors++;
     }
+  }
 
-    // Exclude contacts with specific outcomes
-    const excludeOutcomes = criteria?.exclude_outcomes || ["no-interest"];
-    if (excludeOutcomes.length > 0) {
-      filterConditions.push(
-        or(
-          isNull(contactsTable.last_call_outcome),
-          sql`${contactsTable.last_call_outcome} NOT IN (${sql.raw(excludeOutcomes.map((o: string) => `'${o}'`).join(","))})`,
-        )!
-      );
+  // 2. Interested
+  if (result.dispatched < toFill) {
+    const interested = await db.select().from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        eq(contactsTable.last_call_outcome, "interested"),
+        ...baseEligibility,
+      ))
+      .limit(toFill - result.dispatched);
+
+    for (const it of interested) {
+      if (result.dispatched >= toFill) break;
+      if (await dispatchContact(it.id, campaignId, now)) {
+        result.interested++;
+        result.dispatched++;
+      } else {
+        result.errors++;
+      }
     }
+  }
 
-    const freshContacts = await db.select().from(contactsTable)
-      .where(and(...filterConditions.filter(Boolean)))
+  // 3. Retries
+  if (result.dispatched < toFill) {
+    const retries = await db.select().from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        eq(contactsTable.last_call_outcome, "no-answer"),
+        sql`${contactsTable.call_attempts} < ${MAX_CALL_ATTEMPTS}`,
+        ...baseEligibility,
+      ))
+      .limit(toFill - result.dispatched);
+
+    for (const r of retries) {
+      if (result.dispatched >= toFill) break;
+      if (await dispatchContact(r.id, campaignId, now)) {
+        result.retries++;
+        result.dispatched++;
+      } else {
+        result.errors++;
+      }
+    }
+  }
+
+  // 4. Fresh from pool (no outcome yet)
+  if (result.dispatched < toFill) {
+    const fresh = await db.select().from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        eq(contactsTable.dispatch_status, "pool"),
+        isNull(contactsTable.last_call_outcome),
+        ...baseEligibility,
+      ))
       .orderBy(sql`RANDOM()`)
-      .limit(freshNeeded);
+      .limit(toFill - result.dispatched);
 
-    for (const fresh of freshContacts) {
-      try {
-        await db.update(contactsTable).set({
-          dispatch_status: "dispatched",
-          dispatch_date: now,
-          campaign_name: campaign.name,
-        }).where(eq(contactsTable.id, fresh.id));
+    for (const f of fresh) {
+      if (result.dispatched >= toFill) break;
+      if (await dispatchContact(f.id, campaignId, now)) {
         result.fresh++;
         result.dispatched++;
-      } catch { result.errors++; }
+      } else {
+        result.errors++;
+      }
     }
   }
 
   // Update campaign stats
-  await db.update(callListConfigsTable).set({
-    total_dispatched: sql`${callListConfigsTable.total_dispatched} + ${result.dispatched}`,
-  }).where(eq(callListConfigsTable.id, campaignId));
+  if (result.dispatched > 0) {
+    await db.update(callListConfigsTable).set({
+      total_dispatched: sql`${callListConfigsTable.total_dispatched} + ${result.dispatched}`,
+    }).where(eq(callListConfigsTable.id, campaignId));
+  }
 
   return result;
 }
 
 /**
- * Start-of-day reconciliation: contacts dispatched yesterday with no call
- * record get reset to "queued" so they re-enter the pool for today.
+ * Start-of-day reconciliation: close memberships for contacts dispatched
+ * yesterday or earlier that were never called. Reset their dispatch state.
  */
 export async function reconcileUncalledContacts(): Promise<number> {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(0, 0, 0, 0);
-
+  const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Find contacts dispatched yesterday that are still in "dispatched" status
-  // (if they were called, their status would have changed to "called")
-  const uncalled = await db.select().from(contactsTable)
+  // Find active memberships where contact dispatch_date < today and status = dispatched
+  const stale = await db.select({
+    membership_id: callListMembershipsTable.id,
+    contact_id: callListMembershipsTable.contact_id,
+  })
+    .from(callListMembershipsTable)
+    .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
     .where(and(
+      isNull(callListMembershipsTable.removed_at),
       eq(contactsTable.dispatch_status, "dispatched"),
       sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
     ));
 
   let resetCount = 0;
-  for (const contact of uncalled) {
+  for (const row of stale) {
     try {
-      await db.update(contactsTable).set({
-        dispatch_status: "pool",
-        dispatch_date: null,
-      }).where(eq(contactsTable.id, contact.id));
+      await db.update(callListMembershipsTable)
+        .set({ removed_at: now, removal_reason: "reconciled" })
+        .where(eq(callListMembershipsTable.id, row.membership_id));
+      await db.update(contactsTable)
+        .set({ dispatch_status: "pool", dispatch_date: null })
+        .where(eq(contactsTable.id, row.contact_id));
       resetCount++;
     } catch { /* ignore */ }
   }
@@ -270,7 +326,8 @@ export async function reconcileUncalledContacts(): Promise<number> {
 }
 
 /**
- * Get today's call list for a campaign — all dispatched contacts in priority order.
+ * Get today's call list for a campaign — all dispatched contacts on
+ * active memberships, in priority order.
  */
 export async function getCallList(campaignId: string): Promise<any[]> {
   const [campaign] = await db.select().from(callListConfigsTable)
@@ -281,14 +338,16 @@ export async function getCallList(campaignId: string): Promise<any[]> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const contacts = await db.select().from(contactsTable)
+  const rows = await db.select({ contact: contactsTable })
+    .from(callListMembershipsTable)
+    .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
     .where(and(
-      eq(contactsTable.campaign_name, campaign.name),
+      eq(callListMembershipsTable.call_list_id, campaignId),
+      isNull(callListMembershipsTable.removed_at),
       eq(contactsTable.dispatch_status, "dispatched"),
       sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ))
     .orderBy(
-      // Priority: callbacks first, then interested, then retries, then fresh
       sql`CASE
         WHEN ${contactsTable.last_call_outcome} = 'callback-requested' THEN 1
         WHEN ${contactsTable.last_call_outcome} = 'interested' THEN 2
@@ -298,19 +357,22 @@ export async function getCallList(campaignId: string): Promise<any[]> {
       contactsTable.dispatch_date,
     );
 
-  return contacts.map(c => ({
-    id: c.id,
-    first_name: c.first_name,
-    last_name: c.last_name,
-    email: c.email,
-    phone: c.phone,
-    company: c.company,
-    call_attempts: c.call_attempts,
-    last_call_outcome: c.last_call_outcome,
-    callback_date: c.callback_date,
-    dispatch_status: c.dispatch_status,
-    priority: c.last_call_outcome === "callback-requested" ? "callback" :
-              c.last_call_outcome === "interested" ? "follow-up" :
-              c.last_call_outcome === "no-answer" ? "retry" : "fresh",
-  }));
+  return rows.map(r => {
+    const c = r.contact;
+    return {
+      id: c.id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      company: c.company,
+      call_attempts: c.call_attempts,
+      last_call_outcome: c.last_call_outcome,
+      callback_date: c.callback_date,
+      dispatch_status: c.dispatch_status,
+      priority: c.last_call_outcome === "callback-requested" ? "callback" :
+                c.last_call_outcome === "interested" ? "follow-up" :
+                c.last_call_outcome === "no-answer" ? "retry" : "fresh",
+    };
+  });
 }
