@@ -24,6 +24,7 @@ export const leadConversationsTable = pgTable("lead_conversations", {
   agent_notes: text("agent_notes"), // caller's own notes from Aircall after-call work
   tags: jsonb("tags").default([]),
   processed_at: timestamp("processed_at", { withTimezone: true }),
+  engine_version: text("engine_version"), // version of the V2 intelligence engine that last processed this call
   conversation_date: timestamp("conversation_date", { withTimezone: true }).notNull().defaultNow(),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

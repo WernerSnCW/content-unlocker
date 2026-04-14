@@ -14,6 +14,16 @@ export { buildCrmNote } from "./functions/buildCrmNote";
 export { validateCompliance } from "./functions/validateCompliance";
 export { processTranscript } from "./functions/processTranscript";
 
+// Phase 2: persistence
+export {
+  loadInvestor,
+  saveEngineRun,
+  getEngineSignals,
+  getEngineTransitions,
+  getEngineRuns,
+  getInvestorState,
+} from "./persistence";
+
 // Config re-exports for diagnostics / admin tooling
 export {
   SIGNAL_REGISTRY,
