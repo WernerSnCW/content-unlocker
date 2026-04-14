@@ -41,7 +41,7 @@ Finite enum. Adding a new side-effect requires code change.
 
 | Side Effect | Behaviour |
 |---|---|
-| `none` | Return to pool under normal rules; intelligence engine decides next step |
+| `none` | No automatic pool rule applied. Contact stays in `called` status. The intelligence engine's NBA, processed from the transcript, sets `callback_date` to the appropriate next-contact date. Without an engine recommendation, the contact sits idle. |
 | `cool_off` | Excluded from dispatch for N days (default 28, configurable) |
 | `immediate_recall` | Re-dispatched onto same call list today, bottom of queue. Does NOT count against `max_call_attempts`. |
 | `callback_1d` / `_2d` / `_3d` / `_7d` | Sets `callback_date = now + N days`; picked up by callback bucket on that date |

@@ -85,7 +85,7 @@ export default function Settings() {
     "does-not-exist": "Number does not exist",
   };
   const SIDE_EFFECT_LABELS: Record<SideEffect, string> = {
-    "none": "None — return to pool",
+    "none": "None — engine decides next step",
     "cool_off": "Cool-off for N days",
     "immediate_recall": "Immediate recall (bottom of today's queue)",
     "callback_1d": "Callback in 1 day",
