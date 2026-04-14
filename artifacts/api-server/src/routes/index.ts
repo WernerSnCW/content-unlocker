@@ -28,6 +28,7 @@ import contactsRouter from "./contacts";
 import campaignsDispatchRouter from "./campaigns-dispatch";
 import aircallRouter from "./aircall";
 import engineRouter from "./engine";
+import eventsRouter from "./events";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(contactsRouter);
 router.use(campaignsDispatchRouter);
 router.use(aircallRouter);
 router.use(engineRouter);
+router.use(eventsRouter);
 
 export default router;

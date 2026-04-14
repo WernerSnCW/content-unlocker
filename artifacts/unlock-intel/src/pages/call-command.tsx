@@ -50,26 +50,24 @@ export default function CallCommand() {
     setDialing(false);
     setViewingIndex(null);
     setCurrentCallIndex(i => i + 1);
+    // The SSE stream (subscribed in a separate effect) refreshes the page
+    // when call.ended/call.tagged are processed by the backend. We do one
+    // immediate loadAll for instant feedback and rely on SSE thereafter.
     loadAll();
+  }, []);
 
-    // Refresh burst: 2 min total. Aircall forces tagging to close the call,
-    // so the lag between hang-up and call.tagged is bounded. Fast polling
-    // for the first minute (catches typical taggers), then slower for the
-    // second minute as a safety net for slower wrap-ups.
-    let refreshCount = 0;
-    const fast = setInterval(() => {
-      refreshCount++;
-      loadAll();
-      if (refreshCount >= 12) clearInterval(fast); // 12 * 5s = 1 min
-    }, 5000);
-    let slowCount = 0;
-    const slow = setInterval(() => {
-      slowCount++;
-      loadAll();
-      if (slowCount >= 4) clearInterval(slow); // 4 * 15s = 1 min
-    }, 15000);
-    // Safety: ensure intervals are cleared after 2 min
-    setTimeout(() => { clearInterval(fast); clearInterval(slow); }, 2 * 60 * 1000);
+  // Subscribe to the live queue-events stream. Refreshes on backend webhook
+  // events without polling.
+  useEffect(() => {
+    const url = `${API_BASE}/events/queue`;
+    const es = new EventSource(url);
+    const onChange = () => { loadAll(); };
+    es.addEventListener("call.ended", onChange);
+    es.addEventListener("call.tagged", onChange);
+    es.addEventListener("untagged-sweep", onChange);
+    es.onerror = () => { /* EventSource auto-reconnects */ };
+    return () => { es.close(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({

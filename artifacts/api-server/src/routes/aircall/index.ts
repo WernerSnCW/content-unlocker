@@ -12,6 +12,7 @@ import {
   type SideEffect,
   type TagMapping as CanonicalTagMapping,
 } from "../../lib/tagModel";
+import { notifyQueueChanged } from "../../lib/queueEvents";
 
 const router: IRouter = Router();
 
@@ -112,33 +113,64 @@ async function findAgentByAircallUser(aircallUserId: number) {
   return agent || null;
 }
 
-// Helper: apply tag outcome + side-effect to contact.
-// Returns the canonical outcome string (for logging) or null if tag unknown.
-async function applyTagOutcome(contactId: string, tagName: string, tagMapping: TagMapping[]) {
+// Resolve a raw Aircall tag to its canonical outcome and side-effect using the
+// configured mapping. Pure function — does not touch the database.
+function resolveTag(tagName: string, tagMapping: TagMapping[]): { outcome: Outcome; sideEffect: SideEffect; mapping: TagMapping } | null {
   const mapping = tagMapping.find(m => m.aircall_tag.toLowerCase() === tagName.toLowerCase());
   if (!mapping) return null;
-
+  const outcome = mapping.outcome as Outcome;
   // Defensive: reject invalid (outcome, side_effect) pairs. Fall back to "none"
   // so we still record the outcome without applying a nonsensical effect.
-  const outcome = mapping.outcome as Outcome;
   const sideEffect: SideEffect = isAllowedCombination(outcome, mapping.side_effect as SideEffect)
     ? (mapping.side_effect as SideEffect)
     : "none";
+  return { outcome, sideEffect, mapping };
+}
 
+// Apply the full set of state mutations for a tagged call, INSIDE a Drizzle
+// transaction. This is the single mutation point for contact state and
+// memberships — call.ended never touches them anymore. The transaction
+// guarantees atomicity so other webhooks can't observe a half-applied state.
+async function applyTaggedOutcomeTx(
+  tx: any,
+  contactId: string,
+  callId: string,
+  tagName: string,
+  resolution: { outcome: Outcome; sideEffect: SideEffect; mapping: TagMapping },
+  coolOffDaysGlobal: number,
+): Promise<void> {
+  const { outcome, sideEffect, mapping } = resolution;
   const now = new Date();
-  const updates: Record<string, any> = { last_call_outcome: outcome };
+  const contactUpdates: Record<string, any> = {
+    last_call_outcome: outcome,
+    call_attempts: sql`${contactsTable.call_attempts} + 1`,
+    dispatch_status: "called", // default; specific side-effects may override below
+  };
 
-  // Apply side-effect
+  // 1. Close the contact's currently-active membership (if any) — this is
+  //    the membership that was active during the just-finished call.
+  const [activeMembership] = await tx.select().from(callListMembershipsTable)
+    .where(and(
+      eq(callListMembershipsTable.contact_id, contactId),
+      isNull(callListMembershipsTable.removed_at),
+    ))
+    .limit(1);
+
+  if (activeMembership) {
+    await tx.update(callListMembershipsTable)
+      .set({ removed_at: now, removal_reason: "called", outcome_at_removal: outcome })
+      .where(eq(callListMembershipsTable.id, activeMembership.id));
+  }
+
+  // 2. Apply side-effect
   switch (sideEffect) {
     case "cool_off": {
-      // Per-tag override takes precedence over the global default
       const override = typeof mapping.cool_off_days === "number" && mapping.cool_off_days >= 1
-        ? mapping.cool_off_days
-        : null;
-      const days = override ?? await getCoolOffDays();
+        ? mapping.cool_off_days : null;
+      const days = override ?? coolOffDaysGlobal;
       const until = new Date(now);
       until.setDate(until.getDate() + days);
-      updates.cool_off_until = until;
+      contactUpdates.cool_off_until = until;
       break;
     }
     case "callback_1d":
@@ -148,67 +180,46 @@ async function applyTagOutcome(contactId: string, tagName: string, tagMapping: T
       const days = callbackDays(sideEffect) || 1;
       const callback = new Date(now);
       callback.setDate(callback.getDate() + days);
-      updates.callback_date = callback;
+      contactUpdates.callback_date = callback;
       break;
     }
     case "global_exclude": {
-      updates.dispatch_status = "archived";
+      contactUpdates.dispatch_status = "archived";
       break;
     }
     case "immediate_recall": {
-      // Re-dispatch the contact onto the same call list they were just on.
-      // Aircall webhook ordering is unreliable — call.tagged may arrive before
-      // call.ended. Handle both orderings:
-      //   (a) call.ended ran first → only a closed membership exists → use it
-      //   (b) tagged runs first → an active membership still exists → close it
-      //       ourselves as 'called', then create the recall on the same list.
-      const memberships = await db.select().from(callListMembershipsTable)
-        .where(eq(callListMembershipsTable.contact_id, contactId))
-        .orderBy(sql`${callListMembershipsTable.removed_at} DESC NULLS LAST`);
-      // First non-null removed_at = most recently closed; falls back to active
-      const closedSource = memberships.find(m => m.removed_at !== null);
-      const activeSource = memberships.find(m => m.removed_at === null);
-
-      // If the call hasn't been formally closed yet, close the active membership
-      // ourselves so the unique-active index allows a new one.
-      if (activeSource) {
-        try {
-          await db.update(callListMembershipsTable)
-            .set({ removed_at: now, removal_reason: "called", outcome_at_removal: tagName })
-            .where(eq(callListMembershipsTable.id, activeSource.id));
-        } catch { /* ignore */ }
-      }
-
-      const sourceForRecall = closedSource ?? activeSource;
-      if (sourceForRecall) {
-        try {
-          await db.insert(callListMembershipsTable).values({
-            call_list_id: sourceForRecall.call_list_id,
-            contact_id: contactId,
-            added_at: now,
-            carried_from_id: sourceForRecall.id,
-          });
-          updates.dispatch_status = "dispatched";
-          updates.dispatch_date = now;
-        } catch (err: any) {
-          // Unique-index race or other transient issue; do not crash the webhook.
-          console.warn("[Aircall Webhook] immediate_recall insert failed:", err?.message);
-        }
+      // Create a fresh active membership on the same call list. We just closed
+      // the previous one above, so the partial unique index is satisfied.
+      if (activeMembership) {
+        await tx.insert(callListMembershipsTable).values({
+          call_list_id: activeMembership.call_list_id,
+          contact_id: contactId,
+          added_at: now,
+          carried_from_id: activeMembership.id,
+        });
+        contactUpdates.dispatch_status = "dispatched";
+        contactUpdates.dispatch_date = now;
       }
       break;
     }
     case "exclude_from_campaign":
     case "none":
-      // No direct side-effect on the contact row. exclude_from_campaign is
-      // enforced by each call list's exclude_outcomes filter at fill time.
       break;
   }
 
-  await db.update(contactsTable)
-    .set(updates)
+  // 3. Apply contact updates atomically.
+  await tx.update(contactsTable)
+    .set(contactUpdates)
     .where(eq(contactsTable.id, contactId));
 
-  return outcome;
+  // 4. Mark the conversation processed and stamp outcome + tag.
+  await tx.update(leadConversationsTable)
+    .set({
+      call_outcome: outcome,
+      tags: sql`COALESCE(${leadConversationsTable.tags}, '[]'::jsonb) || ${JSON.stringify([tagName])}::jsonb`,
+      processed_at: now,
+    })
+    .where(eq(leadConversationsTable.external_id, String(callId)));
 }
 
 // ==================== Webhook Log (in-memory, for debugging) ====================
@@ -319,6 +330,14 @@ router.get("/aircall/webhook", async (_req, res): Promise<void> => {
 
 // ==================== Event Handlers ====================
 
+// call.ended is now INFORMATIONAL ONLY. It records the call happened and stores
+// the conversation row, but does NOT mutate contact state or memberships.
+// All state mutations are owned by handleCallTagged so there is exactly one
+// place that can change dispatch_status / call_attempts / membership state.
+// This eliminates the race conditions caused by concurrent webhook delivery.
+//
+// If call.tagged never arrives, the background sweep (sweepUntaggedConversations)
+// processes the conversation as untagged after a timeout.
 async function handleCallEnded(data: any): Promise<string | null> {
   const callId = data.id || data.call_id;
   const duration = data.duration || 0;
@@ -334,61 +353,31 @@ async function handleCallEnded(data: any): Promise<string | null> {
     return `skipped: Aircall user ${aircallUserId} (${data.user?.name || "unknown"}) is not a registered agent`;
   }
 
-  // Find the contact
+  // Find the contact (used to link the conversation row)
   const contact = await findContactByPhone(rawDigits);
   if (!contact) {
     console.warn(`[Aircall Webhook] call.ended — no contact found for ${rawDigits}`);
     return `no match: ${rawDigits}`;
   }
 
-  // Aircall webhook ordering is NOT guaranteed and webhooks are processed
-  // concurrently. call.tagged may arrive before call.ended and bump
-  // dispatch_status back to 'dispatched' via a side-effect like immediate_recall.
-  // We must use atomic conditional UPDATEs (no read-then-write) so concurrent
-  // tag-handler writes are not clobbered by us.
-  const callStartTime = data.started_at ? new Date(data.started_at * 1000) : new Date();
-  const now = new Date();
-
-  // Always increment call_attempts — this call really happened.
-  await db.update(contactsTable)
-    .set({ call_attempts: sql`${contactsTable.call_attempts} + 1` })
-    .where(eq(contactsTable.id, contact.id));
-
-  // Set dispatch_status='called' ONLY if the contact has not been re-dispatched
-  // since this call started. The WHERE clause is evaluated atomically against
-  // the current row state, so a concurrent recall write can't be clobbered.
-  await db.update(contactsTable)
-    .set({ dispatch_status: "called" })
-    .where(and(
-      eq(contactsTable.id, contact.id),
-      or(
-        isNull(contactsTable.dispatch_date),
-        lte(contactsTable.dispatch_date, callStartTime),
-      ),
-    ));
-
-  // Close memberships that were active when THIS call started. Skip any added
-  // after the call started (those were created by tag handlers — leave them).
-  try {
-    const outcomeSnapshot = tags.length > 0
-      ? (typeof tags[0] === "string" ? tags[0] : tags[0].name)
-      : null;
-    await db.update(callListMembershipsTable)
-      .set({ removed_at: now, removal_reason: "called", outcome_at_removal: outcomeSnapshot })
-      .where(and(
-        eq(callListMembershipsTable.contact_id, contact.id),
-        isNull(callListMembershipsTable.removed_at),
-        lte(callListMembershipsTable.added_at, callStartTime),
-      ));
-  } catch { /* ignore membership close failures */ }
-
-  // Store conversation record (idempotent: check for existing by external_id)
-  const [existing] = await db.select({ id: leadConversationsTable.id })
-    .from(leadConversationsTable)
+  // Idempotent upsert of the conversation record. Tagged may have created
+  // a stub already; in that case we just enrich it with call-data fields.
+  const [existing] = await db.select().from(leadConversationsTable)
     .where(eq(leadConversationsTable.external_id, String(callId)))
     .limit(1);
 
-  if (!existing) {
+  if (existing) {
+    await db.update(leadConversationsTable)
+      .set({
+        contact_id: existing.contact_id || contact.id,
+        lead_id: existing.lead_id || contact.lead_id || null,
+        duration_seconds: duration,
+        agent_name: existing.agent_name || agent.name,
+        agent_notes: existing.agent_notes || agentNotes,
+        direction: direction === "inbound" ? "inbound" : "outbound",
+      })
+      .where(eq(leadConversationsTable.id, existing.id));
+  } else {
     await db.insert(leadConversationsTable).values({
       contact_id: contact.id,
       lead_id: contact.lead_id || null,
@@ -396,69 +385,101 @@ async function handleCallEnded(data: any): Promise<string | null> {
       external_id: String(callId),
       direction: direction === "inbound" ? "inbound" : "outbound",
       duration_seconds: duration,
-      agent_name: agent?.name || "Unknown",
+      agent_name: agent.name,
       agent_notes: agentNotes,
       tags: tags.map((t: any) => t.name || t),
-      call_outcome: null, // Set when tags arrive
+      call_outcome: null, // populated by handleCallTagged
       conversation_date: new Date(),
     });
   }
 
-  // If tags already present on the call, process them
-  if (tags.length > 0) {
-    const tagMapping = await getTagMapping();
-    for (const tag of tags) {
-      const tagName = typeof tag === "string" ? tag : tag.name;
-      if (tagName) {
-        const outcome = await applyTagOutcome(contact.id, tagName, tagMapping);
-        if (outcome) {
-          // Also update the conversation record
-          await db.update(leadConversationsTable)
-            .set({ call_outcome: outcome })
-            .where(eq(leadConversationsTable.external_id, String(callId)));
-          break; // First matching tag wins
-        }
-      }
-    }
-  }
-  return `${contact.first_name} ${contact.last_name} (${contact.id})`;
+  // Notify any SSE subscribers that something on the queue might have changed
+  // (some clients update on call.ended for early UI feedback).
+  notifyQueueChanged({ event: "call.ended", contactId: contact.id, callId: String(callId) });
+
+  return `recorded: ${contact.first_name} ${contact.last_name} (awaiting tag)`;
 }
 
+// call.tagged is the SOLE owner of state mutations. It runs everything inside
+// a transaction so concurrent webhooks can't race against it. Order-independent:
+// works whether call.ended has been processed before, after, or never (a stub
+// conversation is created here if needed).
 async function handleCallTagged(data: any): Promise<string | null> {
   const callId = data.call_id || data.id;
   const tag = data.tag;
-
-  if (!tag) return null;
-
+  if (!tag) return "no tag in payload";
   const tagName = typeof tag === "string" ? tag : tag.name;
-  if (!tagName) return null;
-
-  // Only process tags for calls we already recorded — the conversation record
-  // only exists if call.ended passed the agent filter.
+  if (!tagName) return "no tag name";
   if (!callId) return "no call_id";
-  const [conv] = await db.select().from(leadConversationsTable)
-    .where(eq(leadConversationsTable.external_id, String(callId)))
-    .limit(1);
-  if (!conv?.contact_id) {
-    return `skipped: no conversation record for call ${callId} (not our agent or call.ended not yet received)`;
-  }
-  const [contact] = await db.select().from(contactsTable)
-    .where(eq(contactsTable.id, conv.contact_id))
-    .limit(1);
-  if (!contact) {
-    return `no contact for conversation ${conv.id}`;
-  }
 
   const tagMapping = await getTagMapping();
-  const outcome = await applyTagOutcome(contact.id, tagName, tagMapping);
-
-  // Update conversation record too
-  if (outcome && callId) {
-    await db.update(leadConversationsTable)
-      .set({ call_outcome: outcome, tags: sql`COALESCE(${leadConversationsTable.tags}, '[]'::jsonb) || ${JSON.stringify([tagName])}::jsonb` })
-      .where(eq(leadConversationsTable.external_id, String(callId)));
+  const resolution = resolveTag(tagName, tagMapping);
+  if (!resolution) {
+    return `unknown tag: "${tagName}" (not in tag_mapping)`;
   }
-  return `${contact.first_name} ${contact.last_name} → ${outcome || tagName}`;
+
+  // Find an existing conversation record (created by call.ended)
+  let [conv] = await db.select().from(leadConversationsTable)
+    .where(eq(leadConversationsTable.external_id, String(callId)))
+    .limit(1);
+
+  let contactId = conv?.contact_id ?? null;
+
+  // If no conversation exists yet (tagged arrived first), look up the call
+  // via Aircall API to find the contact and create a stub.
+  if (!conv) {
+    const auth = await getAircallAuth();
+    if (!auth) return `no conversation for ${callId} AND no Aircall API credentials`;
+    const callResp = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
+      headers: { Authorization: auth },
+    });
+    if (!callResp.ok) {
+      return `no conversation for ${callId} AND call fetch returned ${callResp.status}`;
+    }
+    const callData = await callResp.json() as any;
+    const call = callData?.call || callData;
+    const agent = await findAgentByAircallUser(call?.user?.id);
+    if (!agent) {
+      return `skipped: Aircall user ${call?.user?.id} (${call?.user?.name || "unknown"}) is not a registered agent`;
+    }
+    const phone = extractPhone(call);
+    const contact = await findContactByPhone(phone);
+    if (!contact) return `no contact for phone ${phone}`;
+    const [inserted] = await db.insert(leadConversationsTable).values({
+      contact_id: contact.id,
+      lead_id: contact.lead_id || null,
+      source: "aircall",
+      external_id: String(callId),
+      direction: call.direction === "inbound" ? "inbound" : "outbound",
+      duration_seconds: call.duration ?? null,
+      agent_name: agent.name,
+      tags: [tagName],
+      call_outcome: null,
+      conversation_date: new Date(),
+    }).returning();
+    conv = inserted;
+    contactId = contact.id;
+  }
+
+  if (!contactId) return `no contact_id on conversation ${conv?.id}`;
+
+  // Idempotent: if this conversation has already been processed, skip.
+  if (conv?.processed_at) {
+    return `already processed at ${conv.processed_at.toISOString()}`;
+  }
+
+  const coolOffDaysGlobal = await getCoolOffDays();
+
+  // Single transaction: close membership + apply side-effect + update contact
+  // + update conversation. All-or-nothing.
+  await db.transaction(async (tx) => {
+    await applyTaggedOutcomeTx(tx, contactId!, String(callId), tagName, resolution, coolOffDaysGlobal);
+  });
+
+  // Notify SSE subscribers — the queue may have changed (recall, archive, etc.)
+  notifyQueueChanged({ event: "call.tagged", contactId, callId: String(callId) });
+
+  return `tagged → ${resolution.outcome} (${resolution.sideEffect})`;
 }
 
 async function handleCallCommented(data: any) {
@@ -718,5 +739,83 @@ async function handleSummaryCreated(data: any): Promise<string> {
   });
   return `stored summary (${summaryText.length} chars) on new conversation for ${contact.first_name} ${contact.last_name}`;
 }
+
+// ==================== Background Sweep ====================
+// Fallback for the rare case where call.tagged never arrives. Treats any
+// conversation that has a duration_seconds (i.e. call.ended ran) but no
+// processed_at after a timeout as "untagged" and applies a default close.
+
+const UNTAGGED_TIMEOUT_MIN = 10;
+
+export async function sweepUntaggedConversations(): Promise<{ swept: number }> {
+  const cutoff = new Date(Date.now() - UNTAGGED_TIMEOUT_MIN * 60_000);
+
+  const stale = await db.select().from(leadConversationsTable)
+    .where(and(
+      isNull(leadConversationsTable.processed_at),
+      eq(leadConversationsTable.source, "aircall"),
+      lte(leadConversationsTable.created_at, cutoff),
+    ));
+
+  let swept = 0;
+  for (const conv of stale) {
+    if (!conv.contact_id) continue;
+    try {
+      await db.transaction(async (tx) => {
+        const now = new Date();
+        // Close the active membership as 'untagged'
+        const [activeMembership] = await tx.select().from(callListMembershipsTable)
+          .where(and(
+            eq(callListMembershipsTable.contact_id, conv.contact_id!),
+            isNull(callListMembershipsTable.removed_at),
+          ))
+          .limit(1);
+        if (activeMembership) {
+          await tx.update(callListMembershipsTable)
+            .set({ removed_at: now, removal_reason: "untagged-timeout", outcome_at_removal: null })
+            .where(eq(callListMembershipsTable.id, activeMembership.id));
+        }
+        // Increment attempts and mark contact called
+        await tx.update(contactsTable).set({
+          dispatch_status: "called",
+          call_attempts: sql`${contactsTable.call_attempts} + 1`,
+        }).where(eq(contactsTable.id, conv.contact_id!));
+        // Mark conversation processed
+        await tx.update(leadConversationsTable)
+          .set({ processed_at: now, call_outcome: "untagged" })
+          .where(eq(leadConversationsTable.id, conv.id));
+      });
+      swept++;
+    } catch (err: any) {
+      console.warn(`[Aircall sweep] failed to process conversation ${conv.id}:`, err?.message);
+    }
+  }
+
+  if (swept > 0) {
+    notifyQueueChanged({ event: "untagged-sweep" });
+  }
+  return { swept };
+}
+
+// Schedule the sweep to run periodically in-process. Idempotent — safe to call
+// multiple times during boot; will only register once.
+let sweepInterval: ReturnType<typeof setInterval> | null = null;
+export function startUntaggedSweep(): void {
+  if (sweepInterval) return;
+  // Run every 5 minutes
+  sweepInterval = setInterval(() => {
+    sweepUntaggedConversations().catch(err => console.warn("[Aircall sweep] error:", err?.message));
+  }, 5 * 60 * 1000);
+}
+
+// Manual trigger for diagnostics: POST /aircall/sweep-untagged
+router.post("/aircall/sweep-untagged", async (_req, res): Promise<void> => {
+  try {
+    const result = await sweepUntaggedConversations();
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 export default router;

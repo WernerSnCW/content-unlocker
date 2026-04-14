@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./lib/dataManager";
 import { loadConstants } from "./lib/complianceConstantsService";
+import { startUntaggedSweep } from "./routes/aircall";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +26,8 @@ seedDatabase()
       process.exit(1);
     }
     logger.info({ count: constants.length }, "Compliance constants loaded into cache");
+    startUntaggedSweep();
+    logger.info("Untagged-conversation sweep scheduled (every 5 min)");
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
