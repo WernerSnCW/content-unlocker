@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
-import { eq, or, sql, and, isNull } from "drizzle-orm";
+import { eq, or, sql, and, isNull, lte } from "drizzle-orm";
 import { loadInvestor, processTranscript, saveEngineRun } from "../../engine/v2";
 import type { CallType } from "../../engine/v2";
 import {
@@ -157,21 +157,43 @@ async function applyTagOutcome(contactId: string, tagName: string, tagMapping: T
     }
     case "immediate_recall": {
       // Re-dispatch the contact onto the same call list they were just on.
-      // Find the most recently closed membership (closed by call.ended) and
-      // open a fresh active one on the same list.
-      const [lastMembership] = await db.select().from(callListMembershipsTable)
+      // Aircall webhook ordering is unreliable — call.tagged may arrive before
+      // call.ended. Handle both orderings:
+      //   (a) call.ended ran first → only a closed membership exists → use it
+      //   (b) tagged runs first → an active membership still exists → close it
+      //       ourselves as 'called', then create the recall on the same list.
+      const memberships = await db.select().from(callListMembershipsTable)
         .where(eq(callListMembershipsTable.contact_id, contactId))
-        .orderBy(sql`${callListMembershipsTable.removed_at} DESC NULLS LAST`)
-        .limit(1);
-      if (lastMembership) {
-        await db.insert(callListMembershipsTable).values({
-          call_list_id: lastMembership.call_list_id,
-          contact_id: contactId,
-          added_at: now,
-          carried_from_id: lastMembership.id,
-        });
-        updates.dispatch_status = "dispatched";
-        updates.dispatch_date = now;
+        .orderBy(sql`${callListMembershipsTable.removed_at} DESC NULLS LAST`);
+      // First non-null removed_at = most recently closed; falls back to active
+      const closedSource = memberships.find(m => m.removed_at !== null);
+      const activeSource = memberships.find(m => m.removed_at === null);
+
+      // If the call hasn't been formally closed yet, close the active membership
+      // ourselves so the unique-active index allows a new one.
+      if (activeSource) {
+        try {
+          await db.update(callListMembershipsTable)
+            .set({ removed_at: now, removal_reason: "called", outcome_at_removal: tagName })
+            .where(eq(callListMembershipsTable.id, activeSource.id));
+        } catch { /* ignore */ }
+      }
+
+      const sourceForRecall = closedSource ?? activeSource;
+      if (sourceForRecall) {
+        try {
+          await db.insert(callListMembershipsTable).values({
+            call_list_id: sourceForRecall.call_list_id,
+            contact_id: contactId,
+            added_at: now,
+            carried_from_id: sourceForRecall.id,
+          });
+          updates.dispatch_status = "dispatched";
+          updates.dispatch_date = now;
+        } catch (err: any) {
+          // Unique-index race or other transient issue; do not crash the webhook.
+          console.warn("[Aircall Webhook] immediate_recall insert failed:", err?.message);
+        }
       }
       break;
     }
@@ -319,18 +341,38 @@ async function handleCallEnded(data: any): Promise<string | null> {
     return `no match: ${rawDigits}`;
   }
 
-  // Update contact: mark as called, increment attempts
+  // Aircall webhook ordering is NOT guaranteed. call.tagged often arrives
+  // before call.ended. If the tag handler has already run a side-effect like
+  // immediate_recall, it will have:
+  //   - bumped dispatch_status back to 'dispatched'
+  //   - created a new active membership (with added_at AFTER this call's
+  //     started_at)
+  // We must not undo that. Use the call's started_at timestamp to scope our
+  // updates to state that belongs to THIS call only.
+  const callStartTime = data.started_at ? new Date(data.started_at * 1000) : new Date();
+
+  // Always increment call_attempts (this call really happened).
+  // Only set dispatch_status='called' if the contact has not been re-dispatched
+  // since this call started.
+  const [contactRow] = await db.select().from(contactsTable)
+    .where(eq(contactsTable.id, contact.id))
+    .limit(1);
+  const reDispatchedSinceCall = contactRow?.dispatch_date && contactRow.dispatch_date > callStartTime;
+
   await db.update(contactsTable).set({
-    dispatch_status: "called",
+    ...(reDispatchedSinceCall ? {} : { dispatch_status: "called" }),
     call_attempts: sql`${contactsTable.call_attempts} + 1`,
   }).where(eq(contactsTable.id, contact.id));
 
-  // Close the active call-list membership (if any) — snapshot the outcome
+  // Close the membership that was active when THIS call started.
+  // Skip any membership added after the call (those were created by tag
+  // handlers running ahead of us — leave them alone).
   try {
     const [activeMembership] = await db.select().from(callListMembershipsTable)
       .where(and(
         eq(callListMembershipsTable.contact_id, contact.id),
         isNull(callListMembershipsTable.removed_at),
+        lte(callListMembershipsTable.added_at, callStartTime),
       ))
       .limit(1);
     if (activeMembership) {
