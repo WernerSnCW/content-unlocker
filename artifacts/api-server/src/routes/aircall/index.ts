@@ -242,15 +242,18 @@ async function handleCallEnded(data: any): Promise<string | null> {
   const tags = data.tags || [];
   const agentNotes = data.comments || data.note || null;
 
+  // Only process calls made by agents registered in our app
+  const agent = await findAgentByAircallUser(aircallUserId);
+  if (!agent) {
+    return `skipped: Aircall user ${aircallUserId} (${data.user?.name || "unknown"}) is not a registered agent`;
+  }
+
   // Find the contact
   const contact = await findContactByPhone(rawDigits);
   if (!contact) {
     console.warn(`[Aircall Webhook] call.ended — no contact found for ${rawDigits}`);
     return `no match: ${rawDigits}`;
   }
-
-  // Find the agent
-  const agent = await findAgentByAircallUser(aircallUserId);
 
   // Update contact: mark as called, increment attempts
   await db.update(contactsTable).set({
@@ -328,43 +331,20 @@ async function handleCallTagged(data: any): Promise<string | null> {
   const tagName = typeof tag === "string" ? tag : tag.name;
   if (!tagName) return null;
 
-  // 1. Try phone number from the webhook payload
-  let contact = await findContactByPhone(extractPhone(data));
-
-  // 2. Try finding via existing conversation record
-  if (!contact && callId) {
-    const [conv] = await db.select().from(leadConversationsTable)
-      .where(eq(leadConversationsTable.external_id, String(callId)))
-      .limit(1);
-    if (conv?.contact_id) {
-      const [c] = await db.select().from(contactsTable)
-        .where(eq(contactsTable.id, conv.contact_id))
-        .limit(1);
-      contact = c || null;
-    }
+  // Only process tags for calls we already recorded — the conversation record
+  // only exists if call.ended passed the agent filter.
+  if (!callId) return "no call_id";
+  const [conv] = await db.select().from(leadConversationsTable)
+    .where(eq(leadConversationsTable.external_id, String(callId)))
+    .limit(1);
+  if (!conv?.contact_id) {
+    return `skipped: no conversation record for call ${callId} (not our agent or call.ended not yet received)`;
   }
-
-  // 3. Fallback: fetch call details from Aircall API for the phone number
-  if (!contact && callId) {
-    const auth = await getAircallAuth();
-    if (auth) {
-      try {
-        const resp = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
-          headers: { Authorization: auth },
-        });
-        if (resp.ok) {
-          const callData = await resp.json() as any;
-          contact = await findContactByPhone(extractPhone(callData?.call || callData));
-        }
-      } catch (err: any) {
-        console.warn(`[Aircall Webhook] call.tagged — API fallback failed: ${err.message}`);
-      }
-    }
-  }
-
+  const [contact] = await db.select().from(contactsTable)
+    .where(eq(contactsTable.id, conv.contact_id))
+    .limit(1);
   if (!contact) {
-    console.warn(`[Aircall Webhook] call.tagged — no contact found for call ${callId}`);
-    return `no match: call ${callId}`;
+    return `no contact for conversation ${conv.id}`;
   }
 
   const tagMapping = await getTagMapping();
@@ -455,7 +435,9 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
 
   if (updated) return `${summary} (updated existing)`;
 
-  // No conversation record yet — call.ended might not have arrived first
+  // No conversation record yet — call.ended might not have arrived first.
+  // Fetch call data so we can verify the call was made by one of our agents
+  // before creating a record.
   const callResponse = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
     headers: { Authorization: auth },
   });
@@ -463,7 +445,13 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
     return `no existing conversation AND call fetch returned ${callResponse.status}`;
   }
   const callData = await callResponse.json() as any;
-  const rawDigits = extractPhone(callData?.call || callData);
+  const call = callData?.call || callData;
+  const aircallUserId = call?.user?.id;
+  const agent = await findAgentByAircallUser(aircallUserId);
+  if (!agent) {
+    return `skipped: Aircall user ${aircallUserId} (${call?.user?.name || "unknown"}) is not a registered agent`;
+  }
+  const rawDigits = extractPhone(call);
   const contact = await findContactByPhone(rawDigits);
   if (!contact) return `no existing conversation AND no contact for phone ${rawDigits}`;
   await db.insert(leadConversationsTable).values({
@@ -472,6 +460,7 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
     source: "aircall",
     external_id: String(callId),
     direction: "outbound",
+    agent_name: agent.name,
     transcript_text: transcriptText || null,
     summary: aircallSummary || null,
     conversation_date: new Date(),
