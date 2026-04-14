@@ -211,9 +211,9 @@ router.post("/aircall/webhook", async (req, res): Promise<void> => {
       logWebhook(event, "processed", null, data);
       res.status(200).json({ status: "processed", event: "call.commented" });
     } else if (event === "transcription.created") {
-      await handleTranscriptionCreated(data);
-      logWebhook(event, "processed", null, data);
-      res.status(200).json({ status: "processed", event: "transcription.created" });
+      const result = await handleTranscriptionCreated(data);
+      logWebhook(event, "processed", result || null, data);
+      res.status(200).json({ status: "processed", event: "transcription.created", detail: result });
     } else {
       logWebhook(event, "ignored", null, data);
       res.status(200).json({ status: "ignored", event });
@@ -395,27 +395,20 @@ async function handleCallCommented(data: any) {
   }
 }
 
-async function handleTranscriptionCreated(data: any) {
+async function handleTranscriptionCreated(data: any): Promise<string> {
   const callId = data.call_id || data.id;
-  if (!callId) {
-    console.warn("[Aircall Webhook] transcription.created — no call_id");
-    return;
-  }
+  if (!callId) return "no call_id in payload";
 
   // Fetch the transcript from Aircall API
   const auth = await getAircallAuth();
-  if (!auth) {
-    console.warn("[Aircall Webhook] transcription.created — no Aircall API credentials configured");
-    return;
-  }
+  if (!auth) return "no Aircall API credentials configured";
 
-  const response = await fetch(`https://api.aircall.io/v1/calls/${callId}/transcription`, {
-    headers: { Authorization: auth },
-  });
+  const url = `https://api.aircall.io/v1/calls/${callId}/transcription`;
+  const response = await fetch(url, { headers: { Authorization: auth } });
 
   if (!response.ok) {
-    console.warn(`[Aircall Webhook] transcription.created — Aircall API returned ${response.status} for call ${callId}`);
-    return;
+    const body = await response.text().catch(() => "");
+    return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
   }
 
   const transcriptionData = await response.json() as any;
@@ -442,8 +435,9 @@ async function handleTranscriptionCreated(data: any) {
                          transcriptionData?.data?.summary || null;
 
   if (!transcriptText && !aircallSummary) {
-    console.warn(`[Aircall Webhook] transcription.created — empty transcript and summary for call ${callId}`);
-    return;
+    // Include the top-level keys of the response so we can diagnose shape mismatches
+    const keys = Object.keys(transcriptionData || {}).join(",");
+    return `empty transcript+summary; response keys: [${keys}]`;
   }
 
   // Build the update payload
@@ -451,38 +445,38 @@ async function handleTranscriptionCreated(data: any) {
   if (transcriptText) conversationUpdate.transcript_text = transcriptText;
   if (aircallSummary) conversationUpdate.summary = aircallSummary;
 
+  const summary = `stored${aircallSummary ? " transcript+summary" : " transcript"} (${transcriptText.length} chars)`;
+
   // Update the conversation record with transcript and summary
   const [updated] = await db.update(leadConversationsTable)
     .set(conversationUpdate)
     .where(eq(leadConversationsTable.external_id, String(callId)))
     .returning({ id: leadConversationsTable.id });
 
-  if (updated) {
-    console.log(`[Aircall Webhook] transcription.created — stored transcript${aircallSummary ? " + summary" : ""} for call ${callId}`);
-  } else {
-    // No conversation record yet — call.ended might not have arrived first
-    const callResponse = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
-      headers: { Authorization: auth },
-    });
-    if (callResponse.ok) {
-      const callData = await callResponse.json() as any;
-      const rawDigits = extractPhone(callData?.call || callData);
-      const contact = await findContactByPhone(rawDigits);
-      if (contact) {
-        await db.insert(leadConversationsTable).values({
-          contact_id: contact.id,
-          lead_id: contact.lead_id || null,
-          source: "aircall",
-          external_id: String(callId),
-          direction: "outbound",
-          transcript_text: transcriptText || null,
-          summary: aircallSummary || null,
-          conversation_date: new Date(),
-        });
-        console.log(`[Aircall Webhook] transcription.created — created conversation with transcript${aircallSummary ? " + summary" : ""} for call ${callId}`);
-      }
-    }
+  if (updated) return `${summary} (updated existing)`;
+
+  // No conversation record yet — call.ended might not have arrived first
+  const callResponse = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
+    headers: { Authorization: auth },
+  });
+  if (!callResponse.ok) {
+    return `no existing conversation AND call fetch returned ${callResponse.status}`;
   }
+  const callData = await callResponse.json() as any;
+  const rawDigits = extractPhone(callData?.call || callData);
+  const contact = await findContactByPhone(rawDigits);
+  if (!contact) return `no existing conversation AND no contact for phone ${rawDigits}`;
+  await db.insert(leadConversationsTable).values({
+    contact_id: contact.id,
+    lead_id: contact.lead_id || null,
+    source: "aircall",
+    external_id: String(callId),
+    direction: "outbound",
+    transcript_text: transcriptText || null,
+    summary: aircallSummary || null,
+    conversation_date: new Date(),
+  });
+  return `${summary} (new conversation, contact ${contact.first_name} ${contact.last_name})`;
 }
 
 export default router;
