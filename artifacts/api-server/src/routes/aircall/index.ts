@@ -131,7 +131,11 @@ async function applyTagOutcome(contactId: string, tagName: string, tagMapping: T
   // Apply side-effect
   switch (sideEffect) {
     case "cool_off": {
-      const days = await getCoolOffDays();
+      // Per-tag override takes precedence over the global default
+      const override = typeof mapping.cool_off_days === "number" && mapping.cool_off_days >= 1
+        ? mapping.cool_off_days
+        : null;
+      const days = override ?? await getCoolOffDays();
       const until = new Date(now);
       until.setDate(until.getDate() + days);
       updates.cool_off_until = until;

@@ -114,6 +114,10 @@ export interface TagMapping {
   aircall_tag: string;
   outcome: Outcome;
   side_effect: SideEffect;
+  // Optional per-mapping override for the cool_off side-effect. Only meaningful
+  // when side_effect === "cool_off"; ignored otherwise. Undefined/null = use
+  // the global cool_off_days value from integration_configs.
+  cool_off_days?: number | null;
 }
 
 // Default mapping seeded when no config is present.

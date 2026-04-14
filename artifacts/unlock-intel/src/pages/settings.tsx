@@ -62,7 +62,13 @@ export default function Settings() {
     | "none" | "cool_off" | "immediate_recall"
     | "callback_1d" | "callback_2d" | "callback_3d" | "callback_7d"
     | "exclude_from_campaign" | "global_exclude";
-  interface TagMapping { aircall_tag: string; outcome: Outcome; side_effect: SideEffect; }
+  interface TagMapping {
+    aircall_tag: string;
+    outcome: Outcome;
+    side_effect: SideEffect;
+    // Only meaningful when side_effect === "cool_off". Null/undefined = use global.
+    cool_off_days?: number | null;
+  }
 
   const OUTCOMES: Outcome[] = [
     "interested", "no-interest", "no-answer", "callback-requested",
@@ -400,7 +406,7 @@ export default function Settings() {
                   className="h-8 w-24"
                 />
                 <p className="text-xs text-muted-foreground">
-                  How long a contact is excluded when a tag triggers a cool-off side-effect.
+                  Global default. Individual tag mappings can override this below.
                 </p>
               </div>
             </CardContent>
@@ -423,6 +429,7 @@ export default function Settings() {
                     <TableHead>Aircall Tag</TableHead>
                     <TableHead>Maps to Outcome</TableHead>
                     <TableHead>Side Effect</TableHead>
+                    <TableHead className="w-28">Cool-off (days)</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -475,6 +482,26 @@ export default function Settings() {
                             )}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell>
+                        {mapping.side_effect === "cool_off" ? (
+                          <Input
+                            type="number"
+                            min={1}
+                            max={365}
+                            placeholder={String(coolOffDays)}
+                            value={mapping.cool_off_days ?? ""}
+                            onChange={e => {
+                              const v = e.target.value;
+                              const updated = [...tagMappings];
+                              updated[i] = { ...updated[i], cool_off_days: v === "" ? null : Math.max(1, Math.min(365, parseInt(v) || 1)) };
+                              setTagMappings(updated);
+                            }}
+                            className="h-8"
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
