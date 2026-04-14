@@ -168,12 +168,16 @@ router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
 });
 
 // POST /call-lists/carry-over — re-date stale contacts to today so they join the new queue
+// Optional body: { target_campaign_name } — reassigns stale contacts to the new list
 router.post("/call-lists/carry-over", async (req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const targetName = req.body?.target_campaign_name?.toString().trim();
+    const updates: Record<string, any> = { dispatch_date: new Date() };
+    if (targetName) updates.campaign_name = targetName;
     const result = await db.update(contactsTable)
-      .set({ dispatch_date: new Date() })
+      .set(updates)
       .where(and(
         eq(contactsTable.dispatch_status, "dispatched"),
         sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,

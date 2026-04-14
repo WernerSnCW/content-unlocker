@@ -175,14 +175,7 @@ export default function CallCommand() {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      // If carrying over, re-date stale contacts to today first
-      let carriedOver = 0;
-      if (carryOver && staleCount > 0) {
-        const carryRes = await fetch(`${API_BASE}/call-lists/carry-over`, { method: "POST" });
-        const carryData = await carryRes.json();
-        carriedOver = carryData.carried_over || 0;
-      }
-
+      // Create the list first so we can reassign stale contacts to it by name
       const res = await fetch(`${API_BASE}/call-lists`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -194,6 +187,18 @@ export default function CallCommand() {
       });
       const data = await res.json();
       const newCallList = data.campaign;
+
+      // If carrying over, re-date stale contacts AND reassign to the new list's name
+      let carriedOver = 0;
+      if (carryOver && staleCount > 0) {
+        const carryRes = await fetch(`${API_BASE}/call-lists/carry-over`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_campaign_name: newName.trim() }),
+        });
+        const carryData = await carryRes.json();
+        carriedOver = carryData.carried_over || 0;
+      }
 
       // Fill remaining quota with fresh contacts
       if (newCallList?.id) {
