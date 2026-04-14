@@ -52,24 +52,24 @@ export default function CallCommand() {
     setCurrentCallIndex(i => i + 1);
     loadAll();
 
-    // Refresh burst tuned for slow tagging: operators may take 1-3 min to
-    // pick a tag in Aircall's wrap-up screen, and the immediate_recall side
-    // effect only fires after that. Poll every 5s for the first minute
-    // (catches fast tags), then every 15s for another 4 minutes.
+    // Refresh burst: 2 min total. Aircall forces tagging to close the call,
+    // so the lag between hang-up and call.tagged is bounded. Fast polling
+    // for the first minute (catches typical taggers), then slower for the
+    // second minute as a safety net for slower wrap-ups.
     let refreshCount = 0;
     const fast = setInterval(() => {
       refreshCount++;
       loadAll();
-      if (refreshCount >= 12) clearInterval(fast);
+      if (refreshCount >= 12) clearInterval(fast); // 12 * 5s = 1 min
     }, 5000);
     let slowCount = 0;
     const slow = setInterval(() => {
       slowCount++;
       loadAll();
-      if (slowCount >= 16) clearInterval(slow); // 16 * 15s = 4 min
+      if (slowCount >= 4) clearInterval(slow); // 4 * 15s = 1 min
     }, 15000);
-    // Safety: ensure intervals are cleared after 5 min total
-    setTimeout(() => { clearInterval(fast); clearInterval(slow); }, 5 * 60 * 1000);
+    // Safety: ensure intervals are cleared after 2 min
+    setTimeout(() => { clearInterval(fast); clearInterval(slow); }, 2 * 60 * 1000);
   }, []);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
