@@ -120,9 +120,18 @@ router.post("/settings/integrations/aircall/test-connection", async (req, res): 
         company: data.company?.name || "Connected",
       });
     } else {
+      const body = await response.text().catch(() => "");
       res.json({
         success: false,
         error: `Aircall returned ${response.status}: ${response.statusText}`,
+        aircall_status: response.status,
+        aircall_body: body.slice(0, 400),
+        api_id_prefix: apiId ? apiId.slice(0, 8) + "…" : null,
+        hint: response.status === 401 ? "Credentials rejected — regenerate the API key in Aircall dashboard and re-save here"
+            : response.status === 403 ? "Forbidden — key lacks required scope or plan feature not enabled"
+            : response.status === 429 ? "Rate limited — wait a minute and try again"
+            : response.status >= 500 ? "Aircall service error — retry later"
+            : "Check credentials",
       });
     }
   } catch (err: any) {
@@ -156,7 +165,19 @@ router.get("/settings/integrations/aircall/users", async (req, res): Promise<voi
     });
 
     if (!response.ok) {
-      res.status(502).json({ error: `Aircall returned ${response.status}` });
+      const body = await response.text().catch(() => "");
+      // Surface the exact Aircall error so we can diagnose (401 vs 403 vs 429 vs 5xx)
+      res.status(502).json({
+        error: `Aircall returned ${response.status}`,
+        aircall_status: response.status,
+        aircall_body: body.slice(0, 400),
+        api_id_prefix: apiId ? apiId.slice(0, 8) + "…" : null,
+        hint: response.status === 401 ? "Credentials rejected — check api_id/api_token or regenerate in Aircall dashboard"
+            : response.status === 403 ? "Forbidden — key lacks required scope or plan feature not enabled"
+            : response.status === 429 ? "Rate limited — try again shortly"
+            : response.status >= 500 ? "Aircall service error — retry later"
+            : "Unexpected error",
+      });
       return;
     }
 

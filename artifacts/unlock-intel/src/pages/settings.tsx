@@ -210,13 +210,28 @@ export default function Settings() {
     }
   };
 
+  const [aircallUsersError, setAircallUsersError] = useState<string | null>(null);
+
   const fetchAircallUsers = async () => {
     setUsersLoading(true);
+    setAircallUsersError(null);
     try {
       const res = await fetch(`${API_BASE}/settings/integrations/aircall/users`);
       const data = await res.json();
-      setAircallUsers(data.users || []);
-    } catch { /* ignore */ }
+      if (!res.ok) {
+        const bits: string[] = [];
+        if (data.aircall_status) bits.push(`HTTP ${data.aircall_status}`);
+        if (data.api_id_prefix) bits.push(`key ${data.api_id_prefix}`);
+        if (data.hint) bits.push(data.hint);
+        if (data.aircall_body) bits.push(`Aircall: ${data.aircall_body}`);
+        setAircallUsersError(bits.join(" · "));
+        setAircallUsers([]);
+      } else {
+        setAircallUsers(data.users || []);
+      }
+    } catch (err: any) {
+      setAircallUsersError(err.message || "Failed to fetch");
+    }
     finally { setUsersLoading(false); }
   };
 
@@ -547,6 +562,12 @@ export default function Settings() {
               </div>
             </CardHeader>
             <CardContent>
+              {aircallUsersError && (
+                <div className="mb-3 p-3 border border-destructive/40 bg-destructive/5 rounded text-xs text-destructive">
+                  <div className="font-medium mb-1">Fetch Aircall Users failed</div>
+                  <div className="whitespace-pre-wrap break-all">{aircallUsersError}</div>
+                </div>
+              )}
               {agentsLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground py-4"><Loader2 className="w-4 h-4 animate-spin" /> Loading...</div>
               ) : agents.length === 0 ? (
