@@ -214,6 +214,10 @@ router.post("/aircall/webhook", async (req, res): Promise<void> => {
       const result = await handleTranscriptionCreated(data);
       logWebhook(event, "processed", result || null, data);
       res.status(200).json({ status: "processed", event: "transcription.created", detail: result });
+    } else if (event === "summary.created") {
+      const result = await handleSummaryCreated(data);
+      logWebhook(event, "processed", result || null, data);
+      res.status(200).json({ status: "processed", event: "summary.created", detail: result });
     } else {
       logWebhook(event, "ignored", null, data);
       res.status(200).json({ status: "ignored", event });
@@ -466,6 +470,69 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
     conversation_date: new Date(),
   });
   return `${summary} (new conversation, contact ${contact.first_name} ${contact.last_name})`;
+}
+
+async function handleSummaryCreated(data: any): Promise<string> {
+  const callId = data.call_id || data.id;
+  if (!callId) return "no call_id in payload";
+
+  const auth = await getAircallAuth();
+  if (!auth) return "no Aircall API credentials configured";
+
+  const url = `https://api.aircall.io/v1/calls/${callId}/summary`;
+  const response = await fetch(url, { headers: { Authorization: auth } });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
+  }
+
+  const summaryData = await response.json() as any;
+  // Aircall may return the summary under various keys — try the common ones
+  const summaryText: string =
+    summaryData?.summary?.content ||
+    summaryData?.summary?.text ||
+    summaryData?.content ||
+    summaryData?.text ||
+    (typeof summaryData?.summary === "string" ? summaryData.summary : "") ||
+    "";
+
+  if (!summaryText) {
+    const keys = Object.keys(summaryData || {}).join(",");
+    return `empty summary; response keys: [${keys}]`;
+  }
+
+  // Update existing conversation record (only exists if call.ended already passed agent filter)
+  const [updated] = await db.update(leadConversationsTable)
+    .set({ summary: summaryText })
+    .where(eq(leadConversationsTable.external_id, String(callId)))
+    .returning({ id: leadConversationsTable.id });
+
+  if (updated) return `stored summary (${summaryText.length} chars) on existing conversation`;
+
+  // Fallback — no conversation yet. Verify call is from our agent before inserting.
+  const callResp = await fetch(`https://api.aircall.io/v1/calls/${callId}`, { headers: { Authorization: auth } });
+  if (!callResp.ok) return `no existing conversation AND call fetch returned ${callResp.status}`;
+  const callData = await callResp.json() as any;
+  const call = callData?.call || callData;
+  const agent = await findAgentByAircallUser(call?.user?.id);
+  if (!agent) {
+    return `skipped: Aircall user ${call?.user?.id} (${call?.user?.name || "unknown"}) is not a registered agent`;
+  }
+  const rawDigits = extractPhone(call);
+  const contact = await findContactByPhone(rawDigits);
+  if (!contact) return `no existing conversation AND no contact for phone ${rawDigits}`;
+
+  await db.insert(leadConversationsTable).values({
+    contact_id: contact.id,
+    lead_id: contact.lead_id || null,
+    source: "aircall",
+    external_id: String(callId),
+    direction: "outbound",
+    agent_name: agent.name,
+    summary: summaryText,
+    conversation_date: new Date(),
+  });
+  return `stored summary (${summaryText.length} chars) on new conversation for ${contact.first_name} ${contact.last_name}`;
 }
 
 export default router;
