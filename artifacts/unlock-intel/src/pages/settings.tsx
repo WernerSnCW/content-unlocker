@@ -111,6 +111,7 @@ export default function Settings() {
     { aircall_tag: "DNE", outcome: "does-not-exist", side_effect: "global_exclude" },
   ]);
   const [maxCallAttempts, setMaxCallAttempts] = useState<number>(3);
+  const [coolOffDays, setCoolOffDays] = useState<number>(28);
 
   // Webhook URL
   const webhookUrl = `${window.location.origin}/api/aircall/webhook`;
@@ -139,6 +140,9 @@ export default function Settings() {
         }
         if (Number.isFinite(Number(cfg.max_call_attempts))) {
           setMaxCallAttempts(Number(cfg.max_call_attempts));
+        }
+        if (Number.isFinite(Number(cfg.cool_off_days))) {
+          setCoolOffDays(Number(cfg.cool_off_days));
         }
       }
     } catch { /* ignore */ }
@@ -171,6 +175,7 @@ export default function Settings() {
             ...(transcriptionMode === "external" ? { transcription_api_key: transcriptionApiKey } : {}),
             tag_mapping: tagMappings,
             max_call_attempts: maxCallAttempts,
+            cool_off_days: coolOffDays,
           },
           enabled: aircallEnabled,
         }),
@@ -369,7 +374,7 @@ export default function Settings() {
               <CardTitle>Pool Rules</CardTitle>
               <CardDescription>Controls how contacts flow back into future call lists.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium w-48">Max call attempts</label>
                 <Input
@@ -382,6 +387,20 @@ export default function Settings() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Upper limit on automatic retry dispatches per contact. Immediate recalls do not count.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium w-48">Cool-off period (days)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={coolOffDays}
+                  onChange={e => setCoolOffDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
+                  className="h-8 w-24"
+                />
+                <p className="text-xs text-muted-foreground">
+                  How long a contact is excluded when a tag triggers a cool-off side-effect.
                 </p>
               </div>
             </CardContent>

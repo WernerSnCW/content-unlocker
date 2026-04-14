@@ -44,6 +44,18 @@ async function getTagMapping(): Promise<TagMapping[]> {
   return DEFAULT_TAG_MAPPING;
 }
 
+// Helper: get cool_off period (days) from config or use default.
+async function getCoolOffDays(): Promise<number> {
+  try {
+    const [config] = await db.select().from(integrationConfigsTable)
+      .where(eq(integrationConfigsTable.provider, "aircall"));
+    const cfg = config?.config as Record<string, any>;
+    const v = Number(cfg?.cool_off_days);
+    if (Number.isFinite(v) && v >= 1 && v <= 365) return v;
+  } catch { /* use default */ }
+  return DEFAULT_COOL_OFF_DAYS;
+}
+
 // Helper: normalise phone for matching (strip spaces, dashes, parens)
 function normalisePhone(phone: string): string {
   return phone.replace(/[\s\-\(\)]/g, "");
@@ -119,8 +131,9 @@ async function applyTagOutcome(contactId: string, tagName: string, tagMapping: T
   // Apply side-effect
   switch (sideEffect) {
     case "cool_off": {
+      const days = await getCoolOffDays();
       const until = new Date(now);
-      until.setDate(until.getDate() + DEFAULT_COOL_OFF_DAYS);
+      until.setDate(until.getDate() + days);
       updates.cool_off_until = until;
       break;
     }
