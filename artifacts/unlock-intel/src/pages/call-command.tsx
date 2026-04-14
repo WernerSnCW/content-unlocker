@@ -166,10 +166,29 @@ export default function CallCommand() {
       if (active) {
         const listRes = await fetch(`${API_BASE}/call-lists/${active.id}/call-list`);
         const listData = await listRes.json();
-        setCallList(listData.contacts || []);
+        const newList: CallContact[] = listData.contacts || [];
+        // Re-align cursor by contact ID so the display doesn't jump when the
+        // server-side ordering shifts (e.g. an immediate_recall pushes the
+        // just-called contact to the bottom of the queue).
+        setCallList(prevList => {
+          // Identify the contact we were "on" before the refresh
+          const prevCurrentId = prevList[currentCallIndexRef.current]?.id;
+          if (prevCurrentId) {
+            const newIdx = newList.findIndex(c => c.id === prevCurrentId);
+            if (newIdx >= 0 && newIdx !== currentCallIndexRef.current) {
+              setCurrentCallIndex(newIdx);
+            }
+          }
+          return newList;
+        });
       }
     } catch {} finally { setLoading(false); }
   };
+
+  // Keep a ref of the current cursor so loadAll (a closure created at render
+  // time) can read the latest value without being re-created on every change.
+  const currentCallIndexRef = useRef(0);
+  useEffect(() => { currentCallIndexRef.current = currentCallIndex; }, [currentCallIndex]);
 
   const handleClearStale = async () => {
     setClearing(true);
