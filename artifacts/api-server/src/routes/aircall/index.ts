@@ -397,23 +397,56 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
 
   const transcriptionData = await response.json() as any;
 
-  // Build transcript text from segments
-  const segments = transcriptionData?.transcription?.segments ||
-                   transcriptionData?.segments ||
-                   transcriptionData?.data?.segments || [];
-
+  // Aircall shape (2026): { transcription: { content: { utterances: [{ text, participant_type, ... }] } } }
   let transcriptText = "";
-  if (Array.isArray(segments) && segments.length > 0) {
-    transcriptText = segments.map((s: any) =>
-      `${s.speaker || s.role || "Speaker"}: ${s.text || s.content || ""}`
-    ).join("\n");
-  } else if (typeof transcriptionData?.transcription?.text === "string") {
-    transcriptText = transcriptionData.transcription.text;
-  } else if (typeof transcriptionData?.text === "string") {
-    transcriptText = transcriptionData.text;
+  const utterances = transcriptionData?.transcription?.content?.utterances
+    || transcriptionData?.content?.utterances
+    || transcriptionData?.transcription?.utterances
+    || [];
+
+  if (Array.isArray(utterances) && utterances.length > 0) {
+    // Collapse consecutive utterances from the same participant into one line
+    const lines: string[] = [];
+    let currentSpeaker = "";
+    let currentText: string[] = [];
+    const flush = () => {
+      if (currentText.length > 0) {
+        lines.push(`${currentSpeaker}: ${currentText.join(" ")}`);
+        currentText = [];
+      }
+    };
+    for (const u of utterances) {
+      const speaker = u.participant_type === "internal" ? "Agent"
+                    : u.participant_type === "external" ? "Contact"
+                    : (u.speaker || u.role || "Speaker");
+      const text = (u.text || u.content || "").trim();
+      if (!text) continue;
+      if (speaker !== currentSpeaker) {
+        flush();
+        currentSpeaker = speaker;
+      }
+      currentText.push(text);
+    }
+    flush();
+    transcriptText = lines.join("\n");
+  } else {
+    // Legacy / fallback shapes
+    const segments = transcriptionData?.transcription?.segments
+      || transcriptionData?.segments
+      || transcriptionData?.data?.segments
+      || [];
+    if (Array.isArray(segments) && segments.length > 0) {
+      transcriptText = segments.map((s: any) =>
+        `${s.speaker || s.role || "Speaker"}: ${s.text || s.content || ""}`
+      ).join("\n");
+    } else if (typeof transcriptionData?.transcription?.text === "string") {
+      transcriptText = transcriptionData.transcription.text;
+    } else if (typeof transcriptionData?.text === "string") {
+      transcriptText = transcriptionData.text;
+    }
   }
 
-  // Extract Aircall AI summary if available
+  // Extract Aircall AI summary if provided on the same response
   const aircallSummary = transcriptionData?.transcription?.summary ||
                          transcriptionData?.summary ||
                          transcriptionData?.data?.summary || null;
