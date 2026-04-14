@@ -419,9 +419,13 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
                          transcriptionData?.data?.summary || null;
 
   if (!transcriptText && !aircallSummary) {
-    // Include the top-level keys of the response so we can diagnose shape mismatches
-    const keys = Object.keys(transcriptionData || {}).join(",");
-    return `empty transcript+summary; response keys: [${keys}]`;
+    // Surface the response shape so we can adapt the parser
+    const topKeys = Object.keys(transcriptionData || {}).join(",");
+    const innerKeys = transcriptionData?.transcription && typeof transcriptionData.transcription === "object"
+      ? Object.keys(transcriptionData.transcription).join(",")
+      : "(not an object)";
+    const snippet = JSON.stringify(transcriptionData).slice(0, 400);
+    return `empty transcript+summary; top keys: [${topKeys}]; transcription keys: [${innerKeys}]; snippet: ${snippet}`;
   }
 
   // Build the update payload
