@@ -25,6 +25,41 @@ interface CallContact {
   last_call_outcome: string | null; priority: string;
 }
 
+// Map canonical outcome → human-readable label + Tailwind classes.
+const OUTCOME_LABEL: Record<string, string> = {
+  "interested": "Interested",
+  "no-interest": "Not interested",
+  "no-answer": "No answer",
+  "callback-requested": "Callback",
+  "meeting-booked": "Meeting booked",
+  "hung-up": "Hung up",
+  "do-not-call": "DNC",
+  "does-not-exist": "Wrong number",
+};
+function outcomeBadgeClasses(outcome: string | null): string {
+  switch (outcome) {
+    case "interested":
+    case "meeting-booked":
+      return "bg-green-500/15 text-green-600 border-green-500/30";
+    case "callback-requested":
+      return "bg-blue-500/15 text-blue-600 border-blue-500/30";
+    case "no-answer":
+    case "hung-up":
+      return "bg-amber-500/15 text-amber-600 border-amber-500/30";
+    case "no-interest":
+      return "bg-muted text-muted-foreground border-border";
+    case "do-not-call":
+    case "does-not-exist":
+      return "bg-red-500/15 text-red-600 border-red-500/30";
+    default:
+      return "bg-muted text-muted-foreground border-border";
+  }
+}
+function outcomeLabel(outcome: string | null): string {
+  if (!outcome) return "";
+  return OUTCOME_LABEL[outcome] || outcome;
+}
+
 interface CallListDef {
   id: string; name: string; daily_quota: number; active: boolean;
 }
@@ -743,7 +778,8 @@ export default function CallCommand() {
                         <Badge variant="outline" className="text-xs shrink-0">
                           {currentContact.priority === "callback" ? "Callback" :
                            currentContact.priority === "follow-up" ? "Follow-up" :
-                           currentContact.priority === "retry" ? "Retry" : "Fresh"}
+                           currentContact.priority === "retry" ? "Retry" :
+                           currentContact.priority === "recall" ? "Recall" : "Fresh"}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-sm text-muted-foreground">
@@ -765,8 +801,8 @@ export default function CallCommand() {
                             {currentContact.call_attempts} attempt{currentContact.call_attempts !== 1 ? "s" : ""}
                           </Badge>
                           {currentContact.last_call_outcome && (
-                            <Badge variant="secondary" className="text-xs font-normal">
-                              Last: {currentContact.last_call_outcome}
+                            <Badge variant="outline" className={`text-xs font-normal ${outcomeBadgeClasses(currentContact.last_call_outcome)}`}>
+                              Last: {outcomeLabel(currentContact.last_call_outcome)}
                             </Badge>
                           )}
                         </div>
@@ -940,6 +976,7 @@ export default function CallCommand() {
                     <TableHead>Contact</TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Last outcome</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -963,8 +1000,20 @@ export default function CallCommand() {
                         <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">
-                            {c.priority === "callback" ? "Callback" : c.priority === "follow-up" ? "Follow-up" : c.priority === "retry" ? "Retry" : "Fresh"}
+                            {c.priority === "callback" ? "Callback" :
+                             c.priority === "follow-up" ? "Follow-up" :
+                             c.priority === "retry" ? "Retry" :
+                             c.priority === "recall" ? "Recall" : "Fresh"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {c.last_call_outcome ? (
+                            <Badge variant="outline" className={`text-xs ${outcomeBadgeClasses(c.last_call_outcome)}`}>
+                              {outcomeLabel(c.last_call_outcome)}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
