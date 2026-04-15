@@ -302,7 +302,7 @@ export default function CallCommand() {
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
-        fetch(`${API_BASE}/call-lists/stale-count`),
+        fetch(`${API_BASE}/call-lists/stale-count${agentQuery}`),
         fetch(`${API_BASE}/call-lists/today-outcomes${agentQuery}`),
         fetch(`${API_BASE}/settings/integrations/aircall`),
       ]);
@@ -372,7 +372,11 @@ export default function CallCommand() {
   const handleClearStale = async () => {
     setClearing(true);
     try {
-      await fetch(`${API_BASE}/call-lists/reconcile`, { method: "POST" });
+      await fetch(`${API_BASE}/call-lists/reconcile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: activeAgentId || null }),
+      });
       await loadAll();
     } catch {} finally { setClearing(false); }
   };

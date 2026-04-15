@@ -325,24 +325,41 @@ export async function fillQueue(
 /**
  * Start-of-day reconciliation: close memberships for contacts dispatched
  * yesterday or earlier that were never called. Reset their dispatch state.
+ *
+ * Optional agentId scope: when provided, only reconcile memberships on call
+ * lists assigned to that agent. This keeps each operator's "Start Fresh"
+ * action from wiping another operator's stale contacts.
  */
-export async function reconcileUncalledContacts(): Promise<number> {
+export async function reconcileUncalledContacts(agentId?: string | null): Promise<number> {
   const now = new Date();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
 
-  // Find active memberships where contact dispatch_date < today and status = dispatched
-  const stale = await db.select({
-    membership_id: callListMembershipsTable.id,
-    contact_id: callListMembershipsTable.contact_id,
-  })
-    .from(callListMembershipsTable)
-    .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
-    .where(and(
-      isNull(callListMembershipsTable.removed_at),
-      eq(contactsTable.dispatch_status, "dispatched"),
-      sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
-    ));
+  const conditions = [
+    isNull(callListMembershipsTable.removed_at),
+    eq(contactsTable.dispatch_status, "dispatched"),
+    sql`${contactsTable.dispatch_date}::date < ${todayStr}::date`,
+  ];
+  // Agent scope via call_list_configs.assigned_agent_id
+  const query = agentId
+    ? db.select({
+        membership_id: callListMembershipsTable.id,
+        contact_id: callListMembershipsTable.contact_id,
+      })
+        .from(callListMembershipsTable)
+        .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
+        .innerJoin(callListConfigsTable, eq(callListConfigsTable.id, callListMembershipsTable.call_list_id))
+        .where(and(...conditions, eq(callListConfigsTable.assigned_agent_id, agentId)))
+    : db.select({
+        membership_id: callListMembershipsTable.id,
+        contact_id: callListMembershipsTable.contact_id,
+      })
+        .from(callListMembershipsTable)
+        .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
+        .where(and(...conditions));
+
+  const stale = await query;
 
   let resetCount = 0;
   for (const row of stale) {

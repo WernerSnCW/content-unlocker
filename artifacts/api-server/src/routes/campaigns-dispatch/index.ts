@@ -194,16 +194,39 @@ router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
   }
 });
 
-// GET /call-lists/stale-count — count dispatched contacts from previous days still in queue
+// GET /call-lists/stale-count?agent_id=X — count stale dispatched contacts.
+// When agent_id is passed, count only those whose active membership is on
+// a call list assigned to that agent. Without agent_id, returns the global
+// count (admin view).
 router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const [result] = await db.select({ count: sql<number>`count(*)` })
+    const todayStr = today.toISOString().split("T")[0];
+    const agentIdParam = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
+
+    if (!agentIdParam) {
+      const [result] = await db.select({ count: sql<number>`count(*)` })
+        .from(contactsTable)
+        .where(and(
+          eq(contactsTable.dispatch_status, "dispatched"),
+          sql`${contactsTable.dispatch_date}::date < ${todayStr}::date`,
+        ));
+      res.json({ stale_count: Number(result.count) });
+      return;
+    }
+
+    // Agent-scoped: stale contacts whose ACTIVE membership belongs to a call
+    // list assigned to this agent.
+    const [result] = await db.select({ count: sql<number>`count(distinct ${contactsTable.id})` })
       .from(contactsTable)
+      .innerJoin(callListMembershipsTable, eq(callListMembershipsTable.contact_id, contactsTable.id))
+      .innerJoin(callListConfigsTable, eq(callListConfigsTable.id, callListMembershipsTable.call_list_id))
       .where(and(
         eq(contactsTable.dispatch_status, "dispatched"),
-        sql`${contactsTable.dispatch_date}::date < ${today.toISOString().split("T")[0]}::date`,
+        sql`${contactsTable.dispatch_date}::date < ${todayStr}::date`,
+        isNull(callListMembershipsTable.removed_at),
+        eq(callListConfigsTable.assigned_agent_id, agentIdParam),
       ));
     res.json({ stale_count: Number(result.count) });
   } catch (err: any) {
@@ -269,10 +292,12 @@ router.post("/call-lists/carry-over", async (req, res): Promise<void> => {
   }
 });
 
-// POST /call_lists/reconcile — reset uncalled contacts from yesterday
+// POST /call_lists/reconcile — reset uncalled contacts from yesterday.
+// Optional body { agent_id } scopes to that agent's call lists only.
 router.post("/call-lists/reconcile", async (req, res): Promise<void> => {
   try {
-    const resetCount = await reconcileUncalledContacts();
+    const agentId = typeof req.body?.agent_id === "string" ? req.body.agent_id : null;
+    const resetCount = await reconcileUncalledContacts(agentId);
     res.json({ success: true, reset_count: resetCount });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to reconcile uncalled contacts" });
