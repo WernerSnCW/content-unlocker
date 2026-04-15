@@ -41,7 +41,16 @@ Ship the engine in 8 phases. Phases 1–3 are already shipped (see commit log ar
 
 **Phase 7 — Engine update mechanism.** Admin surface for future V3/V4 spec drops to be mechanical. Version check endpoint already exists (`GET /api/engine/version`). Add admin page listing current signals / gates / routing with last-updated timestamps. Document the CONFIG_ONLY / ADDITIVE / BREAKING update workflow.
 
-**Phase 8 — Pipedrive integration.** Full execution substrate per [ADR 002](./002-pipedrive-integration.md). Adapter service, webhook handlers, document registry, credentials in `integration_configs`.
+**Phase 7.5 — Website integration (Lovable/Supabase).** See [ADR 004](./004-website-integration.md). This is now the execution layer (what Phase 8 Pipedrive was originally scoped as). Builds:
+- `lovableAdapter.ts` with `unlockDocuments`, `setStage`, `lookupInvestor` methods
+- `engine_document_mapping` table + admin UI for slug ↔ doc_id mapping
+- `stage_mapping` table + admin UI for stage bridge
+- Inbound webhook `/api/web-inbound/lead` with HMAC verification
+- Website-side Edge Functions (built by website team, called by us)
+- Outcome Drawer's `[Send]` button goes live — unlocks documents on the portal
+- Engine emits logical event/slug names; adapter resolves to website enum values
+
+**Phase 8 — Pipedrive integration (reduced scope).** Per the 2026-04-14 amendment on [ADR 002](./002-pipedrive-integration.md), Pipedrive is no longer the execution substrate. Phase 8 is now: mirror qualified deals into Pipedrive so Tom has an optional visual pipeline board. Not on the critical path. Can be deferred indefinitely if Tom doesn't need it.
 
 ## Rationale
 

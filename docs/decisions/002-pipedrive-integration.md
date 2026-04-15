@@ -1,8 +1,33 @@
-# ADR 002 — Pipedrive Integration as Execution Substrate
+# ADR 002 — Pipedrive Integration (Role Reduced — see amendment)
 
-**Status:** Accepted
+**Status:** Accepted (with 2026-04-14 amendment)
 **Date:** 2026-04-14
 **Author:** Werner / Claude Code session
+
+> **AMENDMENT 2026-04-14:** Pipedrive is no longer the execution substrate for
+> email/documents/engagement. That role is held by the Unlock website (see
+> [ADR 004](./004-website-integration.md)). Pipedrive's role is reduced to:
+>
+> 1. **Optional CRM view** — a visual sales-pipeline board for Tom. Our app
+>    mirrors qualified deals here so Tom has a familiar pipeline surface if
+>    he wants one. If he doesn't, Pipedrive is not on the critical path.
+>
+> 2. **NOT the inbound gatekeeper.** Earlier drafts had website → Pipedrive →
+>    our app for web leads. That was rejected because the website already
+>    has richer context (read time, docs accessed, magic-link identity) that
+>    would be lost in the round-trip. Web leads now go direct to our app
+>    via `/api/web-inbound/lead` — see ADR 004.
+>
+> Most of the design below (adapter methods, idempotency via stored IDs,
+> audit log, rate limiting, webhook dead-letter queue) still applies in
+> reduced scope. Email sending via Pipedrive mailbox is **no longer part
+> of the plan** — all outbound engagement goes through the website portal
+> + templated magic-link emails sent from its infrastructure.
+>
+> Phase 8 is therefore slimmed down to: create/update Pipedrive deals +
+> activities + custom fields when our engine decides a contact is qualified.
+> The Outcome Drawer's [Send] button now calls the **Lovable adapter**, not
+> a Pipedrive-mailbox adapter.
 
 ## Context
 

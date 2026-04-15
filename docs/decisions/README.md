@@ -14,5 +14,6 @@ ADRs are immutable once accepted. When a decision is revisited or overridden, ad
 | # | Title | Status |
 |---|---|---|
 | 001 | [Tag → Outcome → Side-Effect Model](./001-tag-outcome-side-effect-model.md) | Accepted |
-| 002 | [Pipedrive Integration — Execution Substrate](./002-pipedrive-integration.md) | Accepted |
-| 003 | [Intelligence Engine Phase Plan](./003-engine-phase-plan.md) | Accepted |
+| 002 | [Pipedrive Integration — Role Reduced](./002-pipedrive-integration.md) | Accepted (amended 2026-04-14 — execution role moved to ADR 004) |
+| 003 | [Intelligence Engine Phase Plan](./003-engine-phase-plan.md) | Accepted (amended 2026-04-14 — Phase 7.5 inserted) |
+| 004 | [Website (Lovable/Supabase) Integration](./004-website-integration.md) | Accepted |
