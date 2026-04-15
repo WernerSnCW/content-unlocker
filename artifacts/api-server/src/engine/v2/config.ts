@@ -1,6 +1,6 @@
 // PART A — Config
 // Pure data. When the engine is updated, most changes land here.
-// See: docs/402_SPEC_Intelligence_Engine_V2_CURRENT.md
+// See: docs/402_SPEC_Intelligence_Engine_V3_CURRENT.md
 import type {
   SignalDef,
   PersonaDef,
@@ -8,6 +8,15 @@ import type {
   GateDef,
   RouteEntry,
   ComplianceRule,
+  QuestionDef,
+  DemoSegmentDef,
+  ColdCallStepDef,
+  AttachmentRouteEntry,
+  EmailTemplateDef,
+  ProblemBeliefPatternDef,
+  PostCloseStageDef,
+  AdviserLoopDef,
+  Book2RoutingDef,
 } from "./types";
 
 // ============ A1. Signal Registry ============
@@ -383,12 +392,487 @@ export const RED_SIGNAL_ACTIONS: Record<string, { meaning: string; action: strin
   S4: { meaning: "Doesn't believe team can execute", action: "Offer Pack 2 as evidence. If still red, respect it." },
 };
 
-// ============ A9. Pipeline Stages ============
+// ============ A9. Pipeline Stages (V3 — aligned to website enum, see ADR 004) ============
+// Engine emits LOGICAL event names. Adapter layer translates to the website's
+// current stage via stage_mapping table. Enum changes there are config-only
+// updates (no engine code change).
 
 export const PIPELINE_STAGES = [
-  { stage: 1, name: "Outreach Queued", probability: 0 },
-  { stage: 2, name: "Demo Booked", probability: 20 },
-  { stage: 3, name: "Demo Scheduled", probability: 40 },
-  { stage: 4, name: "Demo Completed", probability: 60 },
-  { stage: 5, name: "Pack 1 Sent — Decision Stage", probability: 75 },
+  { event: "awareness", probability: 0, label: "Awareness" },
+  { event: "demo_booked", probability: 20, label: "Demo Booked" },
+  { event: "demo_done", probability: 50, label: "Demo Completed" },
+  { event: "pack_1_sent", probability: 75, label: "Pack 1 Sent" },
+  { event: "due_diligence", probability: 85, label: "Due Diligence" },
+  { event: "committed", probability: 100, label: "Committed" },
 ] as const;
+
+// ============ A10. Question Registry (V3) ============
+
+export const QUESTION_REGISTRY: readonly QuestionDef[] = [
+  // CALL 1 — Cold Call
+  { qNum: 1, text: "Are you familiar with EIS?", signal: "C3", call: 1, category: "depth_check",
+    responseMap: {
+      "invest every year": { state: "green", note: "Skip basics on demo" },
+      "heard of it": { state: "grey", note: "Full narrative needed" },
+      "never looked into": { state: "grey", note: "Full narrative needed" },
+      "no": { state: "grey", note: "Start from scratch" },
+    }
+  },
+  { qNum: 2, text: "Are you paying higher or additional rate?", signal: "QT", call: 1, category: "qualification",
+    responseMap: {
+      "higher rate": { state: "confirmed" },
+      "higher": { state: "confirmed" },
+      "additional rate": { state: "confirmed" },
+      "additional": { state: "confirmed" },
+      "basic rate": { state: "not_confirmed", note: "Red — EIS relief limited" },
+      "basic": { state: "not_confirmed", note: "Red — EIS relief limited" },
+    }
+  },
+  { qNum: 3, text: "Capital to deploy or mostly tied up?", signal: "QL", call: 1, category: "qualification",
+    responseMap: {
+      "cash available": { state: "confirmed" },
+      "sold a property": { state: "confirmed", note: "Motivated" },
+      "sold a rental": { state: "confirmed", note: "Motivated" },
+      "sold a business": { state: "confirmed", note: "Motivated" },
+      "sitting in cash": { state: "confirmed" },
+      "sitting on": { state: "confirmed", note: "Explicit capital amount" },
+      "tied up": { state: "not_confirmed", note: "Red — cannot act. Nurture." },
+      "everything is invested": { state: "not_confirmed" },
+    }
+  },
+  { qNum: 4, text: "What does your portfolio look like?", signal: "C1", call: 1, category: "profiling",
+    alsoSurfaces: ["persona"],
+    note: "Listen for: property-heavy=Legacy/Preserver, EIS/alternatives=Growth, pension focus=Legacy/Preserver"
+  },
+  { qNum: 5, text: "What's the money for?", signal: null, call: 1, category: "profiling" },
+  { qNum: 6, text: "Free [day] at [time]?", signal: null, call: 1, category: "booking" },
+  { qNum: 7, text: "Aside from an emergency, any reason that wouldn't work?", signal: null, call: 1, category: "commitment_lock" },
+
+  // CALL 2 — Demo + Fact Find
+  { qNum: 8, text: "Main thing on your mind financially?", signal: null, call: 2, category: "fact_find",
+    captures: ["practical_problem", "current_pressure", "desired_outcome", "persona_confirmation"] },
+  { qNum: 9, text: "Does EIS make sense as a mechanism?", signal: "C3", call: 2, category: "diagnostic",
+    responseMap: {
+      "yes interesting": { state: "green" },
+      "makes sense": { state: "green" },
+      "want to read more": { state: "amber", contentRoute: 150 },
+      "too good to be true": { state: "amber", note: "Return to statutory mechanics" },
+      "not for me": { state: "red", note: "Stop EIS. Platform only." },
+    }
+  },
+  { qNum: 10, text: "How comfortable are you with the risk side?", signal: "C4", call: 2, category: "diagnostic",
+    gateRole: "COMPLIANCE_GATE",
+    responseMap: {
+      "done this before": { state: "green" },
+      "understand the risk": { state: "green" },
+      "worst case": { state: "amber", note: "Moving toward green" },
+      "not really a risk-taker": { state: "amber", note: "Probe" },
+      "can't have money locked up": { state: "red", note: "EIS not suitable. Send 140 only." },
+      "not comfortable": { state: "red" },
+    }
+  },
+  { qNum: 11, text: "Can you see everything in one place today?", signal: "C1", call: 2, category: "diagnostic",
+    responseMap: {
+      "no, everywhere": { state: "green" },
+      "spreadsheet": { state: "green", note: "They described the problem" },
+      "no single view": { state: "green" },
+      "ifa handles": { state: "amber", note: "C2 narrative will address" },
+    }
+  },
+  { qNum: 12, text: null, signal: "C2", call: 2, category: "narrative",
+    note: "Narrative detection, not a question. Detect 'scarce assets' / 'IFA can't' / 'outside regulated'."
+  },
+  { qNum: 13, text: "[Persona-specific question]", signal: null, call: 2, category: "persona_diagnostic",
+    variants: {
+      growth_seeker: { text: "Do you know what you're paying in fees on your current EIS fund?", signal: "G1" },
+      legacy_builder: { text: "Do you know your estate's IHT exposure right now?", signal: "L1" },
+      preserver: { text: "Do you know your actual concentration across your whole portfolio?", signal: "P2" },
+    }
+  },
+  { qNum: 14, text: "Does this make sense for your situation?", signal: "S1", call: 2, category: "diagnostic",
+    responseMap: {
+      "exactly what I need": { state: "green" },
+      "makes sense for me": { state: "green" },
+      "impressive but not sure": { state: "amber", note: "Probe what didn't land" },
+      "don't see the point": { state: "red", note: "Product didn't land. No further S-beliefs." },
+    }
+  },
+  { qNum: 15, text: "Annual income tax liability?", signal: "QT", call: 2, category: "fact_find",
+    captures: ["annual_tax_liability"], note: "Precise figure. Sizes the EIS opportunity." },
+  { qNum: 16, text: "Why does this matter now?", signal: "S6", call: 2, category: "fact_find",
+    captures: ["current_pressure"], alsoSurfaces: ["S6"] },
+  { qNum: 17, text: "Anyone else involved in decisions?", signal: "S5", call: 2, category: "fact_find",
+    captures: ["decision_stakeholders"], note: "Flags adviser loop" },
+  { qNum: 18, text: "Anything specific you want to know more about?", signal: null, call: 2, category: "fact_find",
+    captures: ["questions_for_call3"] },
+  { qNum: 19, text: "Consider backing as well as using?", signal: "S2", call: 2, category: "diagnostic",
+    gateRole: "TRACK_ROUTER",
+    responseMap: {
+      "yes": { state: "green", note: "Schedule Call 3. Check Pack 1 gate." },
+      "possibly": { state: "amber", contentRoute: 100 },
+      "want to know more": { state: "amber", contentRoute: 100 },
+      "no, just platform": { state: "red" },
+      "just the platform": { state: "red" },
+    }
+  },
+
+  // CALL 3 — The Opportunity
+  { qNum: 20, text: "Has anything changed since we spoke?", signal: null, call: 3, category: "confirmation" },
+  { qNum: 21, text: "How does the valuation land?", signal: "S3", call: 3, category: "diagnostic",
+    responseMap: {
+      "seems reasonable": { state: "green" },
+      "feels high": { state: "amber" },
+      "dealbreaker": { state: "red" },
+    }
+  },
+  { qNum: 22, text: "What would you need to see re: the team?", signal: "S4", call: 3, category: "diagnostic",
+    responseMap: {
+      "I trust you": { state: "green" },
+    }
+  },
+  { qNum: 23, text: "Run this past your adviser?", signal: "S5", call: 3, category: "diagnostic",
+    responseMap: {
+      "accountant": { state: "amber", note: "Facilitate adviser loop" },
+      "adviser": { state: "amber", note: "Facilitate adviser loop" },
+      "no, comfortable": { state: "green" },
+    }
+  },
+  { qNum: 24, text: "Is this something you want to do?", signal: null, call: 3, category: "close",
+    prerequisite: "C4 green AND S2 green AND relevant S-beliefs green",
+    responseMap: {
+      "yes": { outcome: "committed" },
+      "need more time": { outcome: "needs_time" },
+      "no": { outcome: "no" },
+    }
+  },
+  { qNum: 25, text: "What questions do you still have?", signal: null, call: 3, category: "final_diagnostic" },
+];
+
+// ============ A11. Demo Segment Map (V3) ============
+
+export const DEMO_SEGMENTS: readonly DemoSegmentDef[] = [
+  { segment: 1, name: "Open with them", durationMins: 5, screenShare: false,
+    questionsUsed: [8], signalsSurfaced: ["QT", "QL", "C1"],
+    alsoCaptures: ["persona", "hot_button", "desired_outcome"],
+    expectedOutcome: "QT/QL confirmed or flagged. C1 amber or green. Persona identified or narrowed." },
+  { segment: 2, name: "EIS narrative", durationMins: 8, screenShare: false,
+    questionsUsed: [9, 10], signalsSurfaced: ["C3", "C4", "C2"],
+    alsoCaptures: ["annual_tax_liability"],
+    expectedOutcome: "C3 amber or green. C4 surfaced. C2 reinforced.",
+    criticalGate: "If C4 not green after this segment, do NOT proceed to investment discussion. Focus on platform as planning tool. Route to 140." },
+  { segment: 3, name: "Asset register demo", durationMins: 5, screenShare: true,
+    questionsUsed: [11], signalsSurfaced: ["C1"],
+    expectedOutcome: "C1 → green. Visual impact of seeing everything in one place." },
+  { segment: 4, name: "Decumulation planner demo", durationMins: 12, screenShare: true,
+    questionsUsed: [13, 14], signalsSurfaced: ["S1"],
+    personaBeliefsSurfaced: {
+      legacy_builder: ["L1", "L2"],
+      preserver: ["P2", "P3"],
+      growth_seeker: ["G1", "G2"],
+    },
+    expectedOutcome: "S1 → green. Persona-specific beliefs surfaced and partially resolved." },
+  { segment: 5, name: "Founding round", durationMins: 7, screenShare: false,
+    questionsUsed: [19], signalsSurfaced: ["S2", "S3", "S4", "S5", "S6"],
+    expectedOutcome: "S2 surfaced. If green, explore S3–S6.",
+    note: "Ask S2 first. Only explore S3–S6 if S2 is clearly yes." },
+  { segment: 6, name: "Close + fact find", durationMins: 10, screenShare: false,
+    questionsUsed: [15, 16, 17, 18], signalsSurfaced: [],
+    captures: ["annual_tax_liability", "current_pressure", "decision_stakeholders", "questions_for_call3"],
+    expectedOutcome: "Fact find populated. Call 3 date set. Content routing decision made." },
+];
+
+// ============ A12. Cold Call Script Structure (V3) ============
+
+export const COLD_CALL_STEPS: readonly ColdCallStepDef[] = [
+  { step: 1, name: "Greeting & Permission", signalTarget: null,
+    purpose: "Get permission to talk. If bad time, book callback and end." },
+  { step: 2, name: "Platform Introduction", signalTarget: "C1",
+    purpose: "Introduce Unlock as a portfolio visibility platform." },
+  { step: 3, name: "EIS Introduction", signalTarget: "C3",
+    purpose: "Introduce EIS as a government scheme. Ask if familiar." },
+  { step: 4, name: "Revolut Anchor", signalTarget: "C3",
+    purpose: "Revolut as EIS success story. £75B valuation. Tax-free gains." },
+  { step: 5, name: "EIS Mechanics", signalTarget: "C3",
+    purpose: "30% relief, loss relief (~38.5p), CGT-free gains, BPR after 2 years." },
+  { step: 6, name: "Portfolio Model (4-3-2-1)", signalTarget: "C3",
+    purpose: "4 fail, 3 modest, 2 strong, 1 fund-buster. Average 5-6x." },
+  { step: 7, name: "Annual Translation", signalTarget: "C3",
+    purpose: "3x annual tax = optimal deployment. Tax as trophy." },
+  { step: 8, name: "Ten-Year Illustration", signalTarget: "C3",
+    purpose: "£50K/yr x 10yr = £1M → £5-6M tax-free." },
+  { step: 9, name: "Unlock as EIS", signalTarget: "S1",
+    purpose: "Unlock itself is EIS-qualifying." },
+  { step: 10, name: "Self-Directed Confirmation", signalTarget: "C2",
+    purpose: "IFAs can't advise on individual EIS. Unlock fills the gap." },
+  { step: 11, name: "Demo Invitation", signalTarget: null,
+    purpose: "Video call with Tom. 15-20 minutes." },
+  { step: 12, name: "QT Qualification", signalTarget: "QT", purpose: "Higher or additional rate?" },
+  { step: 13, name: "QL Qualification", signalTarget: "QL", purpose: "Capital available or tied up?" },
+  { step: 14, name: "Profiling Questions", signalTarget: "persona",
+    purpose: "Portfolio shape, focus, adviser, stakeholders." },
+  { step: 15, name: "Booking", signalTarget: null,
+    purpose: "Specific day and time. Laptop. Video call." },
+  { step: 16, name: "Commitment Lock", signalTarget: null,
+    purpose: "Aside from an emergency, any reason? + compliance disclaimer." },
+];
+
+// ============ A13. Email Templates (V3) ============
+
+export const EMAIL_TEMPLATES: {
+  demoConfirmation: EmailTemplateDef;
+  postDemo: EmailTemplateDef;
+  attachmentRoutingTable: readonly AttachmentRouteEntry[];
+  personaSupplementWithPack1: Record<string, { docId: number; docName: string } | { docIds: readonly number[]; docNames: readonly string[] }>;
+} = {
+  demoConfirmation: {
+    id: "EMAIL_1",
+    trigger: "disposition_code === '101'",
+    timing: "immediate",
+    subject: "Your call with Tom — [DAY] at [TIME]",
+    attachment: { docId: 100, docName: "One-Pager" },
+    structure: [
+      "Opening: Good to speak. Looking forward to [DAY].",
+      "Frame: This call is about EIS and the platform. Not the investment.",
+      "EIS philosophy paragraph: asymmetric risk, discipline not punt.",
+      "Two things covered: (1) EIS walkthrough, (2) platform demo.",
+      "What we won't cover: investment opportunity — unless they want to.",
+      "Duration: 15–20 min + questions. Video call, screen share.",
+      "Attachment reference: short overview attached, no need to read in advance.",
+      "FP disclaimer: Capital at risk. Introduction, not financial advice.",
+    ],
+    personalisationRequired: false,
+    note: "Minimal personalisation — name and time only."
+  },
+  postDemo: {
+    id: "EMAIL_2",
+    trigger: "call_type === 'demo' AND demo completed",
+    timing: "24_to_48_hours",
+    timingException: "If investor explicitly requested specific info during the call, send THAT ITEM immediately. This email follows 24–48 hours later.",
+    subject: "Following up — and what happens next if you want it to",
+    structure: [
+      "Opening: Thanks for the time today.",
+      "Recap section: Personalised from call. Use their words.",
+      "Status section: Where you are now — honest assessment.",
+      "Next step section: Frame Call 3 and what it covers.",
+      "Attachment section: One specific content asset with one-sentence explanation.",
+      "Soft CTA: Let me know what you think.",
+      "Availability: Specific slots for Call 3.",
+      "FP disclaimer.",
+    ],
+    personalisationRequired: true,
+    personalisationFields: ["exact_phrases", "practical_problem", "desired_outcome", "specific_reactions_from_demo"],
+    attachmentRouting: "Use A3 ROUTING_MAP — one attachment mapped to highest unresolved belief.",
+  },
+  attachmentRoutingTable: [
+    { belief: "C3", state: "amber", docId: 150, angle: "Goes deeper on the mechanics" },
+    { belief: "C4", state: "amber", docId: 140, angle: "Covers the risk side — illiquidity, hold period, effective downside" },
+    { belief: "L1", state: "amber", docId: 170, angle: "Connect to their family / estate situation" },
+    { belief: "L2", state: "amber", docId: 170, angle: "Reference the £2.5M cap — BPR section" },
+    { belief: "G1", state: "amber", docId: 180, angle: "Reference their current fund if named" },
+    { belief: "G2", state: "amber", docId: 140, angle: "How Unlock Access works versus funds — syndicate section" },
+    { belief: "P2", state: "amber", docId: 181, angle: "Reference the asset class they're concentrated in" },
+    { belief: "S2", state: "amber", docId: 100, angle: "Context on the opportunity" },
+    { belief: "PACK1_GATE", state: "eligible", docId: 120, angle: "The founding investor overview" },
+  ],
+  personaSupplementWithPack1: {
+    preserver: { docId: 170, docName: "IHT EIS Estate Planning" },
+    growth_seeker: { docId: 150, docName: "EIS Investors Secret Weapon" },
+    legacy_builder: { docIds: [170, 160], docNames: ["IHT Planning", "EIS Case Studies"] },
+  },
+};
+
+// ============ A14. Problem Belief Detection Patterns (V3) ============
+// Used by analyseSignals (C3) as additional detection patterns for problem beliefs.
+
+export const PROBLEM_BELIEF_PATTERNS: Record<string, ProblemBeliefPatternDef> = {
+  G1: {
+    name: "Fee Awareness", persona: "growth_seeker",
+    detectionPatterns: [
+      { pattern: "fees", weight: 3 },
+      { pattern: "charges", weight: 3 },
+      { pattern: "management fee", weight: 4 },
+      { pattern: "paying too much", weight: 4 },
+      { pattern: "3%", weight: 3, note: "Typical EIS fund annual fee" },
+      { pattern: "performance fee", weight: 3 },
+      { pattern: "fee drag", weight: 4 },
+      { pattern: "ridiculous", weight: 2, context: "fees" },
+    ],
+  },
+  G2: {
+    name: "Deal Flow Gap", persona: "growth_seeker",
+    detectionPatterns: [
+      { pattern: "access to deals", weight: 4 },
+      { pattern: "deal flow", weight: 4 },
+      { pattern: "sourcing", weight: 2 },
+      { pattern: "pipeline", weight: 3 },
+      { pattern: "direct investment", weight: 3 },
+    ],
+  },
+  G3: {
+    name: "Early Entry Value", persona: "growth_seeker",
+    detectionPatterns: [
+      { pattern: "early stage", weight: 3 },
+      { pattern: "ground floor", weight: 3 },
+      { pattern: "founding", weight: 3 },
+      { pattern: "pre-revenue", weight: 2 },
+      { pattern: "first in", weight: 3 },
+    ],
+  },
+  L1: {
+    name: "IHT Exposure", persona: "legacy_builder",
+    detectionPatterns: [
+      { pattern: "iht", weight: 4 },
+      { pattern: "inheritance tax", weight: 4 },
+      { pattern: "estate value", weight: 3 },
+      { pattern: "nil rate band", weight: 3 },
+      { pattern: "estate planning", weight: 3 },
+      { pattern: "tax on death", weight: 3 },
+    ],
+  },
+  L2: {
+    name: "BPR Cap Awareness", persona: "legacy_builder",
+    detectionPatterns: [
+      { pattern: "bpr", weight: 4 },
+      { pattern: "business property relief", weight: 4 },
+      { pattern: "2.5 million", weight: 3 },
+      { pattern: "£2.5m", weight: 3 },
+      { pattern: "finance act", weight: 3 },
+    ],
+  },
+  P2: {
+    name: "Concentration Risk", persona: "preserver",
+    detectionPatterns: [
+      { pattern: "concentrated", weight: 4 },
+      { pattern: "all in property", weight: 4 },
+      { pattern: "one provider", weight: 3 },
+      { pattern: "too much in", weight: 3 },
+      { pattern: "eggs in one basket", weight: 4 },
+      { pattern: "overweight", weight: 3 },
+    ],
+  },
+  P3: {
+    name: "Income Sustainability", persona: "preserver",
+    detectionPatterns: [
+      { pattern: "will it last", weight: 4 },
+      { pattern: "run out", weight: 4 },
+      { pattern: "sustainable income", weight: 4 },
+      { pattern: "drawdown rate", weight: 3 },
+      { pattern: "sequence of returns", weight: 3 },
+    ],
+  },
+};
+
+// ============ A15. Post-Close Workflow (V3) ============
+
+export const POST_CLOSE_WORKFLOW: { stages: readonly PostCloseStageDef[] } = {
+  stages: [
+    {
+      stage: 6, name: "Committed — Paperwork", trigger: "call3_outcome === 'committed'",
+      actions: [
+        { action: "reserve_stock", owner: "tom", timing: "immediate" },
+        { action: "send_pack1_if_not_sent", owner: "tom", timing: "immediate" },
+        { action: "send_pack2", owner: "tom", timing: "within_24_hours" },
+        { action: "initiate_seedlegals", owner: "tom", timing: "within_24_hours",
+          detail: "Instant Investment process. Digital paperwork via SeedLegals." },
+      ],
+    },
+    {
+      stage: 7, name: "SeedLegals Processing", trigger: "seedlegals_initiated",
+      actions: [
+        { action: "monitor_seedlegals_completion", owner: "system", timing: "ongoing" },
+        { action: "chase_if_unsigned_after_5_days", owner: "tom", timing: "5_days" },
+      ],
+    },
+    {
+      stage: 8, name: "Capital Transferred — Welcome", trigger: "capital_received",
+      actions: [
+        { action: "welcome_call", owner: "tom", timing: "within_48_hours",
+          detail: "Confirm process. Product input opportunity. Referral potential." },
+        { action: "send_onboarding_kit", owner: "system", timing: "immediate" },
+        { action: "send_eis_confirmation_email", owner: "system", timing: "immediate" },
+        { action: "tag_founding_investor", owner: "system", timing: "immediate",
+          detail: "Permanently excluded from Book 2 and cold outreach." },
+      ],
+    },
+    {
+      stage: 9, name: "Active Founding Investor", trigger: "welcome_call_completed",
+      recurringActions: [
+        { action: "quarterly_update", owner: "tom", timing: "within_45_days_of_quarter_end",
+          detail: "Platform milestones, progress, referral activation. 1–2 page email. Skipping is the most expensive thing." },
+        { action: "referral_activation", owner: "tom", timing: "with_quarterly_update",
+          detail: "Prompt: 'Know anyone who should see this? Your founding subscriber rate stays the same.'" },
+      ],
+    },
+  ],
+};
+
+// ============ A16. Adviser Loop Workflow (V3) ============
+
+export const ADVISER_LOOP_WORKFLOW: AdviserLoopDef = {
+  trigger: "call3_outcome === 'adviser_loop' OR (S5 === 'amber' AND adviser/accountant mentioned)",
+  preCall: {
+    actions: [
+      { action: "send_pack2_to_investor", owner: "tom", timing: "within_24_hours",
+        detail: "Pack 2 is the due diligence document. Sent to investor, not directly to adviser." },
+      { action: "send_relevant_persona_supplement", owner: "tom", timing: "with_pack2",
+        detail: "170 for Legacy Builder, 150 for Growth Seeker, 170 for Preserver." },
+      { action: "schedule_three_way_call", owner: "tom", timing: "within_48_hours",
+        detail: "Tom + investor + IFA/accountant. Zoom. 30 minutes." },
+    ],
+  },
+  duringCall: {
+    tomRole: "Information provider, not adviser. Tom does not give financial advice on the call.",
+    openingFrame: "I'm here to answer questions about the investment mechanics, the company, and the EIS structure. I'm not providing advice — the investor is making their own informed decision.",
+    agenda: [
+      "EIS advance assurance confirmed — HMRC approved",
+      "Instant Investment mechanics — used in ~33% of UK rounds",
+      "BPR framing: Finance Act 2026 enacted law",
+      "Valuation rationale if asked",
+      "Does not give financial advice — facilitates the adviser's due diligence",
+    ],
+    fcaConcerns: "If adviser raises FCA concerns: EIS is outside regulated advice scope. Investor is making their own decision. Unlock provides information, tools, and access — not advice.",
+  },
+  postCall: {
+    actions: [
+      { action: "follow_up_to_investor_directly", owner: "tom", timing: "within_24_hours",
+        detail: "The relationship is with the investor, not the adviser." },
+      { action: "update_pipedrive", owner: "tom", timing: "same_day",
+        fields: ["adviser_call_completed", "adviser_objections", "S5_state_update"] },
+      { action: "if_adviser_satisfied", nextStep: "soft_commitment_call" },
+      { action: "if_adviser_has_concerns", nextStep: "address_and_reschedule",
+        detail: "Note specific concerns. Provide additional evidence. Schedule follow-up." },
+    ],
+  },
+};
+
+// ============ A17. Book 2 Routing (V3) ============
+
+export const BOOK2_ROUTING: Book2RoutingDef = {
+  trigger: "S2 === 'red' OR investor explicitly platform-only OR QT === 'not_confirmed'",
+  entryActions: [
+    { action: "tag_book2_eligible", owner: "system", timing: "immediate" },
+    { action: "add_to_waiting_list_sequence", owner: "system", timing: "immediate",
+      detail: "Klaviyo sequence. Waiting list opens June 2026." },
+  ],
+  subscriberPipeline: [
+    { stage: "waiting_list", trigger: "tagged book2_eligible",
+      autoEmails: [
+        { name: "Welcome", timing: "day_0", wordCount: "100-150", content: "Confirmation, no pitch" },
+        { name: "Fragmentation", timing: "day_3", wordCount: "200-350", content: "Problem only" },
+        { name: "EIS Maths", timing: "day_7", content: "Loss relief with bracket qualifier" },
+        { name: "IHT Planning", timing: "day_14", content: "BPR caveat; pension IHT caveat" },
+        { name: "Portfolio Intelligence", timing: "day_21", content: "Platform value proposition" },
+      ],
+    },
+    { stage: "sandbox_activation", trigger: "September 2026 launch",
+      action: "Demo sandbox available. Convert waiting list to active trial." },
+    { stage: "subscription", trigger: "trial_completed",
+      action: "Convert to Standard (£99/mo) or White Glove (£299/mo)." },
+  ],
+  crossoverRule: "If a Book 2 subscriber later signals investor interest (EIS questions, ticket size, asks about founding round), tag investor_track and route to Book 1 pipeline. Both tracks run in parallel until investor confirms preference.",
+  exclusionRules: [
+    { tag: "founding_investor", rule: "Permanently excluded from ALL Book 2 sequences" },
+    { tag: "investor_track", rule: "Stays in Book 2 parallel until preference confirmed" },
+    { tag: "eis_not_eligible", rule: "EIS content deprioritised. IHT and portfolio content continues." },
+  ],
+};

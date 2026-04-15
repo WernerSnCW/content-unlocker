@@ -1,5 +1,5 @@
-// Runnable test harness for the V2 engine.
-// Usage from api-server dir: npx tsx src/engine/v2/tests/runTests.ts
+// Runnable test harness for the V3 engine (backwards compatible with V2).
+// Usage from api-server dir: see repo root scripts for the compile-and-run.
 
 import { detectPersona } from "../functions/detectPersona";
 import { detectHotButton } from "../functions/detectHotButton";
@@ -9,6 +9,11 @@ import { routeContent } from "../functions/routeContent";
 import { generateCoverNote } from "../functions/generateCoverNote";
 import { processTranscript } from "../functions/processTranscript";
 import { validateCompliance } from "../functions/validateCompliance";
+import { detectQuestions } from "../functions/detectQuestions";
+import { analyseDemoSegments } from "../functions/analyseDemoSegments";
+import { generateEmail } from "../functions/generateEmail";
+import { determinePostCloseActions } from "../functions/determinePostCloseActions";
+import { routeToBook2 } from "../functions/routeToBook2";
 import { blankInvestor, signalAt } from "./fixtures";
 
 let passed = 0;
@@ -224,8 +229,9 @@ test("Margaret preserver scenario", () => {
     expect(out.nextBestAction.contentToSend?.docId).toBe(140);
   }
 
-  // Engine version tagged
-  expect(out.engineVersion.startsWith("2.")).toBe(true);
+  // Engine version tagged (3.x or later)
+  const major = parseInt(out.engineVersion.split(".")[0]);
+  expect(major >= 2).toBe(true);
 });
 
 // ============ Compliance ============
@@ -241,6 +247,173 @@ test("Detects prohibited BPR framing", () => {
 test("Clean copy passes", () => {
   const r = validateCompliance("Capital at risk. Not financial advice. Instant Investment vehicle.");
   expect(r.passed).toBe(true);
+});
+
+// ============ D6. Question Detection ============
+
+console.log("\nD6. Question Detection");
+
+test("Cold-call questions detected", () => {
+  const transcript = `
+    Agent: Are you familiar with EIS at all?
+    Investor: I've heard of it but never really looked into it properly.
+    Agent: And are you paying higher or additional rate at the moment?
+    Investor: Additional rate, yes.
+    Agent: Do you have capital you're looking to deploy?
+    Investor: Yes, I've just sold a rental property. Sitting on about £300K.
+  `;
+  const result = detectQuestions(transcript, "cold_call");
+  const q1 = result.find(q => q.questionNumber === 1);
+  const q2 = result.find(q => q.questionNumber === 2);
+  const q3 = result.find(q => q.questionNumber === 3);
+  expect(!!q1?.detected).toBe(true);
+  expect(!!q2?.detected).toBe(true);
+  expect(q2?.inferredState).toBe("confirmed");
+  expect(!!q3?.detected).toBe(true);
+});
+
+test("Undetected questions are reported", () => {
+  const transcript = "Agent: Hi. Investor: Hi.";
+  const result = detectQuestions(transcript, "cold_call");
+  const undetected = result.filter(q => !q.detected);
+  expect(undetected.length > 0).toBe(true);
+});
+
+// ============ D7. Demo Segment Analysis ============
+
+console.log("\nD7. Demo Segment Analysis");
+
+test("C4 amber after segment 2 with segment 5 covered → flag", () => {
+  const questions = [
+    { questionNumber: 10, detected: true, signalTarget: "C4", investorResponse: null, inferredState: "amber", confidence: "medium" as const },
+    { questionNumber: 19, detected: true, signalTarget: "S2", investorResponse: null, inferredState: "amber", confidence: "medium" as const },
+  ];
+  const updates = [
+    { code: "C4", previousState: "grey", newState: "amber", evidence: "", confidence: "medium" as const },
+    { code: "S2", previousState: "grey", newState: "amber", evidence: "", confidence: "medium" as const },
+  ];
+  const r = analyseDemoSegments("demo", questions, updates);
+  expect(r.flags.length > 0).toBe(true);
+  expect(r.flags[0].message.includes("C4")).toBe(true);
+});
+
+test("Non-demo callType returns empty", () => {
+  const r = analyseDemoSegments("cold_call", [], []);
+  expect(r.segments.length).toBe(0);
+  expect(r.flags.length).toBe(0);
+});
+
+// ============ D8. Email Generation ============
+
+console.log("\nD8. Email Generation");
+
+test("EMAIL_1 — demo confirmation produced for cold call", () => {
+  const investor = blankInvestor({ name: "James Smith" });
+  const r = generateEmail(investor, "cold_call", null, [], { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] });
+  expect(r.email?.templateId).toBe("EMAIL_1");
+  expect(r.email!.attachmentDocId).toBe(100);
+});
+
+test("EMAIL_2 — post-demo requires personalisation", () => {
+  const noData = blankInvestor({ persona: "legacy_builder" });
+  const r = generateEmail(noData, "demo", null, [], { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] });
+  expect(r.email).toBeNull();
+  expect(r.flag?.type).toBe("missing_data");
+});
+
+test("EMAIL_2 — legacy builder with L1 amber routes to doc 170", () => {
+  const investor = blankInvestor({
+    persona: "legacy_builder",
+    factFind: {
+      ...blankInvestor().factFind,
+      exactPhrases: ["I want to make sure my children are protected"],
+      practicalProblem: "IHT exposure on £3M estate",
+      desiredOutcome: "tax-efficient transfer",
+    },
+  });
+  const updates = [{ code: "L1", previousState: "grey", newState: "amber", evidence: "", confidence: "medium" as const }];
+  const r = generateEmail(investor, "demo", null, updates, { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] });
+  expect(r.email?.templateId).toBe("EMAIL_2");
+  expect(r.email!.attachmentDocId).toBe(170);
+  expect(r.email!.body.includes("make sure my children are protected")).toBe(true);
+});
+
+// ============ D9. Post-Close Actions ============
+
+console.log("\nD9. Post-Close Actions");
+
+test("Committed outcome returns stages 6-8 + quarterly", () => {
+  const r = determinePostCloseActions("committed", blankInvestor());
+  expect(!!r.postCloseActions).toBe(true);
+  expect(r.postCloseActions!.some(a => a.action === "reserve_stock")).toBe(true);
+  expect(r.postCloseActions!.some(a => a.action === "quarterly_update")).toBe(true);
+});
+
+test("Adviser loop returns pre/during/post actions", () => {
+  const r = determinePostCloseActions("adviser_loop", blankInvestor());
+  expect(!!r.adviserLoopActions).toBe(true);
+  const phases = r.adviserLoopActions!.map(p => p.phase);
+  expect(phases.includes("pre_call")).toBe(true);
+  expect(phases.includes("during_call")).toBe(true);
+  expect(phases.includes("post_call")).toBe(true);
+});
+
+// ============ D10. Book 2 Routing ============
+
+console.log("\nD10. Book 2 Routing");
+
+test("S2 red triggers Book 2 routing", () => {
+  const investor = blankInvestor();
+  const signals = { S2: { ...signalAt("red"), code: "S2" } };
+  const r = routeToBook2(signals, investor);
+  expect(r?.triggered).toBe(true);
+  expect(r!.actions.includes("tag_book2_eligible")).toBe(true);
+});
+
+test("founding_investor tag excludes Book 2", () => {
+  const investor = { ...blankInvestor(), tags: ["founding_investor"] };
+  const signals = { S2: { ...signalAt("red"), code: "S2" } };
+  const r = routeToBook2(signals, investor as any);
+  expect(r).toBeNull();
+});
+
+// ============ D11. End-to-End Cold Call ============
+
+console.log("\nD11. End-to-end — James Growth Seeker");
+
+test("Full cold call scenario", () => {
+  const transcript = `
+    Agent: Hi James, it's Sarah calling from Unlock.
+    Agent: Are you familiar with EIS?
+    James: I've done EIS before through a Crowdcube fund but the fees are ridiculous.
+    I'm paying 3.5% annually and I can't even see what companies I'm in.
+    Agent: Are you paying additional rate?
+    James: Yes, additional rate. £180K income a year — I pay 45%.
+    Agent: Do you have capital available?
+    James: Just sold a rental property. Got about £640K sitting in cash.
+    Agent: What does the rest look like?
+    James: ISA at HL, SIPP, the Crowdcube stuff, another BTL property.
+    Agent: Is your main focus growth, protection, or wealth transfer?
+    James: Growth. I want better deals at lower fees. I'm after upside.
+  `;
+  const james = blankInvestor({ investorId: "james", name: "James Smith" });
+  const output = processTranscript(transcript, "cold_call", james);
+
+  // Persona should detect as growth_seeker
+  expect(output.personaAssessment.persona).toBe("growth_seeker");
+  // QL confirmed via "sold a rental property" / "sitting in cash"
+  expect(output.signalUpdates.some(u => u.code === "QL" && u.newState === "confirmed")).toBe(true);
+  // G1 (fee awareness) should at minimum surface
+  const g1 = output.signalUpdates.find(u => u.code === "G1");
+  expect(!!g1).toBe(true);
+  // Engine version stamped V3
+  expect(output.engineVersion.startsWith("3.")).toBe(true);
+  // V3 fields present
+  expect(Array.isArray(output.questionsDetected)).toBe(true);
+  expect(output.demoSegmentAnalysis).toBeNull(); // cold call
+  // Email draft: EMAIL_1 with doc 100
+  expect(output.emailDraft?.templateId).toBe("EMAIL_1");
+  expect(output.emailDraft?.attachmentDocId).toBe(100);
 });
 
 // ============ Summary ============

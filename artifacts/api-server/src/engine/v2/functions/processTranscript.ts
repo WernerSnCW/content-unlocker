@@ -1,9 +1,11 @@
-// C10. processTranscript — main orchestrator
+// C16. processTranscript — V3 orchestrator. Supersedes V2's C10.
+// Returns EngineOutputV3 which is a strict superset of EngineOutput — existing
+// callers that read V2 fields keep working.
 import { ENGINE_VERSION } from "../version";
 import type {
   CallType,
   EngineFlag,
-  EngineOutput,
+  EngineOutputV3,
   FactFind,
   Investor,
   SignalMap,
@@ -19,8 +21,12 @@ import { generateCoverNote } from "./generateCoverNote";
 import { determineNextAction } from "./determineNextAction";
 import { buildCrmNote } from "./buildCrmNote";
 import { validateCompliance } from "./validateCompliance";
+import { detectQuestions } from "./detectQuestions";
+import { analyseDemoSegments } from "./analyseDemoSegments";
+import { generateEmail } from "./generateEmail";
+import { determinePostCloseActions } from "./determinePostCloseActions";
+import { routeToBook2 } from "./routeToBook2";
 
-// Apply signal updates to a SignalMap, returning a new map.
 function applySignalUpdates(
   current: SignalMap,
   updates: { code: string; newState: string; evidence: string; confidence: "high" | "medium" | "low" }[],
@@ -48,11 +54,48 @@ function applySignalUpdates(
   return next;
 }
 
+// Derive a pipeline transition event from call type + signal state.
+// Logical event names (see ADR 004). Adapter translates to website's current enum.
+function derivePipelineEvent(
+  callType: CallType,
+  nextActionType: string,
+  gatesPack1Eligible: boolean,
+  outcomePath: string | null,
+): { fromEvent: string | null; toEvent: string; reason: string } | null {
+  if (callType === "cold_call" && nextActionType === "send_content") {
+    return { fromEvent: "awareness", toEvent: "demo_booked", reason: "Demo booked on cold call" };
+  }
+  if (callType === "demo") {
+    if (gatesPack1Eligible) {
+      return { fromEvent: "demo_done", toEvent: "pack_1_sent", reason: "Pack 1 eligible after demo" };
+    }
+    return { fromEvent: "demo_booked", toEvent: "demo_done", reason: "Demo completed" };
+  }
+  if (callType === "opportunity") {
+    if (outcomePath === "committed") {
+      return { fromEvent: "pack_1_sent", toEvent: "committed", reason: "Call 3 committed" };
+    }
+    if (outcomePath === "adviser_loop") {
+      return { fromEvent: "pack_1_sent", toEvent: "due_diligence", reason: "Adviser loop triggered" };
+    }
+  }
+  return null;
+}
+
+// Infer an outcome label from signals + nextAction for the opportunity call.
+function inferOpportunityOutcome(signals: SignalMap, nextActionType: string): string | null {
+  if (nextActionType === "reserve_stock") return "committed";
+  if (nextActionType === "schedule_adviser_call") return "adviser_loop";
+  if (nextActionType === "close_deal") return "no";
+  if (nextActionType === "schedule_call") return "needs_time";
+  return null;
+}
+
 export function processTranscript(
   transcript: string,
   callType: CallType,
   investor: Investor,
-): EngineOutput {
+): EngineOutputV3 {
   const flags: EngineFlag[] = [];
 
   // 1. Persona
@@ -62,7 +105,7 @@ export function processTranscript(
   // 2. Hot button
   const hotButton = detectHotButton(transcript);
 
-  // 3. Signals
+  // 3. Signals — V3 analyseSignals now merges A14 problem-belief patterns
   const signalUpdates = analyseSignals(transcript, investor.signals, investorAfterPersona);
 
   // 4. Apply updates
@@ -73,16 +116,23 @@ export function processTranscript(
     hotButton: hotButton.primary ?? investor.hotButton,
   };
 
-  // 5. Gates
+  // 5. V3 — detect questions + demo segments
+  const questionsDetected = detectQuestions(transcript, callType, enrichedInvestor);
+  const demoSegResult = analyseDemoSegments(callType, questionsDetected, signalUpdates);
+  for (const f of demoSegResult.flags) {
+    flags.push({ type: "gate_blocked", message: f.message });
+  }
+
+  // 6. Gates
   const gateResult = evaluateGates(updatedSignals, enrichedInvestor);
   if (gateResult.c4Compliance === "blocked") {
     flags.push({ type: "gate_blocked", message: "C4 compliance gate blocked — only doc 140 permitted" });
   }
 
-  // 6. Content
+  // 7. Content routing
   const content = routeContent(updatedSignals, enrichedInvestor, gateResult);
 
-  // 7. Cover note
+  // 8. Cover note (kept for V2 compatibility; V3 consumers should use emailDraft instead)
   let coverNoteText: string | null = null;
   if (content) {
     const note = generateCoverNote(enrichedInvestor, content);
@@ -91,16 +141,22 @@ export function processTranscript(
     if (coverNoteText) (content as any).coverNoteDraft = coverNoteText;
   }
 
-  // 8. Next action
+  // 9. V3 — email draft
+  const emailResult = generateEmail(enrichedInvestor, callType, content, signalUpdates, gateResult);
+  if (emailResult.flag) flags.push(emailResult.flag);
+  const emailDraft = emailResult.email;
+
+  // 10. Next action
   const nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
 
-  // 9. CRM note
-  const factFindUpdates: Partial<FactFind> = {}; // Phase 1: extraction comes in Phase 2 LLM pass
+  // 11. CRM note
+  const factFindUpdates: Partial<FactFind> = {};
   const crmNote = buildCrmNote(callType, signalUpdates, factFindUpdates, enrichedInvestor, content, nextAction, gateResult);
 
-  // 10. Compliance (on outbound text only)
-  if (coverNoteText) {
-    const compliance = validateCompliance(coverNoteText);
+  // 12. Compliance on outbound (email body takes precedence over cover note)
+  const textToCheck = emailDraft?.body ?? coverNoteText ?? "";
+  if (textToCheck) {
+    const compliance = validateCompliance(textToCheck);
     for (const v of compliance.violations) {
       flags.push({
         type: "compliance_warning",
@@ -108,6 +164,21 @@ export function processTranscript(
       });
     }
   }
+
+  // 13. Post-close / adviser-loop actions
+  const outcomePath = inferOpportunityOutcome(updatedSignals, nextAction.actionType);
+  const { postCloseActions, adviserLoopActions } = determinePostCloseActions(outcomePath, enrichedInvestor);
+
+  // 14. Book 2 routing
+  const book2Routing = routeToBook2(updatedSignals, enrichedInvestor);
+
+  // 15. Pipeline transition (logical event names — adapter resolves)
+  const pipelineTransition = derivePipelineEvent(
+    callType,
+    nextAction.actionType,
+    gateResult.pack1 === "eligible",
+    outcomePath,
+  );
 
   return {
     engineVersion: ENGINE_VERSION,
@@ -121,8 +192,15 @@ export function processTranscript(
     demoScore: investor.demoScore,
     gateStatus: gateResult,
     nextBestAction: nextAction,
-    pipelineTransition: null, // set by caller based on disposition
+    pipelineTransition,
     crmNote,
     flags,
+    // V3 additions
+    questionsDetected,
+    demoSegmentAnalysis: callType === "demo" ? demoSegResult.segments : null,
+    emailDraft,
+    postCloseActions,
+    adviserLoopActions,
+    book2Routing,
   };
 }

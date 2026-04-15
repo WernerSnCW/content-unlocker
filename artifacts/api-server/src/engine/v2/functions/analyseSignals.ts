@@ -1,5 +1,7 @@
 // C3. analyseSignals
-import { SIGNAL_REGISTRY } from "../config";
+// V3: also checks A14 PROBLEM_BELIEF_PATTERNS for G1-G3, L1-L2, P2-P3 in
+// addition to any patterns defined on the SIGNAL_REGISTRY entry itself.
+import { SIGNAL_REGISTRY, PROBLEM_BELIEF_PATTERNS } from "../config";
 import type { AnyState, Confidence, Investor, SignalMap, SignalUpdate } from "../types";
 import { countOccurrences, isSignalActive, lower } from "../util";
 
@@ -93,7 +95,10 @@ export function analyseSignals(
   for (const def of sorted) {
     if (!isSignalActive(def.activation, currentSignals, investor)) continue;
 
-    const scored = scoreSignal(transcript, def.detectionPatterns, def.negativePatterns);
+    // Merge registry patterns with A14 problem-belief patterns for this code
+    const a14 = PROBLEM_BELIEF_PATTERNS[def.code]?.detectionPatterns ?? [];
+    const mergedDetection = [...(def.detectionPatterns ?? []), ...a14];
+    const scored = scoreSignal(transcript, mergedDetection, def.negativePatterns);
 
     const isQual = def.category === "qualification";
     const proposed = isQual ? proposeQualState(scored.net) : proposeBeliefState(scored.net);

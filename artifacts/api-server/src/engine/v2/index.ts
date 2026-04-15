@@ -13,6 +13,12 @@ export { determineNextAction } from "./functions/determineNextAction";
 export { buildCrmNote } from "./functions/buildCrmNote";
 export { validateCompliance } from "./functions/validateCompliance";
 export { processTranscript } from "./functions/processTranscript";
+// V3 additions
+export { detectQuestions } from "./functions/detectQuestions";
+export { analyseDemoSegments } from "./functions/analyseDemoSegments";
+export { generateEmail } from "./functions/generateEmail";
+export { determinePostCloseActions } from "./functions/determinePostCloseActions";
+export { routeToBook2 } from "./functions/routeToBook2";
 
 // Phase 2: persistence
 export {

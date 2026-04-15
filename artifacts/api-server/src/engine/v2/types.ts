@@ -133,9 +133,71 @@ export interface EngineOutput {
 
   nextBestAction: NextAction;
 
-  pipelineTransition: { fromStage: number; toStage: number; reason: string } | null;
+  // V3: pipelineTransition now uses logical event names (see ADR 004).
+  // Adapter layer resolves to the website's current stage enum via stage_mapping table.
+  pipelineTransition: { fromEvent: string | null; toEvent: string; reason: string } | null;
   crmNote: string;
   flags: EngineFlag[];
+}
+
+// ============ V3 types (ADDITIVE) ============
+
+export interface QuestionDetection {
+  questionNumber: number;
+  detected: boolean;
+  signalTarget: string | null;
+  investorResponse: string | null;
+  inferredState: string | null;
+  confidence: Confidence;
+}
+
+export interface DemoSegmentAnalysis {
+  segment: number;
+  segmentName: string;
+  covered: boolean;
+  signalOutcomes: { code: string; state: string }[];
+  skipped: boolean;
+  skipReason: string | null;
+}
+
+export interface EmailOutput {
+  templateId: string; // "EMAIL_1" | "EMAIL_2"
+  subject: string;
+  body: string;
+  attachmentDocId: number | null;
+  attachmentDocName: string | null;
+  coverNoteAngle: string | null;
+  personalisationSources: string[];
+  complianceCheck: { passed: boolean; violations: string[] };
+  timing: string;
+}
+
+export interface PostCloseAction {
+  action: string;
+  owner: Owner | "system";
+  timing: string;
+  detail?: string;
+}
+
+export interface AdviserLoopAction {
+  phase: "pre_call" | "during_call" | "post_call";
+  actions: PostCloseAction[];
+}
+
+export interface Book2RoutingResult {
+  triggered: boolean;
+  reason: string;
+  actions: string[];
+}
+
+// Extended output — V3 superset of V2. Additive, non-breaking.
+export interface EngineOutputV3 extends EngineOutput {
+  questionsDetected: QuestionDetection[];
+  demoSegmentAnalysis: DemoSegmentAnalysis[] | null;
+  emailDraft: EmailOutput | null;
+  postCloseActions: PostCloseAction[] | null;
+  adviserLoopActions: AdviserLoopAction[] | null;
+  book2Routing: Book2RoutingResult | null;
 }
 
 // Config-side types (for Part A)
@@ -195,4 +257,117 @@ export interface ComplianceRule {
   prohibited: readonly string[];
   caveatRequired: boolean;
   caveatText?: string;
+}
+
+// ============ V3 config-side types ============
+
+export interface QuestionDef {
+  qNum: number;
+  text: string | null; // null for narrative questions (e.g. Q12)
+  signal: string | null;
+  call: 1 | 2 | 3;
+  category: string;
+  alsoSurfaces?: readonly string[];
+  note?: string;
+  responseMap?: Readonly<Record<string, { state?: string; outcome?: string; note?: string; contentRoute?: number }>>;
+  variants?: Readonly<Record<string, { text: string; signal: string }>>;
+  captures?: readonly string[];
+  gateRole?: string;
+  prerequisite?: string;
+}
+
+export interface DemoSegmentDef {
+  segment: number;
+  name: string;
+  durationMins: number;
+  screenShare: boolean;
+  questionsUsed: readonly number[];
+  signalsSurfaced: readonly string[];
+  alsoCaptures?: readonly string[];
+  personaBeliefsSurfaced?: Readonly<Record<string, readonly string[]>>;
+  captures?: readonly string[];
+  expectedOutcome: string;
+  criticalGate?: string;
+  note?: string;
+}
+
+export interface ColdCallStepDef {
+  step: number;
+  name: string;
+  signalTarget: string | null;
+  purpose: string;
+}
+
+export interface AttachmentRouteEntry {
+  belief: string;
+  state: string;
+  docId: number;
+  angle: string;
+}
+
+export interface EmailTemplateDef {
+  id: string;
+  trigger: string;
+  timing: string;
+  timingException?: string;
+  subject: string;
+  attachment?: { docId: number; docName: string };
+  structure: readonly string[];
+  personalisationRequired: boolean;
+  personalisationFields?: readonly string[];
+  attachmentRouting?: string;
+  note?: string;
+}
+
+export interface ProblemBeliefPatternDef {
+  name: string;
+  persona: string;
+  detectionPatterns: readonly { pattern: string; weight: number; note?: string; context?: string }[];
+}
+
+export interface PostCloseStageDef {
+  stage: number;
+  name: string;
+  trigger: string;
+  actions?: readonly {
+    action: string;
+    owner: string;
+    timing: string;
+    detail?: string;
+  }[];
+  recurringActions?: readonly {
+    action: string;
+    owner: string;
+    timing: string;
+    detail?: string;
+  }[];
+}
+
+export interface AdviserLoopDef {
+  trigger: string;
+  preCall: {
+    actions: readonly { action: string; owner: string; timing: string; detail?: string }[];
+  };
+  duringCall: {
+    tomRole: string;
+    openingFrame: string;
+    agenda: readonly string[];
+    fcaConcerns: string;
+  };
+  postCall: {
+    actions: readonly { action: string; owner?: string; timing?: string; detail?: string; nextStep?: string; fields?: readonly string[] }[];
+  };
+}
+
+export interface Book2RoutingDef {
+  trigger: string;
+  entryActions: readonly { action: string; owner: string; timing: string; detail?: string }[];
+  subscriberPipeline: readonly {
+    stage: string;
+    trigger: string;
+    action?: string;
+    autoEmails?: readonly { name: string; timing: string; wordCount?: string; content: string }[];
+  }[];
+  crossoverRule: string;
+  exclusionRules: readonly { tag: string; rule: string }[];
 }
