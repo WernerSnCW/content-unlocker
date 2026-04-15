@@ -647,15 +647,20 @@ export default function CallCommand() {
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today's Results</p>
           <div className="grid grid-cols-6 gap-3">
-            <Card title={`${todayOutcomes.total} total calls to ${todayOutcomes.uniqueContacts} unique contacts`}>
+            <Card title={`${todayOutcomes.total} total calls to ${todayOutcomes.uniqueContacts} unique contact${todayOutcomes.uniqueContacts !== 1 ? "s" : ""}`}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-3">
                   <Phone className="w-5 h-5 text-primary shrink-0" />
-                  <div>
-                    <p className="text-2xl font-bold leading-none">{todayOutcomes.total}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Calls <span className="text-muted-foreground/60">·</span> {todayOutcomes.uniqueContacts} contact{todayOutcomes.uniqueContacts !== 1 ? "s" : ""}
-                    </p>
+                  <div className="flex items-baseline gap-2">
+                    <div>
+                      <p className="text-2xl font-bold leading-none">{todayOutcomes.total}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Calls</p>
+                    </div>
+                    <span className="text-muted-foreground/40 text-lg">/</span>
+                    <div>
+                      <p className="text-2xl font-bold leading-none">{todayOutcomes.uniqueContacts}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Unique</p>
+                    </div>
                   </div>
                 </div>
               </CardContent>
