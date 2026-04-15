@@ -414,13 +414,37 @@ async function handleCallEnded(data: any): Promise<string | null> {
 //      conversation.tags only; no state change.
 //   3. Unmapped tag (not in config)                    → same as #2, so ad-hoc
 //      tags added by operators are preserved without needing admin config.
+// Extract the tag name from any of the shapes Aircall sends on call.tagged:
+//   - data.tag = "name" (string)
+//   - data.tag = { name: "..." } (object, legacy/undocumented)
+//   - data.added_tag = { name: "..." } (v2 — specific tag just added)
+//   - data.tags = [{ name }, ...] (v2 — full call object, last tag is newest)
+//   - data.call.tags = [...] (nested call object)
+function extractTagName(data: any): { name: string | null; shape: string } {
+  if (typeof data?.tag === "string") return { name: data.tag, shape: "data.tag:string" };
+  if (data?.tag?.name) return { name: data.tag.name, shape: "data.tag.name" };
+  if (data?.added_tag?.name) return { name: data.added_tag.name, shape: "data.added_tag.name" };
+  if (typeof data?.added_tag === "string") return { name: data.added_tag, shape: "data.added_tag:string" };
+  const tagsArr = data?.tags || data?.call?.tags;
+  if (Array.isArray(tagsArr) && tagsArr.length > 0) {
+    const last = tagsArr[tagsArr.length - 1];
+    const name = typeof last === "string" ? last : last?.name;
+    if (name) return { name, shape: "data.tags[last].name" };
+  }
+  return { name: null, shape: "unknown" };
+}
+
 async function handleCallTagged(data: any): Promise<string | null> {
-  const callId = data.call_id || data.id;
-  const tag = data.tag;
-  if (!tag) return "no tag in payload";
-  const tagName = typeof tag === "string" ? tag : tag.name;
-  if (!tagName) return "no tag name";
-  if (!callId) return "no call_id";
+  const callId = data.call_id || data.id || data.call?.id;
+  const extraction = extractTagName(data);
+  if (!extraction.name) {
+    // Surface the actual payload shape so we can see what Aircall sent.
+    const topKeys = Object.keys(data || {}).join(",");
+    const snippet = JSON.stringify(data).slice(0, 500);
+    return `no tag found; top keys: [${topKeys}]; snippet: ${snippet}`;
+  }
+  const tagName = extraction.name;
+  if (!callId) return `no call_id; top keys: [${Object.keys(data || {}).join(",")}]`;
 
   const tagMapping = await getTagMapping();
   const resolution = resolveTag(tagName, tagMapping);
