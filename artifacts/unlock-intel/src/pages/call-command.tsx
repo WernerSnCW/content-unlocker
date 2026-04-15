@@ -400,20 +400,20 @@ export default function CallCommand() {
 
       {/* OUTCOMES TRAY — always-visible thin tab on right edge; expands to full list */}
       <div className="fixed top-1/4 right-0 z-40 flex items-start">
-        {/* Collapsed tab — always visible */}
+        {/* Collapsed tab — always visible, branded green */}
         {!trayExpanded && (
           <button
             onClick={() => setTrayExpanded(true)}
-            className="group relative bg-card border border-r-0 border-border shadow-lg rounded-l-lg px-2 py-3 flex flex-col items-center gap-2 hover:bg-muted transition-colors"
+            className="group relative bg-primary text-primary-foreground border border-r-0 border-primary shadow-lg rounded-l-lg px-2 py-3 flex flex-col items-center gap-2 hover:bg-primary/90 transition-colors"
             title={`${pendingOutcomes.length} outcome${pendingOutcomes.length !== 1 ? "s" : ""} in tray`}
           >
             <Headphones className="w-4 h-4" />
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl] rotate-180">
+            <span className="text-[10px] uppercase tracking-wide [writing-mode:vertical-rl] rotate-180 font-semibold">
               Outcomes
             </span>
             {trayBadgeCount > 0 && (
-              <span className={`absolute -top-1 -left-1 min-w-[20px] h-5 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                readyCount > 0 ? "bg-primary text-primary-foreground animate-pulse" : "bg-muted-foreground text-background"
+              <span className={`absolute -top-1 -left-1 min-w-[20px] h-5 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ring-2 ring-background ${
+                readyCount > 0 ? "bg-background text-primary animate-pulse" : "bg-background text-primary"
               }`}>
                 {trayBadgeCount}
               </span>
