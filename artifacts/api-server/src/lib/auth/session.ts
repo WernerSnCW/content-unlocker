@@ -20,7 +20,14 @@ export function buildSessionMiddleware(): RequestHandler {
   const store = new PgStore({
     pool: pool as any, // drizzle's pool is pg.Pool; connect-pg-simple accepts it
     tableName: "session",
-    createTableIfMissing: true,
+    // We do NOT use createTableIfMissing — it tries to read a `table.sql`
+    // file from the connect-pg-simple package at runtime, which breaks
+    // under esbuild bundling (the file isn't copied into dist/). Instead,
+    // the `session` table is created explicitly via SQL (see ADR 005 /
+    // deployment notes). Using createTableIfMissing here throws
+    // "ENOENT: no such file or directory, open '…/dist/table.sql'" on
+    // every session write.
+    //
     // Prune expired sessions every 15 min (default is 60s which is too chatty)
     pruneSessionInterval: 60 * 15,
   });
