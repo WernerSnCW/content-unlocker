@@ -291,11 +291,19 @@ export async function stageUpload(
     company: contactsTable.company,
   }).from(contactsTable);
 
-  const emailMap = new Map<string, typeof existing[0]>();
-  const phoneMap = new Map<string, typeof existing[0]>();
+  // Maps used for BOTH existing-DB dedup AND within-batch dedup.
+  // Entries with id=null came from earlier rows in this same batch (no DB row yet).
+  type DedupEntry = {
+    id: string | null;
+    first_name: string; last_name: string;
+    email: string | null; phone: string | null; company: string | null;
+    row_number?: number;
+  };
+  const emailMap = new Map<string, DedupEntry>();
+  const phoneMap = new Map<string, DedupEntry>();
   for (const e of existing) {
-    if (e.email) emailMap.set(e.email.toLowerCase(), e);
-    if (e.phone) phoneMap.set(e.phone, e);
+    if (e.email) emailMap.set(e.email.toLowerCase(), { ...e, id: e.id });
+    if (e.phone) phoneMap.set(e.phone, { ...e, id: e.id });
   }
 
   // Create session
@@ -314,12 +322,14 @@ export async function stageUpload(
     let matchedContactId: string | null = null;
     let matchedDetails: Record<string, any> = {};
 
-    // 1. Exact email match
+    // 1. Exact email match (against DB or an earlier row in this batch)
     if (contact.email) {
       const match = emailMap.get(contact.email);
       if (match) {
         dedupStatus = "exact_duplicate";
-        matchReason = "Exact email match";
+        matchReason = match.id
+          ? "Exact email match"
+          : `Duplicate email within this upload (row ${match.row_number})`;
         matchedContactId = match.id;
         matchedDetails = { first_name: match.first_name, last_name: match.last_name, email: match.email, phone: match.phone, company: match.company };
         dupCount++;
@@ -334,12 +344,14 @@ export async function stageUpload(
       }
     }
 
-    // 2. Normalised phone match
+    // 2. Normalised phone match (against DB or an earlier row in this batch)
     if (contact.phone) {
       const match = phoneMap.get(contact.phone);
       if (match) {
         dedupStatus = "exact_duplicate";
-        matchReason = "Phone number match";
+        matchReason = match.id
+          ? "Phone number match"
+          : `Duplicate phone within this upload (row ${match.row_number})`;
         matchedContactId = match.id;
         matchedDetails = { first_name: match.first_name, last_name: match.last_name, email: match.email, phone: match.phone, company: match.company };
         dupCount++;
@@ -386,6 +398,17 @@ export async function stageUpload(
     } else {
       newCount++;
     }
+
+    // Register this row in the dedup maps so later rows in the same batch
+    // can detect collisions against it (first occurrence wins).
+    const batchEntry: DedupEntry = {
+      id: null,
+      first_name: contact.first_name, last_name: contact.last_name,
+      email: contact.email, phone: contact.phone, company: contact.company,
+      row_number: contact.row_number,
+    };
+    if (contact.email && !emailMap.has(contact.email)) emailMap.set(contact.email, batchEntry);
+    if (contact.phone && !phoneMap.has(contact.phone)) phoneMap.set(contact.phone, batchEntry);
 
     await db.insert(stagedContactsTable).values({
       session_id: session.id, row_number: contact.row_number,
