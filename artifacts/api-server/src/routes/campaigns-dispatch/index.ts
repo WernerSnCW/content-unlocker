@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, callListConfigsTable, contactsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
+import { db, callListConfigsTable, contactsTable, agentsTable, callListMembershipsTable, leadConversationsTable } from "@workspace/db";
 import { eq, and, desc, sql, isNull } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
 
@@ -121,26 +121,29 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
   }
 });
 
-// GET /call-lists/today-outcomes — count contacts called today grouped by outcome
-router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
+// GET /call-lists/today-outcomes — count CALLS (conversations) made today, grouped by outcome.
+// Counts each completed conversation individually, not contacts, so a contact who was called
+// twice today (e.g. immediate_recall scenario) counts as 2. A contact who was called and then
+// recalled (now back in dispatched status) still counts as 1 completed call.
+router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const rows = await db.select({
-      outcome: contactsTable.last_call_outcome,
+      outcome: leadConversationsTable.call_outcome,
       count: sql<number>`count(*)`,
     })
-      .from(contactsTable)
+      .from(leadConversationsTable)
       .where(and(
-        eq(contactsTable.dispatch_status, "called"),
-        sql`${contactsTable.updated_at}::date = ${today.toISOString().split("T")[0]}::date`,
+        eq(leadConversationsTable.source, "aircall"),
+        sql`${leadConversationsTable.conversation_date}::date = ${today.toISOString().split("T")[0]}::date`,
       ))
-      .groupBy(contactsTable.last_call_outcome);
+      .groupBy(leadConversationsTable.call_outcome);
 
     const outcomes: Record<string, number> = {};
     let total = 0;
     for (const row of rows) {
-      const key = row.outcome || "unknown";
+      const key = row.outcome || "pending";
       outcomes[key] = Number(row.count);
       total += Number(row.count);
     }
