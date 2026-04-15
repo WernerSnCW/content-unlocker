@@ -11,11 +11,13 @@ import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
   ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
   ListPlus, TrendingUp, Headphones, ExternalLink, Settings,
-  User, Building2, Mail, MailWarning,
+  Building2, Mail, MailWarning,
   Loader2, RefreshCw
 } from "lucide-react";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 import OutcomeDrawer from "@/components/OutcomeDrawer";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { apiFetch, apiPost } from "@/lib/apiClient";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
@@ -186,7 +188,7 @@ export default function CallCommand() {
       await Promise.all(awaiting.map(async (p) => {
         if (Date.now() - p.startedAt > 10 * 60 * 1000) return; // give up after 10 min
         try {
-          const res = await fetch(`${API_BASE}/engine/contact/${p.contactId}`);
+          const res = await apiFetch(`${API_BASE}/engine/contact/${p.contactId}`);
           if (!res.ok) return;
           const data = await res.json();
           const newest = data?.runs?.[0];
@@ -231,26 +233,15 @@ export default function CallCommand() {
       };
     }
   };
-  // Agent picker (persisted in localStorage)
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [activeAgentId, setActiveAgentId] = useState<string>(() => localStorage.getItem("activeAgentId") || "");
-  const activeAgent = agents.find(a => a.id === activeAgentId) || null;
-  const agentName = activeAgent ? activeAgent.name.split(" ")[0] : "there";
+  // Agent identity comes from the authenticated session — no more picker,
+  // no more localStorage. The logged-in user IS the active agent.
+  const { data: currentUser } = useCurrentUser();
+  const activeAgentId = currentUser?.agent.id || "";
+  const agentName = currentUser?.agent.name?.split(" ")[0] || "there";
 
-  const handleAgentChange = (id: string) => {
-    setActiveAgentId(id);
-    localStorage.setItem("activeAgentId", id);
-    // Defensive: explicitly clear the view state so any stale data from the
-    // previous agent disappears immediately, even if the subsequent loadAll
-    // or effect is delayed. loadAll will repopulate with this agent's data.
-    setCallList([]);
-    setActiveCallListDef(null);
-    setCurrentCallIndex(0);
-    setViewingIndex(null);
-    setTodayOutcomes({ total: 0, uniqueContacts: 0, outcomes: {} });
-    setStaleCount(0);
-    loadAll();
-  };
+  // The full agents list is still used by the "Create Call List" dialog so
+  // a list can be assigned to any agent (admin-style setup).
+  const [agents, setAgents] = useState<Agent[]>([]);
 
   // Create call list dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -269,27 +260,16 @@ export default function CallCommand() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 
-  useEffect(() => { loadAll(); }, []);
-
-  // One-shot auto-select: when agents have been fetched and no agent is yet
-  // active (first visit, or persisted agent was deleted), pick the first
-  // available one. Runs ONLY when the trigger conditions change — NOT inside
-  // loadAll, which would create a feedback loop.
+  // Initial load runs once the session is known (so requests carry the
+  // auth cookie and the server can scope to this agent).
   useEffect(() => {
-    if (activeAgentId || agents.length === 0) return;
-    const stored = localStorage.getItem("activeAgentId");
-    const valid = stored && agents.find(a => a.id === stored);
-    if (valid) {
-      handleAgentChange(stored);
-    } else {
-      handleAgentChange(agents[0].id);
-    }
+    if (!activeAgentId) return;
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agents]);
+  }, [activeAgentId]);
 
-  // When the operator switches agents, resolve that agent's active call list
-  // from already-fetched data and reload contacts for it. Avoids a full reload
-  // round-trip when we already have the list definitions client-side.
+  // When callListDefs change, resolve this agent's active list and reload
+  // its contacts. (Runs after loadAll populates callListDefs.)
   useEffect(() => {
     if (!activeAgentId) return;
     const next = callListDefs.find(c => c.active && c.assigned_agent_id === activeAgentId) || null;
@@ -297,11 +277,10 @@ export default function CallCommand() {
     setActiveCallListDef(next);
     setCurrentCallIndex(0);
     setViewingIndex(null);
-    // Reload the call list's contacts (or clear them if no list for this agent)
     (async () => {
       if (next) {
         try {
-          const listRes = await fetch(`${API_BASE}/call-lists/${next.id}/call-list`);
+          const listRes = await apiFetch(`${API_BASE}/call-lists/${next.id}/call-list`);
           const listData = await listRes.json();
           setCallList(listData.contacts || []);
         } catch { /* ignore */ }
@@ -315,20 +294,16 @@ export default function CallCommand() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      // Scope the call-list fetch by the operator's active agent when we have
-      // one persisted. Keeps each agent in their own lane. Initial load (no
-      // persisted agent yet) falls back to unfiltered — agent is then resolved
-      // below and the active list is narrowed by ID client-side.
-      const storedAgent = localStorage.getItem("activeAgentId");
-      const agentQuery = storedAgent ? `?agent_id=${encodeURIComponent(storedAgent)}` : "";
+      // Server derives agent scope from the session cookie. Frontend no
+      // longer sends agent_id — requireAuth attaches req.auth on the server.
       const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes, aircallRes] = await Promise.all([
-        fetch(`${API_BASE}/call-lists${agentQuery}`),
-        fetch(`${API_BASE}/contacts/stats`),
-        fetch(`${API_BASE}/settings/agents`),
-        fetch(`${API_BASE}/contacts/sources`),
-        fetch(`${API_BASE}/call-lists/stale-count${agentQuery}`),
-        fetch(`${API_BASE}/call-lists/today-outcomes${agentQuery}`),
-        fetch(`${API_BASE}/settings/integrations/aircall`),
+        apiFetch(`${API_BASE}/call-lists`),
+        apiFetch(`${API_BASE}/contacts/stats`),
+        apiFetch(`${API_BASE}/settings/agents`),
+        apiFetch(`${API_BASE}/contacts/sources`),
+        apiFetch(`${API_BASE}/call-lists/stale-count`),
+        apiFetch(`${API_BASE}/call-lists/today-outcomes`),
+        apiFetch(`${API_BASE}/settings/integrations/aircall`),
       ]);
 
       const callListDefsData = await callListDefsRes.json();
@@ -347,18 +322,9 @@ export default function CallCommand() {
 
       const agentsList = (agentsData.agents || []).filter((a: Agent) => a.active);
       setAgents(agentsList);
-      // Resolve which agent this load is for — prefer the one persisted in
-      // localStorage, falling back to the first active agent. Intentionally
-      // do NOT call handleAgentChange here — that would feed back into
-      // loadAll and infinite-loop. The separate "initial agent auto-select"
-      // effect (below, one-shot) handles the case where no agent is set yet.
-      const storedId = localStorage.getItem("activeAgentId");
-      const resolvedAgentId = (storedId && agentsList.find((a: Agent) => a.id === storedId))
-        ? storedId
-        : (agentsList[0]?.id || "");
 
-      const active = resolvedAgentId
-        ? allCallListDefs.find((c: CallListDef) => c.active && c.assigned_agent_id === resolvedAgentId)
+      const active = activeAgentId
+        ? allCallListDefs.find((c: CallListDef) => c.active && c.assigned_agent_id === activeAgentId)
         : null;
       setActiveCallListDef(active || null);
 
@@ -366,15 +332,12 @@ export default function CallCommand() {
       setPoolAvailable(poolData.by_status?.pool || 0);
 
       if (!active) {
-        // No active list for this agent — clear any stale queue state left from
-        // a previous agent's view. Without this, switching from an agent with
-        // a list to one without would leave the old list on-screen.
         setCallList([]);
         setCurrentCallIndex(0);
       }
 
       if (active) {
-        const listRes = await fetch(`${API_BASE}/call-lists/${active.id}/call-list`);
+        const listRes = await apiFetch(`${API_BASE}/call-lists/${active.id}/call-list`);
         const listData = await listRes.json();
         const newList: CallContact[] = listData.contacts || [];
         // Re-align cursor by contact ID so the display doesn't jump when the
@@ -403,11 +366,8 @@ export default function CallCommand() {
   const handleClearStale = async () => {
     setClearing(true);
     try {
-      await fetch(`${API_BASE}/call-lists/reconcile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_id: activeAgentId || null }),
-      });
+      // Agent scope derived from session on the server — no body needed.
+      await apiPost(`${API_BASE}/call-lists/reconcile`, {});
       await loadAll();
     } catch {} finally { setClearing(false); }
   };
@@ -417,14 +377,11 @@ export default function CallCommand() {
     setCreating(true);
     try {
       // Create the list first so we can reassign stale contacts to it by name
-      const res = await fetch(`${API_BASE}/call-lists`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newName.trim(),
-          daily_quota: parseInt(newQuota) || 100,
-          assigned_agent_id: newAgent || null,
-          filter_criteria: { source_lists: newSourceLists.length > 0 ? newSourceLists : undefined, exclude_outcomes: ["no-interest"] },
-        }),
+      const res = await apiPost(`${API_BASE}/call-lists`, {
+        name: newName.trim(),
+        daily_quota: parseInt(newQuota) || 100,
+        assigned_agent_id: newAgent || null,
+        filter_criteria: { source_lists: newSourceLists.length > 0 ? newSourceLists : undefined, exclude_outcomes: ["no-interest"] },
       });
       const data = await res.json();
       const newCallList = data.campaign;
@@ -432,10 +389,8 @@ export default function CallCommand() {
       // If carrying over, move stale memberships onto the new list
       let carriedOver = 0;
       if (carryOver && staleCount > 0 && newCallList?.id) {
-        const carryRes = await fetch(`${API_BASE}/call-lists/carry-over`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_call_list_id: newCallList.id }),
+        const carryRes = await apiPost(`${API_BASE}/call-lists/carry-over`, {
+          target_call_list_id: newCallList.id,
         });
         const carryData = await carryRes.json();
         carriedOver = carryData.carried_over || 0;
@@ -446,9 +401,8 @@ export default function CallCommand() {
         const quota = parseInt(newQuota) || 100;
         const freshNeeded = Math.max(0, quota - carriedOver);
         if (freshNeeded > 0) {
-          await fetch(`${API_BASE}/call-lists/${newCallList.id}/fill-queue`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ count: freshNeeded }),
+          await apiPost(`${API_BASE}/call-lists/${newCallList.id}/fill-queue`, {
+            count: freshNeeded,
           });
         }
       }
@@ -632,19 +586,6 @@ export default function CallCommand() {
           <p className="text-sm text-muted-foreground">{today}</p>
         </div>
         <div className="flex items-center gap-2">
-          {agents.length > 1 && (
-            <Select value={activeAgentId} onValueChange={handleAgentChange}>
-              <SelectTrigger className="w-[160px] h-8 text-sm">
-                <User className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                <SelectValue placeholder="Select agent..." />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <Link href="/contacts/upload">
             <Button variant="outline" size="sm" className="gap-1.5"><Upload className="w-3.5 h-3.5" /> Upload Contacts</Button>
           </Link>
