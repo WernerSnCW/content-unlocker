@@ -271,6 +271,22 @@ export default function CallCommand() {
 
   useEffect(() => { loadAll(); }, []);
 
+  // One-shot auto-select: when agents have been fetched and no agent is yet
+  // active (first visit, or persisted agent was deleted), pick the first
+  // available one. Runs ONLY when the trigger conditions change — NOT inside
+  // loadAll, which would create a feedback loop.
+  useEffect(() => {
+    if (activeAgentId || agents.length === 0) return;
+    const stored = localStorage.getItem("activeAgentId");
+    const valid = stored && agents.find(a => a.id === stored);
+    if (valid) {
+      handleAgentChange(stored);
+    } else {
+      handleAgentChange(agents[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]);
+
   // When the operator switches agents, resolve that agent's active call list
   // from already-fetched data and reload contacts for it. Avoids a full reload
   // round-trip when we already have the list definitions client-side.
@@ -331,17 +347,16 @@ export default function CallCommand() {
 
       const agentsList = (agentsData.agents || []).filter((a: Agent) => a.active);
       setAgents(agentsList);
-      // Auto-select first agent if none persisted or persisted one no longer exists
+      // Resolve which agent this load is for — prefer the one persisted in
+      // localStorage, falling back to the first active agent. Intentionally
+      // do NOT call handleAgentChange here — that would feed back into
+      // loadAll and infinite-loop. The separate "initial agent auto-select"
+      // effect (below, one-shot) handles the case where no agent is set yet.
       const storedId = localStorage.getItem("activeAgentId");
       const resolvedAgentId = (storedId && agentsList.find((a: Agent) => a.id === storedId))
         ? storedId
         : (agentsList[0]?.id || "");
-      if (resolvedAgentId !== activeAgentId) {
-        handleAgentChange(resolvedAgentId);
-      }
 
-      // Scope the active call list to the resolved agent. Different agents
-      // have their own call lists; switching agents changes what's loaded.
       const active = resolvedAgentId
         ? allCallListDefs.find((c: CallListDef) => c.active && c.assigned_agent_id === resolvedAgentId)
         : null;
