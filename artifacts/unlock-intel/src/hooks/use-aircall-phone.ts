@@ -9,11 +9,22 @@ interface UseAircallPhoneOptions {
   onCallEnded?: (callInfo: { duration: number; call_id: string }) => void;
 }
 
+export interface AircallUserInfo {
+  /** Aircall numeric user ID — matches agents.aircall_user_id in our DB */
+  id: number | null;
+  email: string | null;
+  name: string | null;
+}
+
 interface UseAircallPhoneReturn {
   isLoggedIn: boolean;
   callStatus: CallStatus;
   activeCallId: string | null;
   error: string | null;
+  /** Info about the Aircall user logged into the embedded widget. Populated
+   *  after onLogin fires; null until then. Used to detect mismatches against
+   *  the app's logged-in agent. */
+  aircallUser: AircallUserInfo | null;
   dial: (phoneNumber: string) => void;
 }
 
@@ -27,6 +38,7 @@ export function useAircallPhone({
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aircallUser, setAircallUser] = useState<AircallUserInfo | null>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -44,14 +56,27 @@ export function useAircallPhone({
     try {
       const phone = new AircallPhone({
         domToLoadWorkspace: `#${containerId}`,
-        onLogin: () => {
+        onLogin: (payload: any) => {
           setIsLoggedIn(true);
           setError(null);
+          // The Aircall Everywhere SDK passes { user, settings } on login.
+          // `user` has at least { user_id, user_email, user_name } (exact
+          // shape varies across SDK versions). Defensive parsing handles
+          // snake_case, camelCase, and nested shapes.
+          const u = payload?.user ?? payload ?? {};
+          const rawId = u.user_id ?? u.userId ?? u.id ?? null;
+          const id = rawId != null && !Number.isNaN(Number(rawId)) ? Number(rawId) : null;
+          const email = (u.user_email ?? u.email ?? null) || null;
+          const nameFirst = u.user_first_name ?? u.firstName ?? "";
+          const nameLast = u.user_last_name ?? u.lastName ?? "";
+          const nameFull = u.user_name ?? u.name ?? `${nameFirst} ${nameLast}`.trim();
+          setAircallUser({ id, email, name: nameFull || null });
         },
         onLogout: () => {
           setIsLoggedIn(false);
           setCallStatus("idle");
           setActiveCallId(null);
+          setAircallUser(null);
         },
         size: "auto",
         debug: false,
@@ -122,5 +147,5 @@ export function useAircallPhone({
     [callStatus]
   );
 
-  return { isLoggedIn, callStatus, activeCallId, error, dial };
+  return { isLoggedIn, callStatus, activeCallId, error, aircallUser, dial };
 }

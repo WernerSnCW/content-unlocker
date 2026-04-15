@@ -1,7 +1,18 @@
 declare module 'aircall-everywhere' {
   interface AircallPhoneOptions {
     domToLoadWorkspace?: string;
-    onLogin?: (payload: { user: Record<string, any>; settings?: Record<string, any> }) => void;
+    onLogin?: (payload: {
+      user: Record<string, any> & {
+        user_id?: number;
+        userId?: number;
+        id?: number;
+        user_email?: string;
+        email?: string;
+        user_name?: string;
+        name?: string;
+      };
+      settings?: Record<string, any>;
+    }) => void;
     onLogout?: () => void;
     integrationToLoad?: string;
     size?: 'big' | 'small' | 'auto';

@@ -204,11 +204,21 @@ export default function CallCommand() {
     // Re-run when the set of awaiting items changes
   }, [pendingOutcomes.map(p => `${p.contactId}:${p.status}`).join(","), updatePending]);
 
-  const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
+  const { isLoggedIn, callStatus, error: aircallError, aircallUser, dial } = useAircallPhone({
     containerId: "aircall-phone-container",
     enabled: aircallConfigured,
     onCallEnded: handleCallEnded,
   });
+
+  // Aircall-vs-app identity mismatch detection. The app can't control the
+  // Aircall widget's login (it's browser-session-scoped to phone.aircall.io),
+  // so if the human signs in as someone different, outcomes get attributed
+  // wrong. Surface it loudly rather than silently misfiring.
+  const aircallMismatch =
+    isLoggedIn &&
+    aircallUser?.id != null &&
+    currentUser?.agent?.aircall_user_id != null &&
+    aircallUser.id !== currentUser.agent.aircall_user_id;
 
   // Auto-reset dialing if Aircall never transitions to on_call/ringing
   const dialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -594,6 +604,33 @@ export default function CallCommand() {
           </Link>
         </div>
       </div>
+
+      {/* AIRCALL IDENTITY MISMATCH — warn if the Aircall widget is logged in
+          as a different human than the app session. The webhook will
+          attribute calls to whoever actually made them on Aircall's side,
+          which may not be the operator the app thinks is dialling. */}
+      {aircallMismatch && (
+        <Card className="border-amber-500/60 bg-amber-500/5">
+          <CardContent className="py-3 px-4 flex items-start gap-3">
+            <MailWarning className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                Aircall is signed in as a different user
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                You're signed into this app as <strong>{currentUser?.agent.name}</strong>
+                {currentUser?.agent.aircall_user_id != null
+                  ? ` (Aircall user id ${currentUser.agent.aircall_user_id})`
+                  : ""}
+                , but the Aircall widget below is signed in as{" "}
+                <strong>{aircallUser?.email || aircallUser?.name || `user id ${aircallUser?.id}`}</strong>.
+                Calls you make will be attributed to the Aircall user, not the app user.
+                Log out of Aircall inside the widget and sign in again as yourself.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* STALE QUEUE PROMPT */}
       {staleCount > 0 && (
