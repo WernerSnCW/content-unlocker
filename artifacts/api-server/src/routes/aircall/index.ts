@@ -781,13 +781,19 @@ async function handleSummaryCreated(data: any): Promise<string> {
 }
 
 // ==================== Background Sweep ====================
-// Fallback for the rare case where call.tagged never arrives. Treats any
-// conversation that has a duration_seconds (i.e. call.ended ran) but no
-// processed_at after a timeout as "untagged" and applies a default close.
+// Fallback for the rare case where call.tagged never arrives for a given call.
+// Only marks the conversation itself as processed — does NOT touch the
+// currently active membership, because that membership may belong to a
+// LATER call (e.g. an immediate_recall from a different, successfully tagged
+// call). Closing the current membership here would wipe legitimate recalls.
+//
+// The sweep will only close a membership if it was active *at the time* of
+// the stale conversation AND is still active now (i.e. no later event has
+// closed it). This narrow scope prevents collateral damage.
 
 const UNTAGGED_TIMEOUT_MIN = 10;
 
-export async function sweepUntaggedConversations(): Promise<{ swept: number }> {
+export async function sweepUntaggedConversations(): Promise<{ swept: number; closedMemberships: number }> {
   const cutoff = new Date(Date.now() - UNTAGGED_TIMEOUT_MIN * 60_000);
 
   const stale = await db.select().from(leadConversationsTable)
@@ -798,32 +804,48 @@ export async function sweepUntaggedConversations(): Promise<{ swept: number }> {
     ));
 
   let swept = 0;
+  let closedMemberships = 0;
+
   for (const conv of stale) {
     if (!conv.contact_id) continue;
     try {
       await db.transaction(async (tx) => {
         const now = new Date();
-        // Close the active membership as 'untagged'
-        const [activeMembership] = await tx.select().from(callListMembershipsTable)
+
+        // Only touch a membership if (a) it was added BEFORE this conversation
+        // (i.e. existed when the call in question happened) AND (b) it is
+        // still active now (nothing else has closed it).
+        // Any membership added AFTER this conversation's created_at belongs
+        // to a LATER call and must not be disturbed by this sweep.
+        const [targetMembership] = await tx.select().from(callListMembershipsTable)
           .where(and(
             eq(callListMembershipsTable.contact_id, conv.contact_id!),
             isNull(callListMembershipsTable.removed_at),
+            lte(callListMembershipsTable.added_at, conv.created_at),
           ))
+          .orderBy(sql`${callListMembershipsTable.added_at} DESC`)
           .limit(1);
-        if (activeMembership) {
+
+        let touchedMembership = false;
+        if (targetMembership) {
           await tx.update(callListMembershipsTable)
             .set({ removed_at: now, removal_reason: "untagged-timeout", outcome_at_removal: null })
-            .where(eq(callListMembershipsTable.id, activeMembership.id));
+            .where(eq(callListMembershipsTable.id, targetMembership.id));
+          // Only bump contact state when we've actually closed a membership.
+          await tx.update(contactsTable).set({
+            dispatch_status: "called",
+            call_attempts: sql`${contactsTable.call_attempts} + 1`,
+          }).where(eq(contactsTable.id, conv.contact_id!));
+          touchedMembership = true;
         }
-        // Increment attempts and mark contact called
-        await tx.update(contactsTable).set({
-          dispatch_status: "called",
-          call_attempts: sql`${contactsTable.call_attempts} + 1`,
-        }).where(eq(contactsTable.id, conv.contact_id!));
-        // Mark conversation processed
+
+        // Always mark the conversation processed so the sweep doesn't keep
+        // finding it on every run.
         await tx.update(leadConversationsTable)
-          .set({ processed_at: now, call_outcome: "untagged" })
+          .set({ processed_at: now, call_outcome: touchedMembership ? "untagged" : "untagged-stale" })
           .where(eq(leadConversationsTable.id, conv.id));
+
+        if (touchedMembership) closedMemberships++;
       });
       swept++;
     } catch (err: any) {
@@ -831,10 +853,10 @@ export async function sweepUntaggedConversations(): Promise<{ swept: number }> {
     }
   }
 
-  if (swept > 0) {
+  if (closedMemberships > 0) {
     notifyQueueChanged({ event: "untagged-sweep" });
   }
-  return { swept };
+  return { swept, closedMemberships };
 }
 
 // Schedule the sweep to run periodically in-process. Idempotent — safe to call
