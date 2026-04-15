@@ -23,6 +23,7 @@ export * from "./document-health-sessions";
 export * from "./document-health-scores";
 export * from "./lead-conversations";
 export * from "./integration-configs";
+export * from "./users";
 export * from "./agents";
 export * from "./contacts";
 export * from "./upload-sessions";
