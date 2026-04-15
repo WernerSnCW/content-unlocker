@@ -7,16 +7,24 @@ const router: IRouter = Router();
 
 // ==================== Campaign CRUD ====================
 
-// GET /call_lists — list all call_lists
+// GET /call_lists — list all call lists. Optional ?agent_id=X filter to scope
+// to a single agent's call lists (used by Call Command for per-operator
+// isolation). Unassigned lists (assigned_agent_id IS NULL) are included
+// when agent_id is unspecified only.
 router.get("/call-lists", async (req, res): Promise<void> => {
   try {
-    const call_lists = await db.select().from(callListConfigsTable).orderBy(desc(callListConfigsTable.created_at));
+    const agentIdFilter = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
 
-    // Enrich with agent names
+    const rows = agentIdFilter
+      ? await db.select().from(callListConfigsTable)
+          .where(eq(callListConfigsTable.assigned_agent_id, agentIdFilter))
+          .orderBy(desc(callListConfigsTable.created_at))
+      : await db.select().from(callListConfigsTable).orderBy(desc(callListConfigsTable.created_at));
+
     const agents = await db.select().from(agentsTable);
     const agentMap = new Map(agents.map(a => [a.id, a]));
 
-    const enriched = call_lists.map(c => ({
+    const enriched = rows.map(c => ({
       ...c,
       agent: c.assigned_agent_id ? agentMap.get(c.assigned_agent_id) || null : null,
     }));

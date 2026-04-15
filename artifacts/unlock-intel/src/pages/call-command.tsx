@@ -62,6 +62,7 @@ function outcomeLabel(outcome: string | null): string {
 
 interface CallListDef {
   id: string; name: string; daily_quota: number; active: boolean;
+  assigned_agent_id: string | null;
 }
 
 interface Agent {
@@ -260,11 +261,44 @@ export default function CallCommand() {
 
   useEffect(() => { loadAll(); }, []);
 
+  // When the operator switches agents, resolve that agent's active call list
+  // from already-fetched data and reload contacts for it. Avoids a full reload
+  // round-trip when we already have the list definitions client-side.
+  useEffect(() => {
+    if (!activeAgentId) return;
+    const next = callListDefs.find(c => c.active && c.assigned_agent_id === activeAgentId) || null;
+    if (next?.id === activeCallListDef?.id) return; // no change
+    setActiveCallListDef(next);
+    setCurrentCallIndex(0);
+    setViewingIndex(null);
+    // Reload the call list's contacts (or clear them if no list for this agent)
+    (async () => {
+      if (next) {
+        try {
+          const listRes = await fetch(`${API_BASE}/call-lists/${next.id}/call-list`);
+          const listData = await listRes.json();
+          setCallList(listData.contacts || []);
+        } catch { /* ignore */ }
+      } else {
+        setCallList([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAgentId, callListDefs]);
+
   const loadAll = async () => {
     setLoading(true);
     try {
+      // Scope the call-list fetch by the operator's active agent when we have
+      // one persisted. Keeps each agent in their own lane. Initial load (no
+      // persisted agent yet) falls back to unfiltered — agent is then resolved
+      // below and the active list is narrowed by ID client-side.
+      const storedAgent = localStorage.getItem("activeAgentId");
+      const callListsUrl = storedAgent
+        ? `${API_BASE}/call-lists?agent_id=${encodeURIComponent(storedAgent)}`
+        : `${API_BASE}/call-lists`;
       const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes, aircallRes] = await Promise.all([
-        fetch(`${API_BASE}/call-lists`),
+        fetch(callListsUrl),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
@@ -286,16 +320,24 @@ export default function CallCommand() {
 
       const allCallListDefs = callListDefsData.call_lists || [];
       setCallListDefs(allCallListDefs);
-      const active = allCallListDefs.find((c: CallListDef) => c.active);
-      setActiveCallListDef(active || null);
 
       const agentsList = (agentsData.agents || []).filter((a: Agent) => a.active);
       setAgents(agentsList);
       // Auto-select first agent if none persisted or persisted one no longer exists
       const storedId = localStorage.getItem("activeAgentId");
-      if (agentsList.length > 0 && (!storedId || !agentsList.find((a: Agent) => a.id === storedId))) {
-        handleAgentChange(agentsList[0].id);
+      const resolvedAgentId = (storedId && agentsList.find((a: Agent) => a.id === storedId))
+        ? storedId
+        : (agentsList[0]?.id || "");
+      if (resolvedAgentId !== activeAgentId) {
+        handleAgentChange(resolvedAgentId);
       }
+
+      // Scope the active call list to the resolved agent. Different agents
+      // have their own call lists; switching agents changes what's loaded.
+      const active = resolvedAgentId
+        ? allCallListDefs.find((c: CallListDef) => c.active && c.assigned_agent_id === resolvedAgentId)
+        : null;
+      setActiveCallListDef(active || null);
 
       setSources(sourcesData.sources || []);
       setPoolAvailable(poolData.by_status?.pool || 0);
