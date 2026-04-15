@@ -273,7 +273,25 @@ export default function CallCommand() {
   const activeIndex = viewingIndex ?? currentCallIndex;
   const currentContact = callList[activeIndex] || null;
   const callsCompleted = currentCallIndex;
-  const upNext = callList.slice(currentCallIndex + 1, currentCallIndex + 6);
+  // Up Next paging — 10 per page
+  const UP_NEXT_PAGE_SIZE = 10;
+  const totalUpNext = Math.max(0, callList.length - currentCallIndex - 1);
+  const upNextPageCount = Math.max(1, Math.ceil(totalUpNext / UP_NEXT_PAGE_SIZE));
+  const [upNextPage, setUpNextPage] = useState(0);
+  // Clamp page if queue shrinks below current page's offset
+  useEffect(() => {
+    if (upNextPage >= upNextPageCount) setUpNextPage(Math.max(0, upNextPageCount - 1));
+  }, [upNextPage, upNextPageCount]);
+  // Reset to page 0 whenever the current cursor moves forward (new call context)
+  const lastCursorRef = useRef(currentCallIndex);
+  useEffect(() => {
+    if (currentCallIndex > lastCursorRef.current) setUpNextPage(0);
+    lastCursorRef.current = currentCallIndex;
+  }, [currentCallIndex]);
+
+  const upNextStart = currentCallIndex + 1 + upNextPage * UP_NEXT_PAGE_SIZE;
+  const upNextEnd = upNextStart + UP_NEXT_PAGE_SIZE;
+  const upNext = callList.slice(upNextStart, upNextEnd);
 
   // Queue composition derived from actual call list
   const queueCallbacks = callList.filter(c => c.priority === "callback").length;
@@ -723,36 +741,60 @@ export default function CallCommand() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upNext.map((c, i) => (
-                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => {
-                        // Swap the clicked contact into the current slot so it becomes the next call
-                        const targetIdx = currentCallIndex + 1 + i;
-                        setCallList(prev => {
-                          if (!prev[targetIdx] || !prev[currentCallIndex]) return prev;
-                          const next = [...prev];
-                          [next[currentCallIndex], next[targetIdx]] = [next[targetIdx], next[currentCallIndex]];
-                          return next;
-                        });
-                        setViewingIndex(null);
-                        setDialing(false);
-                      }}>
-                      <TableCell className="text-muted-foreground text-xs">{currentCallIndex + 2 + i}</TableCell>
-                      <TableCell className="font-medium text-sm">{c.first_name} {c.last_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {c.priority === "callback" ? "Callback" : c.priority === "follow-up" ? "Follow-up" : c.priority === "retry" ? "Retry" : "Fresh"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {upNext.map((c, i) => {
+                    const targetIdx = upNextStart + i;
+                    return (
+                      <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => {
+                          // Swap the clicked contact into the current slot
+                          setCallList(prev => {
+                            if (!prev[targetIdx] || !prev[currentCallIndex]) return prev;
+                            const next = [...prev];
+                            [next[currentCallIndex], next[targetIdx]] = [next[targetIdx], next[currentCallIndex]];
+                            return next;
+                          });
+                          setViewingIndex(null);
+                          setDialing(false);
+                        }}>
+                        <TableCell className="text-muted-foreground text-xs">{targetIdx + 1}</TableCell>
+                        <TableCell className="font-medium text-sm">{c.first_name} {c.last_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {c.priority === "callback" ? "Callback" : c.priority === "follow-up" ? "Follow-up" : c.priority === "retry" ? "Retry" : "Fresh"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (
               <div className="text-center py-6">
                 <Headphones className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">{queuedCalls > 0 ? "No more contacts after this one." : "Queue is empty."}</p>
+              </div>
+            )}
+
+            {/* Pager — only render when there's more than one page */}
+            {totalUpNext > UP_NEXT_PAGE_SIZE && (
+              <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                <span>
+                  Showing {upNextStart - currentCallIndex} – {Math.min(upNextEnd - currentCallIndex - 1, totalUpNext)} of {totalUpNext}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="h-7"
+                    disabled={upNextPage === 0}
+                    onClick={() => setUpNextPage(p => Math.max(0, p - 1))}>
+                    Previous
+                  </Button>
+                  <span className="px-2">Page {upNextPage + 1} of {upNextPageCount}</span>
+                  <Button variant="outline" size="sm" className="h-7"
+                    disabled={upNextPage >= upNextPageCount - 1}
+                    onClick={() => setUpNextPage(p => Math.min(upNextPageCount - 1, p + 1))}>
+                    Next
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
