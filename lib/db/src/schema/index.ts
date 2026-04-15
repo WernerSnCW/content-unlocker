@@ -25,6 +25,7 @@ export * from "./lead-conversations";
 export * from "./integration-configs";
 export * from "./users";
 export * from "./agents";
+export * from "./session";
 export * from "./contacts";
 export * from "./upload-sessions";
 export * from "./staged-contacts";
