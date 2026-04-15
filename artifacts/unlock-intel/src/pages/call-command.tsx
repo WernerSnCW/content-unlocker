@@ -15,6 +15,7 @@ import {
   Loader2, RefreshCw
 } from "lucide-react";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
+import OutcomeDrawer from "@/components/OutcomeDrawer";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
@@ -46,10 +47,25 @@ export default function CallCommand() {
   const [aircallConfigured, setAircallConfigured] = useState(false);
   const [dialing, setDialing] = useState(false);
 
+  // Outcome drawer state — opens on call.ended for the contact we just called
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
+  const [drawerContactName, setDrawerContactName] = useState<string | null>(null);
+  // Ref to capture the contact at dial-time so we still know who was called
+  // when the async call.ended event fires later.
+  const callingContactRef = useRef<{ id: string; name: string } | null>(null);
+
   const handleCallEnded = useCallback(() => {
     setDialing(false);
     setViewingIndex(null);
     setCurrentCallIndex(i => i + 1);
+    // Open the outcome drawer for the contact that was just called.
+    // Drawer polls engine data until the call.tagged webhook lands.
+    if (callingContactRef.current) {
+      setDrawerContactId(callingContactRef.current.id);
+      setDrawerContactName(callingContactRef.current.name);
+      setDrawerOpen(true);
+    }
     // The SSE stream (subscribed in a separate effect) refreshes the page
     // when call.ended/call.tagged are processed by the backend. We do one
     // immediate loadAll for instant feedback and rely on SSE thereafter.
@@ -89,9 +105,15 @@ export default function CallCommand() {
     return () => { if (dialTimeoutRef.current) clearTimeout(dialTimeoutRef.current); };
   }, [dialing, callStatus]);
 
-  const handleDial = (phone: string) => {
+  const handleDial = (phone: string, contact?: CallContact | null) => {
     dial(phone);
     setDialing(true);
+    if (contact) {
+      callingContactRef.current = {
+        id: contact.id,
+        name: `${contact.first_name} ${contact.last_name}`.trim(),
+      };
+    }
   };
   // Agent picker (persisted in localStorage)
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -261,6 +283,16 @@ export default function CallCommand() {
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
+      {/* POST-CALL OUTCOME DRAWER */}
+      <OutcomeDrawer
+        open={drawerOpen}
+        contactId={drawerContactId}
+        contactName={drawerContactName}
+        conversationId={null}
+        onClose={() => setDrawerOpen(false)}
+        onSkip={() => setDrawerOpen(false)}
+      />
+
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
@@ -566,7 +598,7 @@ export default function CallCommand() {
                   ) : (
                     <Button
                       className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground text-base font-semibold shadow-lg shadow-primary/20"
-                      onClick={() => handleDial(currentContact.phone!)}
+                      onClick={() => handleDial(currentContact.phone!, currentContact)}
                     >
                       <PhoneCall className="w-5 h-5 mr-2" />
                       Load Call
