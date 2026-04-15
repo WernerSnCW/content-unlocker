@@ -21,6 +21,19 @@ import { apiFetch, apiPost } from "@/lib/apiClient";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
+/**
+ * Feature flag: post-call intelligence surfaces (outcome drawer, outcomes
+ * tray, ready/awaiting badges). Hidden by default while the engine features
+ * are still being developed. Flip on by setting
+ *   VITE_ENABLE_OUTCOME_DRAWER=true
+ * in Replit Secrets and redeploying (Vite bakes env vars at build time —
+ * a rebuild is required after changing the value).
+ *
+ * The engine + pending-outcome polling logic keeps running even when this
+ * is off, so nothing else changes on flip — only the UI becomes visible.
+ */
+const SHOW_OUTCOME_DRAWER = import.meta.env.VITE_ENABLE_OUTCOME_DRAWER === "true";
+
 interface CallContact {
   id: string; first_name: string; last_name: string; email: string | null;
   phone: string | null; company: string | null; call_attempts: number;
@@ -457,24 +470,30 @@ export default function CallCommand() {
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
-      {/* POST-CALL OUTCOME DETAIL DRAWER (opens for a specific contact) */}
-      <OutcomeDrawer
-        open={detailContactId !== null}
-        contactId={detailContactId}
-        contactName={pendingOutcomes.find(p => p.contactId === detailContactId)?.contactName ?? null}
-        conversationId={null}
-        onClose={() => {
-          // Mark this outcome as viewed but keep it in the tray until dismissed
-          if (detailContactId) updatePending(detailContactId, { status: "viewed" });
-          setDetailContactId(null);
-        }}
-        onSkip={() => {
-          if (detailContactId) updatePending(detailContactId, { status: "viewed" });
-          setDetailContactId(null);
-        }}
-      />
+      {/* POST-CALL OUTCOME DETAIL DRAWER (opens for a specific contact)
+          Hidden unless VITE_ENABLE_OUTCOME_DRAWER=true — engine features still
+          under development, not yet shown to operators. */}
+      {SHOW_OUTCOME_DRAWER && (
+        <OutcomeDrawer
+          open={detailContactId !== null}
+          contactId={detailContactId}
+          contactName={pendingOutcomes.find(p => p.contactId === detailContactId)?.contactName ?? null}
+          conversationId={null}
+          onClose={() => {
+            // Mark this outcome as viewed but keep it in the tray until dismissed
+            if (detailContactId) updatePending(detailContactId, { status: "viewed" });
+            setDetailContactId(null);
+          }}
+          onSkip={() => {
+            if (detailContactId) updatePending(detailContactId, { status: "viewed" });
+            setDetailContactId(null);
+          }}
+        />
+      )}
 
-      {/* OUTCOMES TRAY — always-visible thin tab on right edge; expands to full list */}
+      {/* OUTCOMES TRAY — always-visible thin tab on right edge; expands to full list.
+          Same feature flag as the drawer. */}
+      {SHOW_OUTCOME_DRAWER && (
       <div className="fixed top-1/4 right-0 z-40 flex items-start">
         {/* Collapsed tab — always visible, branded green */}
         {!trayExpanded && (
@@ -588,6 +607,7 @@ export default function CallCommand() {
           </div>
         )}
       </div>
+      )}
 
       {/* HEADER */}
       <div className="flex items-center justify-between">
