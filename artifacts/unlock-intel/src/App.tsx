@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import AdminAgentsPage from "@/pages/admin-agents";
 
 import Dashboard from "./pages/dashboard";
 import Recommend from "./pages/recommend";
@@ -77,7 +79,12 @@ function Router() {
               <Route path="/tasks" component={TasksPage} />
               <Route path="/work-queue" component={WorkQueue} />
               <Route path="/document-health" component={DocumentHealth} />
-              <Route path="/settings" component={IntegrationSettings} />
+              <Route path="/settings">
+                <AdminOnlyRoute><IntegrationSettings /></AdminOnlyRoute>
+              </Route>
+              <Route path="/admin/agents">
+                <AdminOnlyRoute><AdminAgentsPage /></AdminOnlyRoute>
+              </Route>
               <Route path="/contacts/upload" component={ContactIngestion} />
               <Route path="/call-list" component={CallList} />
               <Route path="/webhook-log" component={WebhookLog} />

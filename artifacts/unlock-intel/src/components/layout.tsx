@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useCurrentUser, isAdmin } from "@/hooks/useCurrentUser";
 import { logout } from "@/lib/apiClient";
 import {
   LayoutDashboard,
@@ -81,23 +81,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     } catch { setSearchResults([]); }
   };
 
+  const userIsAdmin = isAdmin(currentUser);
+
+  // Items marked adminOnly are stripped out for agent-role users. The
+  // Admin group is admin-only entirely.
   const navGroups = [
     {
       label: "Operations",
       items: [
         { href: "/", label: "Call Command Centre", icon: Headphones },
-        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/recommend", label: "Recommendation Engine", icon: Sparkles },
-        { href: "/call-prep", label: "Call Prep", icon: Phone },
-        { href: "/leads", label: "Lead Management", icon: Users },
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+        { href: "/recommend", label: "Recommendation Engine", icon: Sparkles, adminOnly: true },
+        { href: "/call-prep", label: "Call Prep", icon: Phone, adminOnly: true },
+        { href: "/leads", label: "Lead Management", icon: Users, adminOnly: true },
         { href: "/contacts/upload", label: "Contact Ingestion", icon: Upload },
         { href: "/call-list", label: "Call List", icon: Phone },
-        { href: "/tasks", label: "Task Board", icon: CheckSquare },
-        { href: "/work-queue", label: "Work Queue", icon: Zap },
+        { href: "/tasks", label: "Task Board", icon: CheckSquare, adminOnly: true },
+        { href: "/work-queue", label: "Work Queue", icon: Zap, adminOnly: true },
       ],
     },
     {
       label: "Content",
+      adminOnly: true,
       items: [
         { href: "/content-bank", label: "Content Bank", icon: Library },
         { href: "/gaps", label: "Content Gaps", icon: Grid3X3 },
@@ -110,6 +115,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     },
     {
       label: "Governance",
+      adminOnly: true,
       items: [
         { href: "/acu", label: "Content Units", icon: Shield },
         { href: "/campaigns", label: "Campaigns", icon: Megaphone },
@@ -117,13 +123,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       ],
     },
     {
-      label: "System",
+      label: "Admin",
+      adminOnly: true,
       items: [
+        { href: "/admin/agents", label: "Agents", icon: Users },
+        { href: "/settings", label: "Settings", icon: Settings },
         { href: "/changelog", label: "Changelog", icon: History },
         { href: "/compliance-constants", label: "Compliance Constants", icon: ShieldCheck },
       ],
     },
-  ];
+  ]
+    .map((g) => {
+      if ((g as any).adminOnly && !userIsAdmin) return null;
+      // Strip admin-only items from mixed groups.
+      const items = g.items.filter((i) => userIsAdmin || !(i as any).adminOnly);
+      return items.length > 0 ? { ...g, items } : null;
+    })
+    .filter(Boolean) as Array<{ label: string; items: Array<{ href: string; label: string; icon: any }> }>;
 
   return (
     <div className="min-h-screen w-full text-foreground flex">
@@ -252,17 +268,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           
           <div className="flex items-center gap-4">
-            <Link href="/tasks" className="p-2 text-muted-foreground hover:text-foreground transition-colors relative">
-              <Bell className="w-5 h-5" />
-              {openReviewCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[14px] h-[14px] bg-destructive rounded-full text-[9px] text-white flex items-center justify-center font-bold">
-                  {openReviewCount}
-                </span>
-              )}
-            </Link>
-            <Link href="/settings" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-              <Settings className="w-5 h-5" />
-            </Link>
+            {userIsAdmin && (
+              <>
+                <Link href="/tasks" className="p-2 text-muted-foreground hover:text-foreground transition-colors relative">
+                  <Bell className="w-5 h-5" />
+                  {openReviewCount > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] bg-destructive rounded-full text-[9px] text-white flex items-center justify-center font-bold">
+                      {openReviewCount}
+                    </span>
+                  )}
+                </Link>
+                <Link href="/settings" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+                  <Settings className="w-5 h-5" />
+                </Link>
+              </>
+            )}
           </div>
         </header>
 

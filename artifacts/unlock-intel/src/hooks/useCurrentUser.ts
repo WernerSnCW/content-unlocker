@@ -7,6 +7,7 @@ export interface CurrentUser {
     email: string;
     name: string | null;
     picture: string | null;
+    role: "agent" | "admin";
   };
   agent: {
     id: string;
@@ -15,6 +16,10 @@ export interface CurrentUser {
     aircall_user_id: number | null;
     active: boolean;
   };
+}
+
+export function isAdmin(data: CurrentUser | null | undefined): boolean {
+  return data?.user?.role === "admin";
 }
 
 /**

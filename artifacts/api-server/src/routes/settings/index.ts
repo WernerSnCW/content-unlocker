@@ -1,13 +1,20 @@
 import { Router, type IRouter } from "express";
 import { db, integrationConfigsTable, agentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireAuth } from "../../middlewares/requireAuth";
+import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router: IRouter = Router();
+
+// Everything in /settings requires at least a logged-in user.
+// Mutating endpoints and the full integrations list layer on requireAdmin
+// inline (see each endpoint below).
+router.use(requireAuth);
 
 // ==================== Integration Configs ====================
 
 // GET /settings/integrations — list all integrations
-router.get("/settings/integrations", async (req, res): Promise<void> => {
+router.get("/settings/integrations", requireAdmin, async (req, res): Promise<void> => {
   try {
     const configs = await db.select().from(integrationConfigsTable);
     // Mask sensitive fields in response
@@ -44,7 +51,7 @@ router.get("/settings/integrations/:provider", async (req, res): Promise<void> =
 });
 
 // POST /settings/integrations/:provider — create or update integration config
-router.post("/settings/integrations/:provider", async (req, res): Promise<void> => {
+router.post("/settings/integrations/:provider", requireAdmin, async (req, res): Promise<void> => {
   const { provider } = req.params;
   const { config, enabled } = req.body;
 
@@ -102,7 +109,7 @@ router.post("/settings/integrations/:provider", async (req, res): Promise<void> 
 });
 
 // POST /settings/integrations/aircall/test-connection — validate Aircall credentials
-router.post("/settings/integrations/aircall/test-connection", async (req, res): Promise<void> => {
+router.post("/settings/integrations/aircall/test-connection", requireAdmin, async (req, res): Promise<void> => {
   try {
     const [config] = await db.select().from(integrationConfigsTable)
       .where(eq(integrationConfigsTable.provider, "aircall"));
@@ -153,7 +160,7 @@ router.post("/settings/integrations/aircall/test-connection", async (req, res): 
 });
 
 // GET /settings/integrations/aircall/users — fetch Aircall users for agent mapping
-router.get("/settings/integrations/aircall/users", async (req, res): Promise<void> => {
+router.get("/settings/integrations/aircall/users", requireAdmin, async (req, res): Promise<void> => {
   try {
     const [config] = await db.select().from(integrationConfigsTable)
       .where(eq(integrationConfigsTable.provider, "aircall"));
@@ -221,7 +228,7 @@ router.get("/settings/agents", async (req, res): Promise<void> => {
 });
 
 // POST /settings/agents — create agent
-router.post("/settings/agents", async (req, res): Promise<void> => {
+router.post("/settings/agents", requireAdmin, async (req, res): Promise<void> => {
   const { name, email, aircall_user_id } = req.body;
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -249,7 +256,7 @@ router.post("/settings/agents", async (req, res): Promise<void> => {
 });
 
 // PATCH /settings/agents/:id — update agent
-router.patch("/settings/agents/:id", async (req, res): Promise<void> => {
+router.patch("/settings/agents/:id", requireAdmin, async (req, res): Promise<void> => {
   const { id } = req.params;
   const { name, email, aircall_user_id, active } = req.body;
 
@@ -286,7 +293,7 @@ router.patch("/settings/agents/:id", async (req, res): Promise<void> => {
 });
 
 // DELETE /settings/agents/:id — remove agent
-router.delete("/settings/agents/:id", async (req, res): Promise<void> => {
+router.delete("/settings/agents/:id", requireAdmin, async (req, res): Promise<void> => {
   const { id } = req.params;
   try {
     const [deleted] = await db.delete(agentsTable)

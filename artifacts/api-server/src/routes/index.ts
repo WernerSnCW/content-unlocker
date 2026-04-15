@@ -30,10 +30,12 @@ import aircallRouter from "./aircall";
 import engineRouter from "./engine";
 import eventsRouter from "./events";
 import authRouter from "./auth";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
 router.use(authRouter);
+router.use(adminRouter);
 router.use(healthRouter);
 router.use(leadsRouter);
 router.use(documentsRouter);

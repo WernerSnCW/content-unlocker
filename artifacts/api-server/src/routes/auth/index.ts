@@ -348,6 +348,7 @@ router.get("/auth/me", requireAuth, (req, res) => {
       email: user.email,
       name: user.name,
       picture: user.picture,
+      role: user.role,
     },
     agent: {
       id: agent.id,

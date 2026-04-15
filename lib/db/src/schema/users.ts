@@ -14,6 +14,11 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name"),
   picture: text("picture"),
+  // Role controls admin-only access (agent management, settings page, etc).
+  // Enforced server-side via the requireAdmin middleware. Default "agent" so
+  // newly-created rows have zero admin privilege — elevate explicitly via SQL
+  // or via an existing admin acting through the Admin UI.
+  role: text("role").notNull().default("agent"), // "agent" | "admin"
   // OAuth tokens — stored for future Calendar scope use.
   // refresh_token is only returned on first consent (access_type=offline, prompt=consent).
   refresh_token: text("refresh_token"),

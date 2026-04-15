@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 import OutcomeDrawer from "@/components/OutcomeDrawer";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useCurrentUser, isAdmin } from "@/hooks/useCurrentUser";
 import { apiFetch, apiPost } from "@/lib/apiClient";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
@@ -619,9 +619,11 @@ export default function CallCommand() {
           <Link href="/contacts/upload">
             <Button variant="outline" size="sm" className="gap-1.5"><Upload className="w-3.5 h-3.5" /> Upload Contacts</Button>
           </Link>
-          <Link href="/settings">
-            <Button variant="ghost" size="sm">Settings</Button>
-          </Link>
+          {isAdmin(currentUser) && (
+            <Link href="/settings">
+              <Button variant="ghost" size="sm">Settings</Button>
+            </Link>
+          )}
         </div>
       </div>
 
