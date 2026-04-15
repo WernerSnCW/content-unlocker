@@ -240,6 +240,8 @@ export default function CallCommand() {
   const handleAgentChange = (id: string) => {
     setActiveAgentId(id);
     localStorage.setItem("activeAgentId", id);
+    // Reload totals and call lists scoped to this agent
+    loadAll();
   };
 
   // Create call list dialog
@@ -294,16 +296,14 @@ export default function CallCommand() {
       // persisted agent yet) falls back to unfiltered — agent is then resolved
       // below and the active list is narrowed by ID client-side.
       const storedAgent = localStorage.getItem("activeAgentId");
-      const callListsUrl = storedAgent
-        ? `${API_BASE}/call-lists?agent_id=${encodeURIComponent(storedAgent)}`
-        : `${API_BASE}/call-lists`;
+      const agentQuery = storedAgent ? `?agent_id=${encodeURIComponent(storedAgent)}` : "";
       const [callListDefsRes, poolRes, agentsRes, sourcesRes, staleRes, outcomesRes, aircallRes] = await Promise.all([
-        fetch(callListsUrl),
+        fetch(`${API_BASE}/call-lists${agentQuery}`),
         fetch(`${API_BASE}/contacts/stats`),
         fetch(`${API_BASE}/settings/agents`),
         fetch(`${API_BASE}/contacts/sources`),
         fetch(`${API_BASE}/call-lists/stale-count`),
-        fetch(`${API_BASE}/call-lists/today-outcomes`),
+        fetch(`${API_BASE}/call-lists/today-outcomes${agentQuery}`),
         fetch(`${API_BASE}/settings/integrations/aircall`),
       ]);
 

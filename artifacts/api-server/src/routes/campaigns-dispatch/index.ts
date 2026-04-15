@@ -133,11 +133,33 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
 // Counts each completed conversation individually, not contacts, so a contact who was called
 // twice today (e.g. immediate_recall scenario) counts as 2. A contact who was called and then
 // recalled (now back in dispatched status) still counts as 1 completed call.
-router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
+// GET /call-lists/today-outcomes?agent_id=X — counts calls made today.
+// Optional agent_id filter scopes to conversations where agent_name matches
+// the agent's name. Unscoped → all agents (admin view).
+router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dateFilter = sql`${leadConversationsTable.conversation_date}::date = ${today.toISOString().split("T")[0]}::date`;
+
+    // Optional agent filter — look up the agent's name and match agent_name
+    // on conversations. (Conversations store agent_name, not agent_id.)
+    const agentIdParam = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
+    let agentNameFilter: any = null;
+    if (agentIdParam) {
+      const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentIdParam)).limit(1);
+      if (agent?.name) {
+        agentNameFilter = eq(leadConversationsTable.agent_name, agent.name);
+      } else {
+        // Requested a specific agent but none found — return zeros rather than all-agent totals.
+        res.json({ total: 0, uniqueContacts: 0, outcomes: {} });
+        return;
+      }
+    }
+
+    const whereClause = agentNameFilter
+      ? and(eq(leadConversationsTable.source, "aircall"), dateFilter, agentNameFilter)
+      : and(eq(leadConversationsTable.source, "aircall"), dateFilter);
 
     // Per-outcome breakdown
     const rows = await db.select({
@@ -145,7 +167,7 @@ router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
       count: sql<number>`count(*)`,
     })
       .from(leadConversationsTable)
-      .where(and(eq(leadConversationsTable.source, "aircall"), dateFilter))
+      .where(whereClause)
       .groupBy(leadConversationsTable.call_outcome);
 
     // Unique contacts called today — one count regardless of how many calls
@@ -153,7 +175,7 @@ router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
       uniqueContacts: sql<number>`count(distinct ${leadConversationsTable.contact_id})`,
     })
       .from(leadConversationsTable)
-      .where(and(eq(leadConversationsTable.source, "aircall"), dateFilter));
+      .where(whereClause);
 
     const outcomes: Record<string, number> = {};
     let total = 0;
@@ -163,8 +185,8 @@ router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
       total += Number(row.count);
     }
     res.json({
-      total,                                                // total calls today
-      uniqueContacts: Number(uniqueRow?.uniqueContacts ?? 0), // distinct contacts called today
+      total,
+      uniqueContacts: Number(uniqueRow?.uniqueContacts ?? 0),
       outcomes,
     });
   } catch (err: any) {
