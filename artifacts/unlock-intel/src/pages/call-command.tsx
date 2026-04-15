@@ -91,7 +91,6 @@ export default function CallCommand() {
       loadAll();
       try {
         const payload = JSON.parse(ev.data);
-        // If the tagged event is for the contact we're waiting on, mark ready
         setPendingOutcome(prev => {
           if (!prev) return prev;
           if (payload?.contactId && payload.contactId === prev.contactId && prev.status === "awaiting_tag") {
@@ -108,6 +107,39 @@ export default function CallCommand() {
     return () => { es.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Polling fallback — SSE can be buffered by reverse proxies (Replit edge,
+  // nginx without X-Accel-Buffering: no, etc). While awaiting_tag, poll
+  // /api/engine/contact/:id every 5s and flip to ready when we see an
+  // engine run with created_at > pending.startedAt. Give up after 10 min.
+  useEffect(() => {
+    if (!pendingOutcome || pendingOutcome.status !== "awaiting_tag") return;
+    const { contactId, startedAt } = pendingOutcome;
+    const giveUpAt = startedAt + 10 * 60 * 1000;
+    let cancelled = false;
+    const check = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`${API_BASE}/engine/contact/${contactId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const newest = data?.runs?.[0];
+        if (newest?.created_at) {
+          const runTime = new Date(newest.created_at).getTime();
+          if (runTime > startedAt) {
+            setPendingOutcome(prev => prev && prev.contactId === contactId && prev.status === "awaiting_tag"
+              ? { ...prev, status: "ready" } : prev);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    check(); // immediate first check
+    const interval = setInterval(() => {
+      if (Date.now() > giveUpAt) { clearInterval(interval); return; }
+      check();
+    }, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [pendingOutcome?.contactId, pendingOutcome?.status, pendingOutcome?.startedAt]);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
     containerId: "aircall-phone-container",
