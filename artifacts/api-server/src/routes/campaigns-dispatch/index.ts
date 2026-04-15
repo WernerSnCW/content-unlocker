@@ -129,16 +129,23 @@ router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const dateFilter = sql`${leadConversationsTable.conversation_date}::date = ${today.toISOString().split("T")[0]}::date`;
+
+    // Per-outcome breakdown
     const rows = await db.select({
       outcome: leadConversationsTable.call_outcome,
       count: sql<number>`count(*)`,
     })
       .from(leadConversationsTable)
-      .where(and(
-        eq(leadConversationsTable.source, "aircall"),
-        sql`${leadConversationsTable.conversation_date}::date = ${today.toISOString().split("T")[0]}::date`,
-      ))
+      .where(and(eq(leadConversationsTable.source, "aircall"), dateFilter))
       .groupBy(leadConversationsTable.call_outcome);
+
+    // Unique contacts called today — one count regardless of how many calls
+    const [uniqueRow] = await db.select({
+      uniqueContacts: sql<number>`count(distinct ${leadConversationsTable.contact_id})`,
+    })
+      .from(leadConversationsTable)
+      .where(and(eq(leadConversationsTable.source, "aircall"), dateFilter));
 
     const outcomes: Record<string, number> = {};
     let total = 0;
@@ -147,7 +154,11 @@ router.get("/call-lists/today-outcomes", async (_req, res): Promise<void> => {
       outcomes[key] = Number(row.count);
       total += Number(row.count);
     }
-    res.json({ total, outcomes });
+    res.json({
+      total,                                                // total calls today
+      uniqueContacts: Number(uniqueRow?.uniqueContacts ?? 0), // distinct contacts called today
+      outcomes,
+    });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to fetch today's outcomes" });
   }

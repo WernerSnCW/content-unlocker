@@ -71,7 +71,7 @@ interface Agent {
 export default function CallCommand() {
   const [poolAvailable, setPoolAvailable] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
-  const [todayOutcomes, setTodayOutcomes] = useState<{ total: number; outcomes: Record<string, number> }>({ total: 0, outcomes: {} });
+  const [todayOutcomes, setTodayOutcomes] = useState<{ total: number; uniqueContacts: number; outcomes: Record<string, number> }>({ total: 0, uniqueContacts: 0, outcomes: {} });
   const [callListDefs, setCallListDefs] = useState<CallListDef[]>([]);
   const [activeCallListDef, setActiveCallListDef] = useState<CallListDef | null>(null);
   const [loading, setLoading] = useState(true);
@@ -647,11 +647,16 @@ export default function CallCommand() {
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today's Results</p>
           <div className="grid grid-cols-6 gap-3">
-            <Card>
+            <Card title={`${todayOutcomes.total} total calls to ${todayOutcomes.uniqueContacts} unique contacts`}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-3">
                   <Phone className="w-5 h-5 text-primary shrink-0" />
-                  <div><p className="text-2xl font-bold leading-none">{todayOutcomes.total}</p><p className="text-xs text-muted-foreground mt-0.5">Called</p></div>
+                  <div>
+                    <p className="text-2xl font-bold leading-none">{todayOutcomes.total}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Calls <span className="text-muted-foreground/60">·</span> {todayOutcomes.uniqueContacts} contact{todayOutcomes.uniqueContacts !== 1 ? "s" : ""}
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
