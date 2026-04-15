@@ -240,7 +240,15 @@ export default function CallCommand() {
   const handleAgentChange = (id: string) => {
     setActiveAgentId(id);
     localStorage.setItem("activeAgentId", id);
-    // Reload totals and call lists scoped to this agent
+    // Defensive: explicitly clear the view state so any stale data from the
+    // previous agent disappears immediately, even if the subsequent loadAll
+    // or effect is delayed. loadAll will repopulate with this agent's data.
+    setCallList([]);
+    setActiveCallListDef(null);
+    setCurrentCallIndex(0);
+    setViewingIndex(null);
+    setTodayOutcomes({ total: 0, uniqueContacts: 0, outcomes: {} });
+    setStaleCount(0);
     loadAll();
   };
 
@@ -341,6 +349,14 @@ export default function CallCommand() {
 
       setSources(sourcesData.sources || []);
       setPoolAvailable(poolData.by_status?.pool || 0);
+
+      if (!active) {
+        // No active list for this agent — clear any stale queue state left from
+        // a previous agent's view. Without this, switching from an agent with
+        // a list to one without would leave the old list on-screen.
+        setCallList([]);
+        setCurrentCallIndex(0);
+      }
 
       if (active) {
         const listRes = await fetch(`${API_BASE}/call-lists/${active.id}/call-list`);
