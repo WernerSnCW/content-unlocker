@@ -47,17 +47,47 @@ export default function CallCommand() {
   const [aircallConfigured, setAircallConfigured] = useState(false);
   const [dialing, setDialing] = useState(false);
 
-  // Outcome drawer state — drawer does NOT auto-open on call.ended. Instead,
-  // a floating indicator pill appears showing status (awaiting tag / ready /
-  // viewed). Operator clicks it to open the drawer.
+  // Outcome tray state — persistent list of completed calls awaiting action.
+  // Each entry goes through: awaiting_tag → ready (analysis complete) → viewed.
+  // Operator can queue up multiple calls while earlier ones are still processing.
   type PendingStatus = "awaiting_tag" | "ready" | "viewed";
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [pendingOutcome, setPendingOutcome] = useState<{
+  interface PendingOutcome {
     contactId: string;
     contactName: string;
     status: PendingStatus;
     startedAt: number;
-  } | null>(null);
+  }
+  const [pendingOutcomes, setPendingOutcomes] = useState<PendingOutcome[]>([]);
+  const [trayExpanded, setTrayExpanded] = useState(false);
+  // contactId currently shown in the detail drawer (null = no drawer open)
+  const [detailContactId, setDetailContactId] = useState<string | null>(null);
+
+  const updatePending = useCallback((contactId: string, patch: Partial<PendingOutcome>) => {
+    setPendingOutcomes(prev => prev.map(p => p.contactId === contactId ? { ...p, ...patch } : p));
+  }, []);
+
+  const upsertPending = useCallback((outcome: PendingOutcome) => {
+    setPendingOutcomes(prev => {
+      const idx = prev.findIndex(p => p.contactId === outcome.contactId);
+      // If contact already has an entry, refresh it (new call for same contact)
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = outcome;
+        return next;
+      }
+      // Most-recent-first
+      return [outcome, ...prev];
+    });
+  }, []);
+
+  const dismissPending = useCallback((contactId: string) => {
+    setPendingOutcomes(prev => prev.filter(p => p.contactId !== contactId));
+  }, []);
+
+  // Derived counts used by the tray header
+  const readyCount = pendingOutcomes.filter(p => p.status === "ready").length;
+  const awaitingCount = pendingOutcomes.filter(p => p.status === "awaiting_tag").length;
+  const trayBadgeCount = pendingOutcomes.filter(p => p.status !== "viewed").length;
 
   // Ref to capture the contact at dial-time so we still know who was called
   // when the async call.ended event fires later.
@@ -67,22 +97,22 @@ export default function CallCommand() {
     setDialing(false);
     setViewingIndex(null);
     setCurrentCallIndex(i => i + 1);
-    // Track pending outcome for the contact we just called. SSE call.tagged
-    // events flip it to "ready" when the engine run lands.
     if (callingContactRef.current) {
-      setPendingOutcome({
+      upsertPending({
         contactId: callingContactRef.current.id,
         contactName: callingContactRef.current.name,
         status: "awaiting_tag",
         startedAt: Date.now(),
       });
+      // Auto-open the tray (collapsed state) so operator sees new items land.
+      // We never auto-open the detail drawer — that's still click-to-open.
+      setTrayExpanded(true);
     }
     loadAll();
-  }, []);
+  }, [upsertPending]);
 
-  // Subscribe to the live queue-events stream. Refreshes on backend webhook
-  // events without polling. Also flips pending-outcome status to "ready"
-  // when the engine has finished analysing the just-called contact.
+  // Subscribe to the live queue-events stream. Flips any matching pending
+  // outcome to "ready" when the engine has finished analysing it.
   useEffect(() => {
     const url = `${API_BASE}/events/queue`;
     const es = new EventSource(url);
@@ -91,13 +121,13 @@ export default function CallCommand() {
       loadAll();
       try {
         const payload = JSON.parse(ev.data);
-        setPendingOutcome(prev => {
-          if (!prev) return prev;
-          if (payload?.contactId && payload.contactId === prev.contactId && prev.status === "awaiting_tag") {
-            return { ...prev, status: "ready" };
-          }
-          return prev;
-        });
+        if (payload?.contactId) {
+          setPendingOutcomes(prev => prev.map(p =>
+            p.contactId === payload.contactId && p.status === "awaiting_tag"
+              ? { ...p, status: "ready" as const }
+              : p
+          ));
+        }
       } catch { /* ignore */ }
     };
     es.addEventListener("call.ended", onChange);
@@ -108,38 +138,33 @@ export default function CallCommand() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Polling fallback — SSE can be buffered by reverse proxies (Replit edge,
-  // nginx without X-Accel-Buffering: no, etc). While awaiting_tag, poll
-  // /api/engine/contact/:id every 5s and flip to ready when we see an
-  // engine run with created_at > pending.startedAt. Give up after 10 min.
+  // Polling fallback for each awaiting_tag outcome. SSE can be buffered by
+  // proxies; this ensures we pick up the ready state within 5s even if no
+  // event arrives. Polls all awaiting items in a single pass.
   useEffect(() => {
-    if (!pendingOutcome || pendingOutcome.status !== "awaiting_tag") return;
-    const { contactId, startedAt } = pendingOutcome;
-    const giveUpAt = startedAt + 10 * 60 * 1000;
+    const awaiting = pendingOutcomes.filter(p => p.status === "awaiting_tag");
+    if (awaiting.length === 0) return;
     let cancelled = false;
     const check = async () => {
       if (cancelled) return;
-      try {
-        const res = await fetch(`${API_BASE}/engine/contact/${contactId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const newest = data?.runs?.[0];
-        if (newest?.created_at) {
-          const runTime = new Date(newest.created_at).getTime();
-          if (runTime > startedAt) {
-            setPendingOutcome(prev => prev && prev.contactId === contactId && prev.status === "awaiting_tag"
-              ? { ...prev, status: "ready" } : prev);
+      await Promise.all(awaiting.map(async (p) => {
+        if (Date.now() - p.startedAt > 10 * 60 * 1000) return; // give up after 10 min
+        try {
+          const res = await fetch(`${API_BASE}/engine/contact/${p.contactId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const newest = data?.runs?.[0];
+          if (newest?.created_at && new Date(newest.created_at).getTime() > p.startedAt) {
+            updatePending(p.contactId, { status: "ready" });
           }
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
+      }));
     };
-    check(); // immediate first check
-    const interval = setInterval(() => {
-      if (Date.now() > giveUpAt) { clearInterval(interval); return; }
-      check();
-    }, 5000);
+    check();
+    const interval = setInterval(check, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [pendingOutcome?.contactId, pendingOutcome?.status, pendingOutcome?.startedAt]);
+    // Re-run when the set of awaiting items changes
+  }, [pendingOutcomes.map(p => `${p.contactId}:${p.status}`).join(","), updatePending]);
 
   const { isLoggedIn, callStatus, error: aircallError, dial } = useAircallPhone({
     containerId: "aircall-phone-container",
@@ -356,49 +381,137 @@ export default function CallCommand() {
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
-      {/* POST-CALL OUTCOME DRAWER (hidden until operator clicks the floating indicator) */}
+      {/* POST-CALL OUTCOME DETAIL DRAWER (opens for a specific contact) */}
       <OutcomeDrawer
-        open={drawerOpen}
-        contactId={pendingOutcome?.contactId ?? null}
-        contactName={pendingOutcome?.contactName ?? null}
+        open={detailContactId !== null}
+        contactId={detailContactId}
+        contactName={pendingOutcomes.find(p => p.contactId === detailContactId)?.contactName ?? null}
         conversationId={null}
         onClose={() => {
-          setDrawerOpen(false);
-          // Mark as viewed once they've actually opened and closed it
-          setPendingOutcome(prev => prev ? { ...prev, status: "viewed" } : prev);
+          // Mark this outcome as viewed but keep it in the tray until dismissed
+          if (detailContactId) updatePending(detailContactId, { status: "viewed" });
+          setDetailContactId(null);
         }}
         onSkip={() => {
-          setDrawerOpen(false);
-          setPendingOutcome(prev => prev ? { ...prev, status: "viewed" } : prev);
+          if (detailContactId) updatePending(detailContactId, { status: "viewed" });
+          setDetailContactId(null);
         }}
       />
 
-      {/* FLOATING OUTCOME INDICATOR — bottom-right */}
-      {pendingOutcome && pendingOutcome.status !== "viewed" && (
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className={`fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 h-11 rounded-full shadow-lg border transition-all text-sm font-medium ${
-            pendingOutcome.status === "ready"
-              ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90 animate-pulse"
-              : "bg-background text-muted-foreground border-border hover:bg-muted"
-          }`}
-        >
-          {pendingOutcome.status === "ready" ? (
-            <>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
+      {/* OUTCOMES TRAY — always-visible thin tab on right edge; expands to full list */}
+      <div className="fixed top-1/4 right-0 z-40 flex items-start">
+        {/* Collapsed tab — always visible */}
+        {!trayExpanded && (
+          <button
+            onClick={() => setTrayExpanded(true)}
+            className="group relative bg-card border border-r-0 border-border shadow-lg rounded-l-lg px-2 py-3 flex flex-col items-center gap-2 hover:bg-muted transition-colors"
+            title={`${pendingOutcomes.length} outcome${pendingOutcomes.length !== 1 ? "s" : ""} in tray`}
+          >
+            <Headphones className="w-4 h-4" />
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl] rotate-180">
+              Outcomes
+            </span>
+            {trayBadgeCount > 0 && (
+              <span className={`absolute -top-1 -left-1 min-w-[20px] h-5 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                readyCount > 0 ? "bg-primary text-primary-foreground animate-pulse" : "bg-muted-foreground text-background"
+              }`}>
+                {trayBadgeCount}
               </span>
-              Outcome ready — {pendingOutcome.contactName}
-            </>
-          ) : (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Awaiting tag — {pendingOutcome.contactName}
-            </>
-          )}
-        </button>
-      )}
+            )}
+          </button>
+        )}
+
+        {/* Expanded tray — side panel listing all pending outcomes */}
+        {trayExpanded && (
+          <div className="w-80 bg-card border border-r-0 border-border shadow-xl rounded-l-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <div className="font-semibold text-sm flex items-center gap-2">
+                  <Headphones className="w-4 h-4" /> Call Outcomes
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {readyCount} ready · {awaitingCount} processing
+                </div>
+              </div>
+              <button
+                onClick={() => setTrayExpanded(false)}
+                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted"
+                title="Minimise"
+              >
+                ›
+              </button>
+            </div>
+            {pendingOutcomes.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                No outcomes yet. After a call ends, the engine output will appear here.
+              </div>
+            ) : (
+              <div className="max-h-[calc(100vh-220px)] overflow-y-auto">
+                {pendingOutcomes.map(p => {
+                  const mins = Math.round((Date.now() - p.startedAt) / 60000);
+                  const stale = p.status === "awaiting_tag" && mins >= 10;
+                  return (
+                    <div key={p.contactId}
+                      className={`group px-4 py-3 border-b last:border-b-0 cursor-pointer transition-colors ${
+                        p.status === "ready" ? "hover:bg-primary/5" : "hover:bg-muted/50"
+                      }`}
+                      onClick={() => setDetailContactId(p.contactId)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm truncate">{p.contactName}</div>
+                          <div className="text-xs mt-0.5 flex items-center gap-1.5">
+                            {p.status === "awaiting_tag" && (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                                <span className={stale ? "text-amber-600" : "text-muted-foreground"}>
+                                  {stale ? `Still awaiting tag (${mins}m)` : "Awaiting tag…"}
+                                </span>
+                              </>
+                            )}
+                            {p.status === "ready" && (
+                              <>
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                                </span>
+                                <span className="text-primary font-medium">Analysis ready</span>
+                              </>
+                            )}
+                            {p.status === "viewed" && (
+                              <>
+                                <CheckCircle className="w-3 h-3 text-muted-foreground" />
+                                <span className="text-muted-foreground">Viewed</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); dismissPending(p.contactId); }}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 rounded text-xs"
+                          title="Dismiss"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {pendingOutcomes.length > 0 && (
+              <div className="px-4 py-2 border-t">
+                <button
+                  onClick={() => setPendingOutcomes([])}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground py-1"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* HEADER */}
       <div className="flex items-center justify-between">
