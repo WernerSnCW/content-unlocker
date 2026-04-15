@@ -41,12 +41,15 @@ Finite enum. Adding a new side-effect requires code change.
 
 | Side Effect | Behaviour |
 |---|---|
-| `none` | No automatic pool rule applied. Contact stays in `called` status. The intelligence engine's NBA, processed from the transcript, sets `callback_date` to the appropriate next-contact date. Without an engine recommendation, the contact sits idle. |
-| `cool_off` | Excluded from dispatch for N days (default 28, configurable) |
+| `none` | No automatic pool rule applied. Call is closed normally: membership closes with the outcome snapshot, `dispatch_status = 'called'`, `call_attempts` increments, `last_call_outcome` set. The intelligence engine's NBA sets `callback_date` for next contact. |
+| `record_only` | **Pure metadata.** Appends the tag to `conversation.tags` but does NOT close the membership, NOT increment attempts, NOT change contact state. For informational tags added alongside a primary outcome tag. Allowed on every outcome. |
+| `cool_off` | Excluded from dispatch for N days (default 28, configurable; per-tag override possible) |
 | `immediate_recall` | Re-dispatched onto same call list today, bottom of queue. Does NOT count against `max_call_attempts`. |
 | `callback_1d` / `_2d` / `_3d` / `_7d` | Sets `callback_date = now + N days`; picked up by callback bucket on that date |
 | `exclude_from_campaign` | Stays in pool but filtered out of this campaign's future dispatches via `exclude_outcomes` |
 | `global_exclude` | `dispatch_status = 'archived'` — permanently out of every future call list |
+
+**Unmapped tags** (a tag name not in the config) are treated the same as `record_only` — appended to the conversation's tags array without any state change. This lets operators add ad-hoc labels in Aircall without admin config. The "closing" tag still needs to be one that is mapped.
 
 ### Layer 3 — Tag mapping with allowed-combinations matrix
 

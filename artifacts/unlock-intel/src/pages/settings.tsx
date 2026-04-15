@@ -59,7 +59,7 @@ export default function Settings() {
     | "interested" | "no-interest" | "no-answer" | "callback-requested"
     | "meeting-booked" | "hung-up" | "do-not-call" | "does-not-exist";
   type SideEffect =
-    | "none" | "cool_off" | "immediate_recall"
+    | "none" | "record_only" | "cool_off" | "immediate_recall"
     | "callback_1d" | "callback_2d" | "callback_3d" | "callback_7d"
     | "exclude_from_campaign" | "global_exclude";
   interface TagMapping {
@@ -86,6 +86,7 @@ export default function Settings() {
   };
   const SIDE_EFFECT_LABELS: Record<SideEffect, string> = {
     "none": "None — engine decides next step",
+    "record_only": "Record tag only (no state change)",
     "cool_off": "Cool-off for N days",
     "immediate_recall": "Immediate recall (bottom of today's queue)",
     "callback_1d": "Callback in 1 day",
@@ -96,14 +97,14 @@ export default function Settings() {
     "global_exclude": "Archive — never call again",
   };
   const ALLOWED_SIDE_EFFECTS: Record<Outcome, SideEffect[]> = {
-    "interested": ["none"],
-    "no-interest": ["exclude_from_campaign", "cool_off", "none"],
-    "no-answer": ["cool_off", "immediate_recall", "none"],
-    "callback-requested": ["callback_1d", "callback_2d", "callback_3d", "callback_7d"],
-    "meeting-booked": ["none"],
-    "hung-up": ["cool_off", "immediate_recall", "none"],
-    "do-not-call": ["global_exclude"],
-    "does-not-exist": ["global_exclude"],
+    "interested": ["none", "record_only"],
+    "no-interest": ["exclude_from_campaign", "cool_off", "none", "record_only"],
+    "no-answer": ["cool_off", "immediate_recall", "none", "record_only"],
+    "callback-requested": ["callback_1d", "callback_2d", "callback_3d", "callback_7d", "record_only"],
+    "meeting-booked": ["none", "record_only"],
+    "hung-up": ["cool_off", "immediate_recall", "none", "record_only"],
+    "do-not-call": ["global_exclude", "record_only"],
+    "does-not-exist": ["global_exclude", "record_only"],
   };
 
   const [tagMappings, setTagMappings] = useState<TagMapping[]>([

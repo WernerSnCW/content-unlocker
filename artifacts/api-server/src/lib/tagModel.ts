@@ -15,6 +15,7 @@ export type Outcome =
 
 export type SideEffect =
   | "none"
+  | "record_only"
   | "cool_off"
   | "immediate_recall"
   | "callback_1d"
@@ -37,6 +38,7 @@ export const OUTCOMES: readonly Outcome[] = [
 
 export const SIDE_EFFECTS: readonly SideEffect[] = [
   "none",
+  "record_only",
   "cool_off",
   "immediate_recall",
   "callback_1d",
@@ -51,16 +53,18 @@ export const SIDE_EFFECTS: readonly SideEffect[] = [
 export const TERMINAL_OUTCOMES: readonly Outcome[] = ["do-not-call", "does-not-exist"];
 
 // Allowed combinations. UI dropdowns constrain to these; webhook handler
-// rejects anything outside this matrix.
+// rejects anything outside this matrix. `record_only` is allowed on every
+// outcome — it means "append this tag to the conversation as metadata
+// without changing contact state".
 export const ALLOWED_SIDE_EFFECTS: Record<Outcome, readonly SideEffect[]> = {
-  interested: ["none"],
-  "no-interest": ["exclude_from_campaign", "cool_off", "none"],
-  "no-answer": ["cool_off", "immediate_recall", "none"],
-  "callback-requested": ["callback_1d", "callback_2d", "callback_3d", "callback_7d"],
-  "meeting-booked": ["none"],
-  "hung-up": ["cool_off", "immediate_recall", "none"],
-  "do-not-call": ["global_exclude"],
-  "does-not-exist": ["global_exclude"],
+  interested: ["none", "record_only"],
+  "no-interest": ["exclude_from_campaign", "cool_off", "none", "record_only"],
+  "no-answer": ["cool_off", "immediate_recall", "none", "record_only"],
+  "callback-requested": ["callback_1d", "callback_2d", "callback_3d", "callback_7d", "record_only"],
+  "meeting-booked": ["none", "record_only"],
+  "hung-up": ["cool_off", "immediate_recall", "none", "record_only"],
+  "do-not-call": ["global_exclude", "record_only"],
+  "does-not-exist": ["global_exclude", "record_only"],
 };
 
 // Human-readable labels for the settings UI
@@ -77,6 +81,7 @@ export const OUTCOME_LABELS: Record<Outcome, string> = {
 
 export const SIDE_EFFECT_LABELS: Record<SideEffect, string> = {
   "none": "None — engine decides next step",
+  "record_only": "Record tag only (no state change)",
   "cool_off": "Cool-off for N days",
   "immediate_recall": "Immediate recall (bottom of today's queue)",
   "callback_1d": "Callback in 1 day",

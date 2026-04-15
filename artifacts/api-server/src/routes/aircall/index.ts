@@ -204,6 +204,9 @@ async function applyTaggedOutcomeTx(
     }
     case "exclude_from_campaign":
     case "none":
+    case "record_only":
+      // record_only should not reach this path (handleCallTagged short-circuits
+      // before calling us), but handle gracefully just in case.
       break;
   }
 
@@ -404,6 +407,13 @@ async function handleCallEnded(data: any): Promise<string | null> {
 // a transaction so concurrent webhooks can't race against it. Order-independent:
 // works whether call.ended has been processed before, after, or never (a stub
 // conversation is created here if needed).
+//
+// Three paths:
+//   1. Mapped tag with a state-changing side-effect → full transaction.
+//   2. Mapped tag with side_effect = "record_only"     → append tag to
+//      conversation.tags only; no state change.
+//   3. Unmapped tag (not in config)                    → same as #2, so ad-hoc
+//      tags added by operators are preserved without needing admin config.
 async function handleCallTagged(data: any): Promise<string | null> {
   const callId = data.call_id || data.id;
   const tag = data.tag;
@@ -414,19 +424,14 @@ async function handleCallTagged(data: any): Promise<string | null> {
 
   const tagMapping = await getTagMapping();
   const resolution = resolveTag(tagName, tagMapping);
-  if (!resolution) {
-    return `unknown tag: "${tagName}" (not in tag_mapping)`;
-  }
 
-  // Find an existing conversation record (created by call.ended)
+  // Find or create the conversation record so the tag has somewhere to land.
   let [conv] = await db.select().from(leadConversationsTable)
     .where(eq(leadConversationsTable.external_id, String(callId)))
     .limit(1);
 
   let contactId = conv?.contact_id ?? null;
 
-  // If no conversation exists yet (tagged arrived first), look up the call
-  // via Aircall API to find the contact and create a stub.
   if (!conv) {
     const auth = await getAircallAuth();
     if (!auth) return `no conversation for ${callId} AND no Aircall API credentials`;
@@ -463,23 +468,34 @@ async function handleCallTagged(data: any): Promise<string | null> {
 
   if (!contactId) return `no contact_id on conversation ${conv?.id}`;
 
-  // Idempotent: if this conversation has already been processed, skip.
+  // Path 2 + 3: record-only or unmapped tag. Just append to tags array.
+  // No state mutation, no processed_at change — some other (mapped) tag will
+  // close the call, or the untagged sweep will.
+  const isRecordOnly = !resolution || resolution.sideEffect === "record_only";
+  if (isRecordOnly) {
+    await db.update(leadConversationsTable)
+      .set({
+        tags: sql`COALESCE(${leadConversationsTable.tags}, '[]'::jsonb) || ${JSON.stringify([tagName])}::jsonb`,
+      })
+      .where(eq(leadConversationsTable.external_id, String(callId)));
+    const reason = resolution ? "record_only" : "unmapped";
+    return `tag "${tagName}" recorded (${reason}) — no state change`;
+  }
+
+  // Path 1: state-changing outcome. Run the full transaction.
+  // Idempotent: if already processed by an earlier state-changing tag, skip.
   if (conv?.processed_at) {
-    return `already processed at ${conv.processed_at.toISOString()}`;
+    return `already processed at ${conv.processed_at.toISOString()} — skipping "${tagName}"`;
   }
 
   const coolOffDaysGlobal = await getCoolOffDays();
-
-  // Single transaction: close membership + apply side-effect + update contact
-  // + update conversation. All-or-nothing.
   await db.transaction(async (tx) => {
-    await applyTaggedOutcomeTx(tx, contactId!, String(callId), tagName, resolution, coolOffDaysGlobal);
+    await applyTaggedOutcomeTx(tx, contactId!, String(callId), tagName, resolution!, coolOffDaysGlobal);
   });
 
-  // Notify SSE subscribers — the queue may have changed (recall, archive, etc.)
   notifyQueueChanged({ event: "call.tagged", contactId, callId: String(callId) });
 
-  return `tagged → ${resolution.outcome} (${resolution.sideEffect})`;
+  return `tagged → ${resolution!.outcome} (${resolution!.sideEffect})`;
 }
 
 async function handleCallCommented(data: any) {
