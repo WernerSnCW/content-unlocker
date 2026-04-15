@@ -188,6 +188,153 @@ router.post("/auth/logout", (req, res) => {
   });
 });
 
+// ============================================================================
+// DEV-ONLY LOGIN BYPASS
+// ============================================================================
+// Gated by TWO conditions that must BOTH be true:
+//   1. NODE_ENV !== "production"   (no deployed app ever satisfies this)
+//   2. ALLOW_DEV_LOGIN === "true"  (explicit opt-in env var)
+// A deployed/published Replit sets NODE_ENV=production, so even if someone
+// forgets the flag the endpoint is unreachable there. This is a dev-only
+// convenience so you can test the auth-protected app without setting up GCP
+// OAuth first.
+// ============================================================================
+
+function isDevLoginAllowed(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_DEV_LOGIN === "true"
+  );
+}
+
+/**
+ * GET /api/auth/dev-mode
+ * Public probe used by the login page to decide whether to render the
+ * dev-quick-login form. Returns { enabled: false } when disabled so the
+ * response is always shape-stable.
+ */
+router.get("/auth/dev-mode", async (_req, res) => {
+  if (!isDevLoginAllowed()) {
+    res.json({ enabled: false });
+    return;
+  }
+  try {
+    const agents = await db
+      .select({
+        id: agentsTable.id,
+        name: agentsTable.name,
+        email: agentsTable.email,
+      })
+      .from(agentsTable)
+      .where(eq(agentsTable.active, true));
+    res.json({ enabled: true, agents });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "dev-mode probe failed");
+    res.json({ enabled: true, agents: [] });
+  }
+});
+
+/**
+ * POST /api/auth/dev-login
+ * Body: { agent_id: string }
+ * Creates (or reuses) a synthetic user row for the given agent and sets
+ * the session. The synthetic user has google_sub "dev-<agentId>" so real
+ * Google logins (real subs) can never collide with it.
+ */
+router.post("/auth/dev-login", async (req, res) => {
+  if (!isDevLoginAllowed()) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+
+  const agentId = typeof req.body?.agent_id === "string" ? req.body.agent_id : null;
+  if (!agentId) {
+    res.status(400).json({ error: "agent_id_required" });
+    return;
+  }
+
+  try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
+    if (!agent) {
+      res.status(404).json({ error: "agent_not_found" });
+      return;
+    }
+    if (!agent.active) {
+      res.status(403).json({ error: "agent_inactive" });
+      return;
+    }
+
+    const syntheticSub = `dev-${agent.id}`;
+    const email = agent.email || `${agent.id}@dev.local`;
+
+    // Upsert the synthetic user. If a real Google user with the same email
+    // exists, reuse it (so dev-login doesn't create duplicate rows).
+    const [existingByEmail] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+
+    let user;
+    if (existingByEmail) {
+      [user] = await db
+        .update(usersTable)
+        .set({ last_login_at: new Date() })
+        .where(eq(usersTable.id, existingByEmail.id))
+        .returning();
+    } else {
+      [user] = await db
+        .insert(usersTable)
+        .values({
+          google_sub: syntheticSub,
+          email,
+          name: agent.name,
+          last_login_at: new Date(),
+        })
+        .returning();
+    }
+
+    // Bind agent to user if not already bound.
+    if (!agent.user_id) {
+      await db.update(agentsTable).set({ user_id: user.id }).where(eq(agentsTable.id, agent.id));
+    } else if (agent.user_id !== user.id) {
+      res.status(409).json({ error: "agent_bound_to_different_user" });
+      return;
+    }
+
+    req.session.regenerate((err) => {
+      if (err) {
+        logger.error({ err }, "dev-login session regenerate failed");
+        res.status(500).json({ error: "session_failed" });
+        return;
+      }
+      req.session.userId = user.id;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          logger.error({ err: saveErr }, "dev-login session save failed");
+          res.status(500).json({ error: "session_failed" });
+          return;
+        }
+        logger.warn(
+          { userId: user.id, agentId: agent.id, email: user.email },
+          "DEV-LOGIN used — do not enable in production",
+        );
+        res.json({
+          ok: true,
+          user: { id: user.id, email: user.email, name: user.name },
+          agent: { id: agent.id, name: agent.name },
+        });
+      });
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message, stack: err.stack }, "dev-login failed");
+    res.status(500).json({ error: "dev_login_failed", message: err.message });
+  }
+});
+
+// ============================================================================
+// /auth/me (protected) — session probe used by the frontend
+// ============================================================================
+
 /**
  * GET /api/auth/me
  * Returns the logged-in user + linked agent, or 401 if not authed.

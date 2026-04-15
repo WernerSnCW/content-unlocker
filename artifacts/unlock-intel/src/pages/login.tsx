@@ -1,6 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiFetch, apiPost } from "@/lib/apiClient";
+
+interface DevModeResponse {
+  enabled: boolean;
+  agents?: Array<{ id: string; name: string; email: string | null }>;
+}
 
 /**
  * Minimal login screen. The "Sign in with Google" button links to
@@ -11,6 +18,10 @@ import { Button } from "@/components/ui/button";
  */
 export default function LoginPage() {
   const { data, isLoading } = useCurrentUser();
+  const [devMode, setDevMode] = useState<DevModeResponse>({ enabled: false });
+  const [devAgentId, setDevAgentId] = useState<string>("");
+  const [devSubmitting, setDevSubmitting] = useState(false);
+  const [devError, setDevError] = useState<string | null>(null);
 
   // One-time localStorage cleanup — removes leftover agent-picker state
   // from the pre-SSO era so there's nothing stale to confuse us.
@@ -18,6 +29,23 @@ export default function LoginPage() {
     try {
       localStorage.removeItem("activeAgentId");
     } catch { /* ignore */ }
+  }, []);
+
+  // Probe dev-mode to decide whether to render the quick-login form.
+  // Returns { enabled: false } in production regardless — safe to call always.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch("/api/auth/dev-mode", { redirectOn401: false });
+        if (res.ok) {
+          const body = (await res.json()) as DevModeResponse;
+          setDevMode(body);
+          if (body.enabled && body.agents && body.agents.length > 0) {
+            setDevAgentId(body.agents[0].id);
+          }
+        }
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   useEffect(() => {
@@ -33,6 +61,27 @@ export default function LoginPage() {
     const rt = params.get("returnTo");
     return rt ? `?returnTo=${encodeURIComponent(rt)}` : "";
   })();
+
+  const handleDevLogin = async () => {
+    if (!devAgentId) return;
+    setDevSubmitting(true);
+    setDevError(null);
+    try {
+      const res = await apiPost("/api/auth/dev-login", { agent_id: devAgentId }, { redirectOn401: false });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setDevError(body?.error || `Dev login failed (${res.status})`);
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      const returnTo = params.get("returnTo") || "/";
+      window.location.href = returnTo;
+    } catch (err: any) {
+      setDevError(err?.message || "Dev login failed");
+    } finally {
+      setDevSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
@@ -65,6 +114,53 @@ export default function LoginPage() {
           Only registered agent emails are permitted. If your email isn't
           recognised, ask an admin to add you.
         </p>
+
+        {devMode.enabled && (
+          <div className="mt-2 pt-5 border-t border-dashed border-amber-500/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+                Dev quick login
+              </span>
+              <span className="text-[10px] rounded bg-amber-500/15 text-amber-700 px-1.5 py-0.5">
+                not for production
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pick an agent to sign in as without Google. Enabled by
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                ALLOW_DEV_LOGIN=true
+              </code>
+              in this environment.
+            </p>
+
+            <Select value={devAgentId} onValueChange={setDevAgentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select agent..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(devMode.agents || []).map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name} {a.email ? `(${a.email})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-amber-500/60 hover:bg-amber-500/10"
+              onClick={handleDevLogin}
+              disabled={!devAgentId || devSubmitting}
+            >
+              {devSubmitting ? "Signing in…" : "Sign in as selected agent"}
+            </Button>
+
+            {devError && (
+              <p className="text-xs text-destructive">{devError}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
