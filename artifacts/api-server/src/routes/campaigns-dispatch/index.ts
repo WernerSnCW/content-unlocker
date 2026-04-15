@@ -1,25 +1,31 @@
 import { Router, type IRouter } from "express";
 import { db, callListConfigsTable, contactsTable, agentsTable, callListMembershipsTable, leadConversationsTable } from "@workspace/db";
-import { eq, and, desc, sql, isNull } from "drizzle-orm";
+import { eq, and, or, desc, sql, isNull } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
+import { requireAuth } from "../../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
+// Entire router requires an authenticated agent. Agent-scoped endpoints
+// derive scope from req.auth.agent; CRUD endpoints still operate on :id
+// but are protected so unauthed callers can't enumerate or mutate them.
+router.use(requireAuth);
+
 // ==================== Campaign CRUD ====================
 
-// GET /call_lists — list all call lists. Optional ?agent_id=X filter to scope
-// to a single agent's call lists (used by Call Command for per-operator
-// isolation). Unassigned lists (assigned_agent_id IS NULL) are included
-// when agent_id is unspecified only.
+// GET /call_lists — lists assigned to the logged-in agent, plus unassigned
+// lists (so admins who haven't yet assigned can still see them). Scope is
+// derived from req.auth.agent.id; no client-supplied agent_id is accepted.
 router.get("/call-lists", async (req, res): Promise<void> => {
   try {
-    const agentIdFilter = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
+    const agentId = req.auth!.agent.id;
 
-    const rows = agentIdFilter
-      ? await db.select().from(callListConfigsTable)
-          .where(eq(callListConfigsTable.assigned_agent_id, agentIdFilter))
-          .orderBy(desc(callListConfigsTable.created_at))
-      : await db.select().from(callListConfigsTable).orderBy(desc(callListConfigsTable.created_at));
+    const rows = await db.select().from(callListConfigsTable)
+      .where(or(
+        eq(callListConfigsTable.assigned_agent_id, agentId),
+        isNull(callListConfigsTable.assigned_agent_id),
+      ))
+      .orderBy(desc(callListConfigsTable.created_at));
 
     const agents = await db.select().from(agentsTable);
     const agentMap = new Map(agents.map(a => [a.id, a]));
@@ -130,36 +136,18 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
 });
 
 // GET /call-lists/today-outcomes — count CALLS (conversations) made today, grouped by outcome.
-// Counts each completed conversation individually, not contacts, so a contact who was called
-// twice today (e.g. immediate_recall scenario) counts as 2. A contact who was called and then
-// recalled (now back in dispatched status) still counts as 1 completed call.
-// GET /call-lists/today-outcomes?agent_id=X — counts calls made today.
-// Optional agent_id filter scopes to conversations where agent_name matches
-// the agent's name. Unscoped → all agents (admin view).
+// Always scoped to the logged-in agent (agent_name match on conversations).
+// A contact called twice today (e.g. immediate_recall) counts as 2 here.
 router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dateFilter = sql`${leadConversationsTable.conversation_date}::date = ${today.toISOString().split("T")[0]}::date`;
 
-    // Optional agent filter — look up the agent's name and match agent_name
-    // on conversations. (Conversations store agent_name, not agent_id.)
-    const agentIdParam = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
-    let agentNameFilter: any = null;
-    if (agentIdParam) {
-      const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentIdParam)).limit(1);
-      if (agent?.name) {
-        agentNameFilter = eq(leadConversationsTable.agent_name, agent.name);
-      } else {
-        // Requested a specific agent but none found — return zeros rather than all-agent totals.
-        res.json({ total: 0, uniqueContacts: 0, outcomes: {} });
-        return;
-      }
-    }
+    const agentName = req.auth!.agent.name;
+    const agentNameFilter = eq(leadConversationsTable.agent_name, agentName);
 
-    const whereClause = agentNameFilter
-      ? and(eq(leadConversationsTable.source, "aircall"), dateFilter, agentNameFilter)
-      : and(eq(leadConversationsTable.source, "aircall"), dateFilter);
+    const whereClause = and(eq(leadConversationsTable.source, "aircall"), dateFilter, agentNameFilter);
 
     // Per-outcome breakdown
     const rows = await db.select({
@@ -194,30 +182,15 @@ router.get("/call-lists/today-outcomes", async (req, res): Promise<void> => {
   }
 });
 
-// GET /call-lists/stale-count?agent_id=X — count stale dispatched contacts.
-// When agent_id is passed, count only those whose active membership is on
-// a call list assigned to that agent. Without agent_id, returns the global
-// count (admin view).
+// GET /call-lists/stale-count — count stale dispatched contacts whose
+// ACTIVE membership belongs to a call list assigned to the logged-in agent.
 router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split("T")[0];
-    const agentIdParam = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
+    const agentId = req.auth!.agent.id;
 
-    if (!agentIdParam) {
-      const [result] = await db.select({ count: sql<number>`count(*)` })
-        .from(contactsTable)
-        .where(and(
-          eq(contactsTable.dispatch_status, "dispatched"),
-          sql`${contactsTable.dispatch_date}::date < ${todayStr}::date`,
-        ));
-      res.json({ stale_count: Number(result.count) });
-      return;
-    }
-
-    // Agent-scoped: stale contacts whose ACTIVE membership belongs to a call
-    // list assigned to this agent.
     const [result] = await db.select({ count: sql<number>`count(distinct ${contactsTable.id})` })
       .from(contactsTable)
       .innerJoin(callListMembershipsTable, eq(callListMembershipsTable.contact_id, contactsTable.id))
@@ -226,7 +199,7 @@ router.get("/call-lists/stale-count", async (req, res): Promise<void> => {
         eq(contactsTable.dispatch_status, "dispatched"),
         sql`${contactsTable.dispatch_date}::date < ${todayStr}::date`,
         isNull(callListMembershipsTable.removed_at),
-        eq(callListConfigsTable.assigned_agent_id, agentIdParam),
+        eq(callListConfigsTable.assigned_agent_id, agentId),
       ));
     res.json({ stale_count: Number(result.count) });
   } catch (err: any) {
@@ -293,11 +266,10 @@ router.post("/call-lists/carry-over", async (req, res): Promise<void> => {
 });
 
 // POST /call_lists/reconcile — reset uncalled contacts from yesterday.
-// Optional body { agent_id } scopes to that agent's call lists only.
+// Always scoped to the logged-in agent's call lists.
 router.post("/call-lists/reconcile", async (req, res): Promise<void> => {
   try {
-    const agentId = typeof req.body?.agent_id === "string" ? req.body.agent_id : null;
-    const resetCount = await reconcileUncalledContacts(agentId);
+    const resetCount = await reconcileUncalledContacts(req.auth!.agent.id);
     res.json({ success: true, reset_count: resetCount });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to reconcile uncalled contacts" });
