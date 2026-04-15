@@ -47,10 +47,18 @@ export default function CallCommand() {
   const [aircallConfigured, setAircallConfigured] = useState(false);
   const [dialing, setDialing] = useState(false);
 
-  // Outcome drawer state — opens on call.ended for the contact we just called
+  // Outcome drawer state — drawer does NOT auto-open on call.ended. Instead,
+  // a floating indicator pill appears showing status (awaiting tag / ready /
+  // viewed). Operator clicks it to open the drawer.
+  type PendingStatus = "awaiting_tag" | "ready" | "viewed";
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
-  const [drawerContactName, setDrawerContactName] = useState<string | null>(null);
+  const [pendingOutcome, setPendingOutcome] = useState<{
+    contactId: string;
+    contactName: string;
+    status: PendingStatus;
+    startedAt: number;
+  } | null>(null);
+
   // Ref to capture the contact at dial-time so we still know who was called
   // when the async call.ended event fires later.
   const callingContactRef = useRef<{ id: string; name: string } | null>(null);
@@ -59,27 +67,42 @@ export default function CallCommand() {
     setDialing(false);
     setViewingIndex(null);
     setCurrentCallIndex(i => i + 1);
-    // Open the outcome drawer for the contact that was just called.
-    // Drawer polls engine data until the call.tagged webhook lands.
+    // Track pending outcome for the contact we just called. SSE call.tagged
+    // events flip it to "ready" when the engine run lands.
     if (callingContactRef.current) {
-      setDrawerContactId(callingContactRef.current.id);
-      setDrawerContactName(callingContactRef.current.name);
-      setDrawerOpen(true);
+      setPendingOutcome({
+        contactId: callingContactRef.current.id,
+        contactName: callingContactRef.current.name,
+        status: "awaiting_tag",
+        startedAt: Date.now(),
+      });
     }
-    // The SSE stream (subscribed in a separate effect) refreshes the page
-    // when call.ended/call.tagged are processed by the backend. We do one
-    // immediate loadAll for instant feedback and rely on SSE thereafter.
     loadAll();
   }, []);
 
   // Subscribe to the live queue-events stream. Refreshes on backend webhook
-  // events without polling.
+  // events without polling. Also flips pending-outcome status to "ready"
+  // when the engine has finished analysing the just-called contact.
   useEffect(() => {
     const url = `${API_BASE}/events/queue`;
     const es = new EventSource(url);
     const onChange = () => { loadAll(); };
+    const onTagged = (ev: MessageEvent) => {
+      loadAll();
+      try {
+        const payload = JSON.parse(ev.data);
+        // If the tagged event is for the contact we're waiting on, mark ready
+        setPendingOutcome(prev => {
+          if (!prev) return prev;
+          if (payload?.contactId && payload.contactId === prev.contactId && prev.status === "awaiting_tag") {
+            return { ...prev, status: "ready" };
+          }
+          return prev;
+        });
+      } catch { /* ignore */ }
+    };
     es.addEventListener("call.ended", onChange);
-    es.addEventListener("call.tagged", onChange);
+    es.addEventListener("call.tagged", onTagged);
     es.addEventListener("untagged-sweep", onChange);
     es.onerror = () => { /* EventSource auto-reconnects */ };
     return () => { es.close(); };
@@ -301,15 +324,49 @@ export default function CallCommand() {
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
-      {/* POST-CALL OUTCOME DRAWER */}
+      {/* POST-CALL OUTCOME DRAWER (hidden until operator clicks the floating indicator) */}
       <OutcomeDrawer
         open={drawerOpen}
-        contactId={drawerContactId}
-        contactName={drawerContactName}
+        contactId={pendingOutcome?.contactId ?? null}
+        contactName={pendingOutcome?.contactName ?? null}
         conversationId={null}
-        onClose={() => setDrawerOpen(false)}
-        onSkip={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          // Mark as viewed once they've actually opened and closed it
+          setPendingOutcome(prev => prev ? { ...prev, status: "viewed" } : prev);
+        }}
+        onSkip={() => {
+          setDrawerOpen(false);
+          setPendingOutcome(prev => prev ? { ...prev, status: "viewed" } : prev);
+        }}
       />
+
+      {/* FLOATING OUTCOME INDICATOR — bottom-right */}
+      {pendingOutcome && pendingOutcome.status !== "viewed" && (
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className={`fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 h-11 rounded-full shadow-lg border transition-all text-sm font-medium ${
+            pendingOutcome.status === "ready"
+              ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90 animate-pulse"
+              : "bg-background text-muted-foreground border-border hover:bg-muted"
+          }`}
+        >
+          {pendingOutcome.status === "ready" ? (
+            <>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
+              </span>
+              Outcome ready — {pendingOutcome.contactName}
+            </>
+          ) : (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Awaiting tag — {pendingOutcome.contactName}
+            </>
+          )}
+        </button>
+      )}
 
       {/* HEADER */}
       <div className="flex items-center justify-between">
