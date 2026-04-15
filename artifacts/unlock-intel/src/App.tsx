@@ -3,7 +3,9 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import LoginPage from "@/pages/login";
 
 import Dashboard from "./pages/dashboard";
 import Recommend from "./pages/recommend";
@@ -43,37 +45,48 @@ const queryClient = new QueryClient({
 
 function Router() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={CallCommand} />
-        <Route path="/dashboard" component={Dashboard} />
-        <Route path="/recommend" component={Recommend} />
-        <Route path="/leads" component={Leads} />
-        <Route path="/leads/:id" component={LeadDetail} />
-        <Route path="/registry" component={Registry} />
-        <Route path="/registry/:id" component={DocumentDetail} />
-        <Route path="/content-bank" component={ContentBank} />
-        <Route path="/changelog" component={Changelog} />
-        <Route path="/generate" component={Generate} />
-        <Route path="/gaps" component={GapAnalysis} />
-        <Route path="/feature-updates" component={FeatureUpdates} />
-        <Route path="/call-prep" component={CallPrep} />
-        <Route path="/analytics/personas" component={PersonaAnalytics} />
-        <Route path="/acu" component={ACUPage} />
-        <Route path="/campaigns" component={CampaignsPage} />
-        <Route path="/campaigns/:id" component={CampaignDetailPage} />
-        <Route path="/compliance-constants" component={ComplianceConstants} />
-        <Route path="/import" component={ImportPage} />
-        <Route path="/tasks" component={TasksPage} />
-        <Route path="/work-queue" component={WorkQueue} />
-        <Route path="/document-health" component={DocumentHealth} />
-        <Route path="/settings" component={IntegrationSettings} />
-        <Route path="/contacts/upload" component={ContactIngestion} />
-        <Route path="/call-list" component={CallList} />
-        <Route path="/webhook-log" component={WebhookLog} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <Switch>
+      {/* Public — /login is accessible without auth */}
+      <Route path="/login" component={LoginPage} />
+
+      {/* Everything else is gated: ProtectedRoute probes /api/auth/me and
+          redirects to /login when unauthed. */}
+      <Route>
+        <ProtectedRoute>
+          <AppLayout>
+            <Switch>
+              <Route path="/" component={CallCommand} />
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/recommend" component={Recommend} />
+              <Route path="/leads" component={Leads} />
+              <Route path="/leads/:id" component={LeadDetail} />
+              <Route path="/registry" component={Registry} />
+              <Route path="/registry/:id" component={DocumentDetail} />
+              <Route path="/content-bank" component={ContentBank} />
+              <Route path="/changelog" component={Changelog} />
+              <Route path="/generate" component={Generate} />
+              <Route path="/gaps" component={GapAnalysis} />
+              <Route path="/feature-updates" component={FeatureUpdates} />
+              <Route path="/call-prep" component={CallPrep} />
+              <Route path="/analytics/personas" component={PersonaAnalytics} />
+              <Route path="/acu" component={ACUPage} />
+              <Route path="/campaigns" component={CampaignsPage} />
+              <Route path="/campaigns/:id" component={CampaignDetailPage} />
+              <Route path="/compliance-constants" component={ComplianceConstants} />
+              <Route path="/import" component={ImportPage} />
+              <Route path="/tasks" component={TasksPage} />
+              <Route path="/work-queue" component={WorkQueue} />
+              <Route path="/document-health" component={DocumentHealth} />
+              <Route path="/settings" component={IntegrationSettings} />
+              <Route path="/contacts/upload" component={ContactIngestion} />
+              <Route path="/call-list" component={CallList} />
+              <Route path="/webhook-log" component={WebhookLog} />
+              <Route component={NotFound} />
+            </Switch>
+          </AppLayout>
+        </ProtectedRoute>
+      </Route>
+    </Switch>
   );
 }
 

@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  Library, 
-  History, 
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { logout } from "@/lib/apiClient";
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  Library,
+  History,
   Sparkles,
   Search,
   Settings,
@@ -23,6 +25,7 @@ import {
   Zap,
   FileSearch,
   Headphones,
+  LogOut,
 } from "lucide-react";
 
 const API_BASE =
@@ -34,6 +37,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -163,15 +167,42 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-sidebar-foreground/70">
-            <div className="w-8 h-8 bg-sidebar-accent rounded-full flex items-center justify-center">
-              JD
+          {currentUser ? (
+            <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-sidebar-foreground/70">
+              {currentUser.user.picture ? (
+                <img
+                  src={currentUser.user.picture}
+                  alt={currentUser.user.name || currentUser.user.email}
+                  className="w-8 h-8 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-sidebar-accent rounded-full flex items-center justify-center text-xs">
+                  {(currentUser.user.name || currentUser.user.email)
+                    .split(/\s+/)
+                    .map((w) => w.charAt(0).toUpperCase())
+                    .slice(0, 2)
+                    .join("")}
+                </div>
+              )}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-sidebar-foreground truncate">
+                  {currentUser.agent.name}
+                </span>
+                <span className="text-xs opacity-70 truncate">
+                  {currentUser.user.email}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                title="Sign out"
+                className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
-            <div className="flex flex-col">
-              <span className="text-sidebar-foreground">John Doe</span>
-              <span className="text-xs opacity-70">john@unlock.com</span>
-            </div>
-          </div>
+          ) : null}
         </div>
       </aside>
 
