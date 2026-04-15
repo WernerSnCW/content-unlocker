@@ -29,9 +29,11 @@ import campaignsDispatchRouter from "./campaigns-dispatch";
 import aircallRouter from "./aircall";
 import engineRouter from "./engine";
 import eventsRouter from "./events";
+import authRouter from "./auth";
 
 const router: IRouter = Router();
 
+router.use(authRouter);
 router.use(healthRouter);
 router.use(leadsRouter);
 router.use(documentsRouter);
