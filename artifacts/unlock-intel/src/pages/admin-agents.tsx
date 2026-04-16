@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UserPlus, RefreshCw, Pencil } from "lucide-react";
+import { Loader2, UserPlus, RefreshCw, Pencil, Trash2 } from "lucide-react";
 import { apiFetch, apiPost } from "@/lib/apiClient";
 
 interface AdminAgent {
@@ -38,6 +38,44 @@ export default function AdminAgentsPage() {
   const [aircallUsers, setAircallUsers] = useState<AircallUser[]>([]);
   const [aircallError, setAircallError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Per-agent PD queue clear state — tracked by agent id so buttons show
+  // their own spinner without blocking the rest of the table.
+  const [clearingPdFor, setClearingPdFor] = useState<string | null>(null);
+  const [clearPdResult, setClearPdResult] = useState<Record<string, string>>({});
+
+  const handleClearPdQueue = async (agent: AdminAgent) => {
+    if (agent.aircall_user_id == null) return;
+    if (!window.confirm(`Clear ${agent.name}'s Aircall Power Dialer queue? Anything currently queued in Aircall for this agent will be removed.`)) {
+      return;
+    }
+    setClearingPdFor(agent.id);
+    try {
+      const res = await apiPost(
+        `${API_BASE}/admin/agents/${agent.id}/clear-power-dialer-queue`,
+        {},
+        { redirectOn401: false },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setClearPdResult(prev => ({ ...prev, [agent.id]: `Failed: ${body.message || body.error || res.status}` }));
+      } else {
+        setClearPdResult(prev => ({ ...prev, [agent.id]: `Cleared ${body.deleted} numbers` }));
+        // Auto-clear the inline message after 4s
+        setTimeout(() => {
+          setClearPdResult(prev => {
+            const next = { ...prev };
+            delete next[agent.id];
+            return next;
+          });
+        }, 4000);
+      }
+    } catch (err: any) {
+      setClearPdResult(prev => ({ ...prev, [agent.id]: `Error: ${err?.message || "unknown"}` }));
+    } finally {
+      setClearingPdFor(null);
+    }
+  };
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AdminAgent | null>(null);
@@ -256,9 +294,30 @@ export default function AdminAgentsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(a)}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1 justify-end">
+                          {a.dialer_mode === "power_dialer" && a.aircall_user_id != null && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Clear this agent's Aircall Power Dialer queue"
+                              onClick={() => handleClearPdQueue(a)}
+                              disabled={clearingPdFor === a.id}
+                            >
+                              {clearingPdFor === a.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />
+                              }
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(a)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                        {clearPdResult[a.id] && (
+                          <p className={`text-[10px] mt-1 ${clearPdResult[a.id].startsWith("Cleared") ? "text-green-600" : "text-destructive"}`}>
+                            {clearPdResult[a.id]}
+                          </p>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

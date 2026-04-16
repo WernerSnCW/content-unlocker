@@ -13,6 +13,7 @@ import {
   resolveTag,
   getTagMapping,
 } from "../aircall";
+import { clearQueue as clearPowerDialerQueue, getQueue as getPowerDialerQueue } from "../../lib/aircallPowerDialer";
 
 const router: IRouter = Router();
 
@@ -163,6 +164,65 @@ router.patch("/admin/agents/:id", async (req, res) => {
   } catch (err: any) {
     logger.error({ err: err.message }, "admin update agent failed");
     res.status(500).json({ error: "update_failed" });
+  }
+});
+
+// ==================== Power Dialer queue ops ====================
+
+// GET /api/admin/agents/:id/power-dialer-queue — inspect what's currently
+// sitting in the agent's Aircall PD queue. Useful for debugging drift
+// between our app's queue and Aircall's.
+router.get("/admin/agents/:id/power-dialer-queue", async (req, res) => {
+  try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, req.params.id));
+    if (!agent) { res.status(404).json({ error: "agent_not_found" }); return; }
+    if (agent.aircall_user_id == null) {
+      res.status(400).json({ error: "agent_missing_aircall_user_id" });
+      return;
+    }
+    const items = await getPowerDialerQueue(agent.aircall_user_id);
+    res.json({ agent_id: agent.id, aircall_user_id: agent.aircall_user_id, items });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "pd queue inspect failed");
+    res.status(500).json({ error: "fetch_failed", message: err.message });
+  }
+});
+
+// POST /api/admin/agents/:id/clear-power-dialer-queue — wipe the agent's
+// Aircall PD queue. Admin tool for resetting a stuck queue or starting fresh.
+// Only meaningful when the agent is in dialer_mode = "power_dialer" with an
+// aircall_user_id, but we don't gate on dialer_mode — admin may have just
+// toggled them back to manual and wants to clear residual Aircall state.
+router.post("/admin/agents/:id/clear-power-dialer-queue", async (req, res) => {
+  try {
+    const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, req.params.id));
+    if (!agent) { res.status(404).json({ error: "agent_not_found" }); return; }
+    if (agent.aircall_user_id == null) {
+      res.status(400).json({
+        error: "agent_missing_aircall_user_id",
+        message: `Agent "${agent.name}" has no aircall_user_id. Can't identify which Aircall user's queue to clear.`,
+      });
+      return;
+    }
+
+    const result = await clearPowerDialerQueue(agent.aircall_user_id);
+    logger.info({
+      agentId: agent.id,
+      aircallUserId: agent.aircall_user_id,
+      deleted: result.deleted,
+      errors: result.errors.length,
+      triggeredBy: req.auth!.user.email,
+    }, "Power Dialer queue cleared by admin");
+    res.json({
+      ok: true,
+      agent_id: agent.id,
+      aircall_user_id: agent.aircall_user_id,
+      deleted: result.deleted,
+      errors: result.errors,
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "pd queue clear failed");
+    res.status(500).json({ error: "clear_failed", message: err.message });
   }
 });
 
