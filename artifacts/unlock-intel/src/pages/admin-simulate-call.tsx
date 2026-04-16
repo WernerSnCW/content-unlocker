@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlayCircle, CheckCircle2, Search } from "lucide-react";
+import { Loader2, PlayCircle, CheckCircle2 } from "lucide-react";
 import { apiFetch, apiPost } from "@/lib/apiClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -81,11 +81,14 @@ export default function AdminSimulateCallPage() {
   const [agents, setAgents] = useState<AdminAgent[]>([]);
   const [tagMapping, setTagMapping] = useState<TagMappingRow[]>([]);
 
-  // Contact search
-  const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<ContactRow[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedContact, setSelectedContact] = useState<ContactRow | null>(null);
+  // Contacts (plain Select dropdown — small enough DB that fetching all works)
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
+  const selectedContact = useMemo(
+    () => contacts.find(c => c.id === selectedContactId) || null,
+    [contacts, selectedContactId],
+  );
 
   // Form fields
   const [agentId, setAgentId] = useState<string>("");
@@ -126,26 +129,21 @@ export default function AdminSimulateCallPage() {
     })();
   }, [currentUser?.agent?.id]);
 
-  // Debounced contact search.
+  // Load all contacts on mount for the dropdown. Page size is high (100 max
+  // per the API) so this works for small-to-medium DBs; if the pool ever
+  // grows past a few hundred, swap this for a combobox with server-side
+  // search.
   useEffect(() => {
-    if (!search.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const t = setTimeout(async () => {
-      setSearching(true);
+    (async () => {
+      setContactsLoading(true);
       try {
-        const res = await apiFetch(`${API_BASE}/contacts?search=${encodeURIComponent(search.trim())}&page_size=10`);
+        const res = await apiFetch(`${API_BASE}/contacts?page_size=100`);
         const data = await res.json();
-        setSearchResults(data.data || []);
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [search]);
+        setContacts(data.data || []);
+      } catch { /* ignore */ }
+      finally { setContactsLoading(false); }
+    })();
+  }, []);
 
   const selectedTagMapping = useMemo(
     () => tagMapping.find(m => m.aircall_tag === tag) || null,
@@ -211,52 +209,30 @@ export default function AdminSimulateCallPage() {
             {/* Contact picker */}
             <div className="space-y-1">
               <label className="text-sm font-medium">Contact</label>
-              {selectedContact ? (
-                <div className="flex items-center justify-between bg-muted/40 border rounded px-3 py-2 text-sm">
-                  <div>
-                    <div className="font-medium">
-                      {selectedContact.first_name} {selectedContact.last_name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {selectedContact.phone || "—"} · {selectedContact.email || "no email"} ·
-                      {" "}status: {selectedContact.dispatch_status || "—"} ·
-                      {" "}last: {selectedContact.last_call_outcome || "—"}
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => { setSelectedContact(null); setSearch(""); }}>
-                    Change
-                  </Button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    placeholder="Type contact first or last name…"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                  />
-                  {searchResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-64 overflow-y-auto">
-                      {searchResults.map(c => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent border-b last:border-0"
-                          onClick={() => { setSelectedContact(c); setSearch(""); setSearchResults([]); }}
-                        >
-                          <div className="font-medium">{c.first_name} {c.last_name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {c.phone || "—"} · {c.dispatch_status || "—"}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {searching && (
-                    <div className="text-xs text-muted-foreground mt-1">Searching…</div>
-                  )}
-                </div>
+              <Select value={selectedContactId} onValueChange={setSelectedContactId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={
+                    contactsLoading
+                      ? "Loading contacts…"
+                      : contacts.length === 0
+                        ? "No contacts in the database"
+                        : "Select a contact…"
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  {contacts.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.first_name} {c.last_name}
+                      {c.phone ? ` · ${c.phone}` : ""}
+                      {c.dispatch_status ? ` · ${c.dispatch_status}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedContact && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedContact.email || "no email"} · status: {selectedContact.dispatch_status || "—"} · last outcome: {selectedContact.last_call_outcome || "—"}
+                </p>
               )}
             </div>
 
