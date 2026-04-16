@@ -18,7 +18,7 @@ interface AdminAgent {
   active: boolean;
   user_id: string | null;
   user_email: string | null;
-  user_role: "agent" | "admin" | null;
+  user_role: "agent" | "closer" | "admin" | null;
   user_last_login_at: string | null;
   created_at: string;
   updated_at: string;
@@ -84,6 +84,7 @@ export default function AdminAgentsPage() {
   const [fAircall, setFAircall] = useState<string>("");
   const [fActive, setFActive] = useState(true);
   const [fDialerMode, setFDialerMode] = useState<"manual" | "power_dialer">("manual");
+  const [fRole, setFRole] = useState<"agent" | "closer" | "admin">("agent");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -128,6 +129,7 @@ export default function AdminAgentsPage() {
     setFAircall("");
     setFActive(true);
     setFDialerMode("manual");
+    setFRole("agent");
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -139,6 +141,7 @@ export default function AdminAgentsPage() {
     setFAircall(a.aircall_user_id ? String(a.aircall_user_id) : "");
     setFActive(a.active);
     setFDialerMode(a.dialer_mode || "manual");
+    setFRole(a.user_role || "agent");
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -156,6 +159,12 @@ export default function AdminAgentsPage() {
         dialer_mode: fDialerMode,
       };
       if (!editing) payload.email = fEmail.trim().toLowerCase();
+      // Role updates only applicable when editing an agent that's linked to
+      // a user (i.e. they've logged in at least once). The backend will
+      // return 409 if user is not linked; we hide the dropdown in that case.
+      if (editing && editing.user_id && fRole !== editing.user_role) {
+        payload.user_role = fRole;
+      }
 
       const res = editing
         ? await apiFetch(`${API_BASE}/admin/agents/${editing.id}`, {
@@ -271,6 +280,10 @@ export default function AdminAgentsPage() {
                       <TableCell>
                         {a.user_role === "admin" ? (
                           <Badge variant="default" className="text-[10px]">Admin</Badge>
+                        ) : a.user_role === "closer" ? (
+                          <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-500/30 text-[10px]">
+                            Closer
+                          </Badge>
                         ) : a.user_role === "agent" ? (
                           <Badge variant="outline" className="text-[10px]">Agent</Badge>
                         ) : (
@@ -403,6 +416,30 @@ export default function AdminAgentsPage() {
                 "Start session" in the Aircall Workspace after a queue is pushed.
               </p>
             </div>
+
+            {editing && editing.user_id && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Role</label>
+                <Select value={fRole} onValueChange={(v: any) => setFRole(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="agent">Agent — cold outreach only</SelectItem>
+                    <SelectItem value="closer">Closer — picks up handoff contacts (interested / meeting-booked)</SelectItem>
+                    <SelectItem value="admin">Admin — all of the above + system config</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Changing this elevates or demotes the linked user across the app.
+                </p>
+              </div>
+            )}
+            {editing && !editing.user_id && (
+              <p className="text-xs text-muted-foreground italic">
+                Role can be set after this agent logs in for the first time.
+              </p>
+            )}
 
             {editing && (
               <div className="flex items-center gap-2">

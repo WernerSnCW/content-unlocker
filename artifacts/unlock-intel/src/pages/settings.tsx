@@ -68,6 +68,18 @@ export default function Settings() {
     side_effect: SideEffect;
     // Only meaningful when side_effect === "cool_off". Null/undefined = use global.
     cool_off_days?: number | null;
+    // Closer-handoff routing
+    maps_to_closer?: boolean;
+    closer_agent_id?: string | null; // null + maps_to_closer=true = "any closer"
+    // Fallback callback date when the side_effect doesn't already schedule one
+    default_followup_days?: number | null;
+  }
+
+  interface CloserOption {
+    user_id: string;
+    agent_name: string;
+    user_email: string | null;
+    role: "closer" | "admin";
   }
 
   const OUTCOMES: Outcome[] = [
@@ -120,6 +132,11 @@ export default function Settings() {
   const [maxCallAttempts, setMaxCallAttempts] = useState<number>(3);
   const [coolOffDays, setCoolOffDays] = useState<number>(28);
 
+  // Closer dropdown options — populated from /admin/agents, filtered to
+  // users with role IN ('closer', 'admin'). Drives the "specific closer"
+  // dropdown in tag mapping rows.
+  const [closerOptions, setCloserOptions] = useState<CloserOption[]>([]);
+
   // Webhook URL
   const webhookUrl = `${window.location.origin}/api/aircall/webhook`;
 
@@ -127,7 +144,28 @@ export default function Settings() {
   useEffect(() => {
     fetchAircallConfig();
     fetchAgents();
+    fetchCloserOptions();
   }, []);
+
+  // Fetch users who have role=closer or admin — used to populate the
+  // "specific closer" dropdown on each tag mapping row. Admins are
+  // included because they inherit closer capability.
+  const fetchCloserOptions = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/agents`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const opts: CloserOption[] = (data.agents || [])
+        .filter((a: any) => a.user_id && (a.user_role === "closer" || a.user_role === "admin"))
+        .map((a: any) => ({
+          user_id: a.user_id,
+          agent_name: a.name,
+          user_email: a.user_email,
+          role: a.user_role,
+        }));
+      setCloserOptions(opts);
+    } catch { /* silent */ }
+  };
 
   // Track whether credentials are stored so we can show "set / not set" badges
   // without ever displaying the masked value in the input itself.
@@ -497,7 +535,10 @@ export default function Settings() {
                     <TableHead>Aircall Tag</TableHead>
                     <TableHead>Maps to Outcome</TableHead>
                     <TableHead>Side Effect</TableHead>
-                    <TableHead className="w-28">Cool-off (days)</TableHead>
+                    <TableHead className="w-24">Cool-off (days)</TableHead>
+                    <TableHead className="w-20">Handoff</TableHead>
+                    <TableHead className="w-40">Closer</TableHead>
+                    <TableHead className="w-24">Follow-up (days)</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -570,6 +611,64 @@ export default function Settings() {
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {/* Maps to closer? — tick to hand off contacts with this outcome to a closer */}
+                        <input
+                          type="checkbox"
+                          checked={!!mapping.maps_to_closer}
+                          onChange={e => {
+                            const updated = [...tagMappings];
+                            const next = { ...updated[i], maps_to_closer: e.target.checked };
+                            // If unticking, clear the specific closer assignment
+                            if (!e.target.checked) next.closer_agent_id = null;
+                            updated[i] = next;
+                            setTagMappings(updated);
+                          }}
+                          className="h-4 w-4"
+                          title="When ticked, contacts tagged with this land on a closer's call list instead of cold-agent queues"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {/* Closer dropdown — only enabled when maps_to_closer is ticked.
+                            Value: null = "Any closer"; a user_id = specific closer. */}
+                        <Select
+                          value={mapping.closer_agent_id ?? "__any__"}
+                          onValueChange={val => {
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], closer_agent_id: val === "__any__" ? null : val };
+                            setTagMappings(updated);
+                          }}
+                          disabled={!mapping.maps_to_closer}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__any__">Any closer</SelectItem>
+                            {closerOptions.map(c => (
+                              <SelectItem key={c.user_id} value={c.user_id}>
+                                {c.agent_name} {c.role === "admin" ? "(admin)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        {/* Default follow-up days — fallback callback_date when the side_effect
+                            doesn't already schedule one. Useful for "demo" / "interested" tags. */}
+                        <Input
+                          type="number"
+                          min={0}
+                          max={60}
+                          placeholder="—"
+                          value={mapping.default_followup_days ?? ""}
+                          onChange={e => {
+                            const v = e.target.value;
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], default_followup_days: v === "" ? null : Math.max(0, Math.min(60, parseInt(v) || 0)) };
+                            setTagMappings(updated);
+                          }}
+                          className="h-8"
+                          title="If no specific callback date is set, schedule this many days out. Ignored when side_effect is callback_Nd."
+                        />
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"

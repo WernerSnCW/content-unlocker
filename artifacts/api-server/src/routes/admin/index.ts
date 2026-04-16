@@ -114,6 +114,10 @@ router.patch("/admin/agents/:id", async (req, res) => {
     dialer_mode: "manual" | "power_dialer";
   }> = {};
 
+  // Optional role update — applies to the LINKED user, not the agent row.
+  // Captured separately so we can coordinate a second update in the same tx.
+  let nextUserRole: "agent" | "closer" | "admin" | undefined;
+
   if (typeof req.body?.name === "string") {
     const n = req.body.name.trim();
     if (!n) {
@@ -146,24 +150,61 @@ router.patch("/admin/agents/:id", async (req, res) => {
     }
     updates.dialer_mode = m;
   }
+  if (typeof req.body?.user_role === "string") {
+    const r = req.body.user_role.trim();
+    if (r !== "agent" && r !== "closer" && r !== "admin") {
+      res.status(400).json({ error: "user_role_invalid", message: "must be 'agent' | 'closer' | 'admin'" });
+      return;
+    }
+    nextUserRole = r;
+  }
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0 && nextUserRole === undefined) {
     res.status(400).json({ error: "nothing_to_update" });
     return;
   }
 
   try {
-    const [updated] = await db
-      .update(agentsTable)
-      .set(updates as any)
-      .where(eq(agentsTable.id, id))
-      .returning();
-    if (!updated) {
-      res.status(404).json({ error: "agent_not_found" });
-      return;
+    // Apply agent-row updates (if any)
+    let agentRow: any;
+    if (Object.keys(updates).length > 0) {
+      const [updated] = await db
+        .update(agentsTable)
+        .set(updates as any)
+        .where(eq(agentsTable.id, id))
+        .returning();
+      if (!updated) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      agentRow = updated;
+    } else {
+      // No agent-row changes — just fetch it to return a consistent response
+      const [existing] = await db.select().from(agentsTable).where(eq(agentsTable.id, id));
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      agentRow = existing;
     }
-    logger.info({ id, updates }, "admin updated agent");
-    res.json({ agent: updated });
+
+    // Apply linked-user role update (if requested). Only possible when the
+    // agent is linked to a user — unlinked agents have no user row to update.
+    if (nextUserRole !== undefined) {
+      if (!agentRow.user_id) {
+        res.status(409).json({
+          error: "agent_not_linked_to_user",
+          message: `Agent "${agentRow.name}" has no linked user yet — they must log in at least once before their role can be changed.`,
+        });
+        return;
+      }
+      await db.update(usersTable)
+        .set({ role: nextUserRole })
+        .where(eq(usersTable.id, agentRow.user_id));
+    }
+
+    logger.info({ id, updates, nextUserRole }, "admin updated agent");
+    res.json({ agent: agentRow });
   } catch (err: any) {
     logger.error({ err: err.message }, "admin update agent failed");
     res.status(500).json({ error: "update_failed" });
