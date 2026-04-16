@@ -180,16 +180,20 @@ export async function saveEngineRun(args: SaveEngineRunArgs): Promise<string> {
     await db.insert(engineInvestorStateTable).values(stateUpdate);
   }
 
-  // 4. Translate NBA timing → contact.callback_date (universal due-date mechanism).
-  // See ADR 001 for the full mapping. Only sets the date; does not overwrite
-  // a manually-set date that is further in the future.
-  const timing = output.nextBestAction?.timing;
-  const nextDate = resolveTimingToDate(timing);
-  if (nextDate) {
-    await db.update(contactsTable)
-      .set({ callback_date: nextDate })
-      .where(eq(contactsTable.id, contactId));
-  }
+  // NBA timing is advisory only — it's persisted inside engine_runs for the
+  // UI to surface as a recommendation, but it does NOT automatically mutate
+  // contacts.callback_date.
+  //
+  // Rationale: the tag path (applyTaggedOutcomeTx) is the authoritative
+  // writer for contact scheduling fields. Admin config (side_effect,
+  // default_followup_days) is predictable and testable; the engine's
+  // suggestion would otherwise silently override it — which created confusion
+  // during smoke testing (tag config said 0-day fallback, engine wrote
+  // +2 days anyway).
+  //
+  // When we want NBA timing to influence contact state, it'll be an explicit
+  // operator-accept action in the Outcome Drawer (future work), not an
+  // automatic write here.
 
   return runId;
 }
