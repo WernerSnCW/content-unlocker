@@ -511,6 +511,7 @@ export default function CallCommand() {
   const upNext = callList.slice(upNextStart, upNextEnd);
 
   // Queue composition derived from actual call list
+  const queueConversions = callList.filter(c => c.priority === "conversion").length;
   const queueCallbacks = callList.filter(c => c.priority === "callback").length;
   const queueFollowUps = callList.filter(c => c.priority === "follow-up").length;
   const queueRetries = callList.filter(c => c.priority === "retry").length;
@@ -741,7 +742,20 @@ export default function CallCommand() {
       {queuedCalls > 0 && (
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Queue</p>
-          <div className="grid grid-cols-4 gap-3">
+          <div className={`grid gap-3 ${
+            (currentUser?.user?.role === "closer" || currentUser?.user?.role === "admin" || queueConversions > 0)
+              ? "grid-cols-5" : "grid-cols-4"
+          }`}>
+            {(currentUser?.user?.role === "closer" || currentUser?.user?.role === "admin" || queueConversions > 0) && (
+              <Card className={queueConversions > 0 ? "border-purple-500/50" : ""}>
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center gap-3">
+                    <Zap className="w-5 h-5 text-purple-600 shrink-0" />
+                    <div><p className="text-2xl font-bold leading-none">{queueConversions}</p><p className="text-xs text-muted-foreground mt-0.5">Conversions</p></div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <Card className={queueCallbacks > 0 ? "border-orange-500/50" : ""}>
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-3">
@@ -921,8 +935,16 @@ export default function CallCommand() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="text-xl font-bold truncate">{currentContact.first_name} {currentContact.last_name}</h3>
-                        <Badge variant="outline" className="text-xs shrink-0">
-                          {currentContact.priority === "callback" ? "Callback" :
+                        <Badge
+                          variant="outline"
+                          className={`text-xs shrink-0 ${
+                            currentContact.priority === "conversion"
+                              ? "bg-purple-500/10 text-purple-700 border-purple-500/30"
+                              : ""
+                          }`}
+                        >
+                          {currentContact.priority === "conversion" ? "Conversion" :
+                           currentContact.priority === "callback" ? "Callback" :
                            currentContact.priority === "follow-up" ? "Follow-up" :
                            currentContact.priority === "retry" ? "Retry" :
                            currentContact.priority === "recall" ? "Recall" : "Fresh"}
@@ -1174,8 +1196,16 @@ export default function CallCommand() {
                         <TableCell className="font-medium text-sm">{c.first_name} {c.last_name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{c.company || "—"}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {c.priority === "callback" ? "Callback" :
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              c.priority === "conversion"
+                                ? "bg-purple-500/10 text-purple-700 border-purple-500/30"
+                                : ""
+                            }`}
+                          >
+                            {c.priority === "conversion" ? "Conversion" :
+                             c.priority === "callback" ? "Callback" :
                              c.priority === "follow-up" ? "Follow-up" :
                              c.priority === "retry" ? "Retry" :
                              c.priority === "recall" ? "Recall" : "Fresh"}
