@@ -324,29 +324,6 @@ export default function CallCommand() {
   const [topUpSubmitting, setTopUpSubmitting] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
 
-  // Fetch live preview whenever the Create dialog is open + fields change.
-  // Debounced so we don't hammer the endpoint while typing.
-  useEffect(() => {
-    if (!createOpen || !newAgent) {
-      setNewPreview(null);
-      return;
-    }
-    const t = setTimeout(async () => {
-      setPreviewLoading(true);
-      try {
-        const params = new URLSearchParams();
-        params.set("agent_id", newAgent);
-        if (newClosingOnly) params.set("closing_only", "true");
-        for (const s of newSourceLists) params.append("source_lists", s);
-        const res = await apiFetch(`${API_BASE}/call-lists/new-preview?${params.toString()}`);
-        if (res.ok) setNewPreview(await res.json());
-      } catch { /* ignore */ } finally {
-        setPreviewLoading(false);
-      }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [createOpen, newAgent, newClosingOnly, newSourceLists]);
-
   const handleTopUp = async () => {
     if (!activeCallListDef) return;
     const count = Math.max(1, Math.min(500, parseInt(topUpCount) || 0));
@@ -393,6 +370,29 @@ export default function CallCommand() {
     closing_only: boolean;
   }>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Fetch live preview whenever the Create dialog is open + fields change.
+  // Debounced so we don't hammer the endpoint while typing.
+  useEffect(() => {
+    if (!createOpen || !newAgent) {
+      setNewPreview(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("agent_id", newAgent);
+        if (newClosingOnly) params.set("closing_only", "true");
+        for (const s of newSourceLists) params.append("source_lists", s);
+        const res = await apiFetch(`${API_BASE}/call-lists/new-preview?${params.toString()}`);
+        if (res.ok) setNewPreview(await res.json());
+      } catch { /* ignore */ } finally {
+        setPreviewLoading(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [createOpen, newAgent, newClosingOnly, newSourceLists]);
   const [creating, setCreating] = useState(false);
   const [carryOver, setCarryOver] = useState(false);
   const [sources, setSources] = useState<string[]>([]);
