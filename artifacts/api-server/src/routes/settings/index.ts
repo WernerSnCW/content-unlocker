@@ -9,7 +9,13 @@ const router: IRouter = Router();
 // Everything in /settings requires at least a logged-in user.
 // Mutating endpoints and the full integrations list layer on requireAdmin
 // inline (see each endpoint below).
-router.use(requireAuth);
+//
+// Scoped to /settings so this middleware doesn't fire on unrelated requests
+// that pass through this router when it's mounted at root in routes/index.ts.
+// Without the prefix, requireAuth would 401 everything — including public
+// webhook endpoints like /aircall/webhook — which was the cause of Aircall
+// auto-disabling webhooks after 50 failures.
+router.use("/settings", requireAuth);
 
 // ==================== Integration Configs ====================
 

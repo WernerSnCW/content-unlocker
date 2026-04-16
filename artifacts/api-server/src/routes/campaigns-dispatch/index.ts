@@ -8,10 +8,14 @@ import { logger } from "../../lib/logger";
 
 const router: IRouter = Router();
 
-// Entire router requires an authenticated agent. Agent-scoped endpoints
-// derive scope from req.auth.agent; CRUD endpoints still operate on :id
-// but are protected so unauthed callers can't enumerate or mutate them.
-router.use(requireAuth);
+// All /call-lists endpoints require an authenticated agent. Agent-scoped
+// endpoints derive scope from req.auth.agent; CRUD endpoints still operate
+// on :id but are protected so unauthed callers can't enumerate or mutate.
+//
+// Scoped to the /call-lists prefix so this middleware doesn't fire on
+// unrelated requests passing through the sub-router at root mount. Without
+// the prefix, requireAuth would 401 the public webhook endpoint downstream.
+router.use("/call-lists", requireAuth);
 
 // ==================== Campaign CRUD ====================
 
