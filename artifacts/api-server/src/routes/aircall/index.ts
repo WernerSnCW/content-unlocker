@@ -33,7 +33,8 @@ async function getAircallAuth(): Promise<string | null> {
 }
 
 // Helper: get tag mapping from config or use defaults
-async function getTagMapping(): Promise<TagMapping[]> {
+// Exported so admin simulator can reuse the same resolution path.
+export async function getTagMapping(): Promise<TagMapping[]> {
   try {
     const [config] = await db.select().from(integrationConfigsTable)
       .where(eq(integrationConfigsTable.provider, "aircall"));
@@ -46,7 +47,8 @@ async function getTagMapping(): Promise<TagMapping[]> {
 }
 
 // Helper: get cool_off period (days) from config or use default.
-async function getCoolOffDays(): Promise<number> {
+// Exported for the admin simulator.
+export async function getCoolOffDays(): Promise<number> {
   try {
     const [config] = await db.select().from(integrationConfigsTable)
       .where(eq(integrationConfigsTable.provider, "aircall"));
@@ -115,7 +117,8 @@ async function findAgentByAircallUser(aircallUserId: number) {
 
 // Resolve a raw Aircall tag to its canonical outcome and side-effect using the
 // configured mapping. Pure function — does not touch the database.
-function resolveTag(tagName: string, tagMapping: TagMapping[]): { outcome: Outcome; sideEffect: SideEffect; mapping: TagMapping } | null {
+// Exported for the admin simulator.
+export function resolveTag(tagName: string, tagMapping: TagMapping[]): { outcome: Outcome; sideEffect: SideEffect; mapping: TagMapping } | null {
   const mapping = tagMapping.find(m => m.aircall_tag.toLowerCase() === tagName.toLowerCase());
   if (!mapping) return null;
   const outcome = mapping.outcome as Outcome;
@@ -131,7 +134,10 @@ function resolveTag(tagName: string, tagMapping: TagMapping[]): { outcome: Outco
 // transaction. This is the single mutation point for contact state and
 // memberships — call.ended never touches them anymore. The transaction
 // guarantees atomicity so other webhooks can't observe a half-applied state.
-async function applyTaggedOutcomeTx(
+// Exported for the admin simulator. The external_id match uses `callId` so
+// the simulator can pass any synthetic ID (e.g. "sim-<uuid>") and the same
+// conversation row gets updated.
+export async function applyTaggedOutcomeTx(
   tx: any,
   contactId: string,
   callId: string,
@@ -548,7 +554,8 @@ function inferCallType(durationSeconds: number | null | undefined): CallType {
 
 // Run the V2 engine against a stored transcript and persist the output.
 // Returns a short status string for the webhook log.
-async function runEngineForConversation(
+// Exported for the admin simulator.
+export async function runEngineForConversation(
   contactId: string,
   conversationId: string,
   transcript: string,

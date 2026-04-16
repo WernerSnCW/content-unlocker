@@ -127,6 +127,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       adminOnly: true,
       items: [
         { href: "/admin/agents", label: "Agents", icon: Users },
+        { href: "/admin/simulate-call", label: "Simulate Call", icon: Zap },
         { href: "/settings", label: "Settings", icon: Settings },
         { href: "/changelog", label: "Changelog", icon: History },
         { href: "/compliance-constants", label: "Compliance Constants", icon: ShieldCheck },

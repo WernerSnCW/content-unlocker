@@ -8,6 +8,7 @@ import { AdminOnlyRoute } from "@/components/AdminOnlyRoute";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import AdminAgentsPage from "@/pages/admin-agents";
+import AdminSimulateCallPage from "@/pages/admin-simulate-call";
 
 import Dashboard from "./pages/dashboard";
 import Recommend from "./pages/recommend";
@@ -84,6 +85,9 @@ function Router() {
               </Route>
               <Route path="/admin/agents">
                 <AdminOnlyRoute><AdminAgentsPage /></AdminOnlyRoute>
+              </Route>
+              <Route path="/admin/simulate-call">
+                <AdminOnlyRoute><AdminSimulateCallPage /></AdminOnlyRoute>
               </Route>
               <Route path="/contacts/upload" component={ContactIngestion} />
               <Route path="/call-list" component={CallList} />
