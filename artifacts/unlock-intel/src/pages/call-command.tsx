@@ -316,6 +316,39 @@ export default function CallCommand() {
 
   // Create call list dialog
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Top Up dialog — adds N more contacts to the CURRENT active call list.
+  // Separate from Create Call List (which makes a new list).
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpCount, setTopUpCount] = useState<string>("10");
+  const [topUpSubmitting, setTopUpSubmitting] = useState(false);
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+
+  const handleTopUp = async () => {
+    if (!activeCallListDef) return;
+    const count = Math.max(1, Math.min(500, parseInt(topUpCount) || 0));
+    if (count <= 0) { setTopUpError("Enter a number of contacts to add (1 or more)"); return; }
+    setTopUpSubmitting(true);
+    setTopUpError(null);
+    try {
+      const res = await apiPost(
+        `${API_BASE}/call-lists/${activeCallListDef.id}/fill-queue`,
+        { count },
+        { redirectOn401: false },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setTopUpError(body.message || body.error || `Request failed (${res.status})`);
+        return;
+      }
+      setTopUpOpen(false);
+      await loadAll();
+    } catch (err: any) {
+      setTopUpError(err?.message || "Top up failed");
+    } finally {
+      setTopUpSubmitting(false);
+    }
+  };
   const defaultListName = () => {
     const d = new Date();
     return `${agentName} - ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
@@ -912,7 +945,23 @@ export default function CallCommand() {
                   <div><p className="text-lg font-bold text-green-600">{callsCompleted}</p><p className="text-[10px] text-muted-foreground">Completed</p></div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={() => { setNewName(defaultListName()); setNewAgent(activeAgentId); setCreateOpen(true); }}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 shrink-0"
+                onClick={() => {
+                  // Default the count to something sensible: remaining quota,
+                  // capped at 25 so it's a reasonable batch not a full refill.
+                  const remaining = activeCallListDef
+                    ? Math.max(1, Math.min(25, (activeCallListDef.daily_quota || 50) - queuedCalls))
+                    : 10;
+                  setTopUpCount(String(remaining));
+                  setTopUpError(null);
+                  setTopUpOpen(true);
+                }}
+                disabled={!activeCallListDef}
+                title={activeCallListDef ? "Add more contacts to this list" : "No active list"}
+              >
                 <ListPlus className="w-3.5 h-3.5" /> Top Up
               </Button>
             </div>
@@ -1347,6 +1396,56 @@ export default function CallCommand() {
             <Button onClick={handleCreateCallList} disabled={creating || !newName.trim()}>
               {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Create Call List
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TOP UP DIALOG — adds N more contacts to the currently-active list.
+          Uses the existing list's fill-queue endpoint; does NOT create a
+          new list. */}
+      <Dialog open={topUpOpen} onOpenChange={setTopUpOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Top up call list</DialogTitle>
+            <DialogDescription>
+              Add more contacts to <strong>{activeCallListDef?.name || "your list"}</strong>.
+              Pulled in priority order: callbacks, conversions (if you're a closer),
+              follow-ups, retries, then fresh from the pool.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">How many to add?</label>
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                value={topUpCount}
+                onChange={e => setTopUpCount(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Current list: {queuedCalls} / {activeCallListDef?.daily_quota || "—"}
+                {activeCallListDef?.daily_quota && queuedCalls >= activeCallListDef.daily_quota && (
+                  <span className="text-amber-600"> — already at or above daily quota.</span>
+                )}
+              </p>
+            </div>
+
+            {topUpError && (
+              <p className="text-sm text-destructive">{topUpError}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTopUpOpen(false)} disabled={topUpSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleTopUp} disabled={topUpSubmitting || !activeCallListDef}>
+              {topUpSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Add {parseInt(topUpCount) || 0} to list
             </Button>
           </DialogFooter>
         </DialogContent>
