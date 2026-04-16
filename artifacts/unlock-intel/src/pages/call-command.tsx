@@ -1549,43 +1549,66 @@ export default function CallCommand() {
                         <Loader2 className="w-3 h-3 animate-spin" /> Calculating eligibility…
                       </div>
                     )}
-                    {newPreview ? (
-                      <>
-                        <div className="grid grid-cols-5 gap-2 text-center">
-                          {(newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
-                            <div>
-                              <p className="text-lg font-bold text-purple-600">{newPreview.conversions_due}</p>
-                              <p className="text-[10px] text-muted-foreground">Conversions</p>
-                            </div>
-                          )}
-                          {!newPreview.closing_only && (
-                            <>
-                              <div>
-                                <p className="text-lg font-bold text-orange-600">{newPreview.callbacks_due}</p>
-                                <p className="text-[10px] text-muted-foreground">Callbacks</p>
+                    {newPreview ? (() => {
+                      // Mirror the server's fillQueue priority order so the
+                      // forecast matches what the agent will actually see in
+                      // their Call Command once the list is created.
+                      // See artifacts/api-server/src/lib/dispatchService.ts
+                      //   Order: Conversions → Callbacks → Interested → Retries → Fresh
+                      const quota = parseInt(newQuota) || 100;
+                      const isCloser = newPreview.closer_role === "closer" || newPreview.closer_role === "admin";
+                      const tiers: Array<{ key: string; label: string; eligible: number; color: string }> = [];
+                      if (isCloser) {
+                        tiers.push({ key: "conversions", label: "Conversions", eligible: newPreview.conversions_due, color: "text-purple-600" });
+                      }
+                      if (!newPreview.closing_only) {
+                        tiers.push({ key: "callbacks",  label: "Callbacks",  eligible: newPreview.callbacks_due,         color: "text-orange-600" });
+                        tiers.push({ key: "interested", label: "Interested", eligible: newPreview.interested_followups, color: "text-blue-600" });
+                        tiers.push({ key: "retries",    label: "Retries",    eligible: newPreview.retry_eligible,       color: "text-slate-600" });
+                        tiers.push({ key: "fresh",      label: "Fresh",      eligible: newPreview.pool_available,       color: "text-green-600" });
+                      }
+                      let remaining = quota;
+                      const rows = tiers.map(t => {
+                        const dispatched = Math.min(t.eligible, Math.max(0, remaining));
+                        remaining -= dispatched;
+                        return { ...t, dispatched };
+                      });
+                      const totalDispatched = quota - Math.max(0, remaining);
+                      const shortfall = Math.max(0, quota - totalDispatched);
+                      const cols = rows.length || 1;
+                      return (
+                        <>
+                          <div
+                            className="grid gap-2 text-center"
+                            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                          >
+                            {rows.map(r => (
+                              <div key={r.key}>
+                                <p className="text-lg font-bold leading-tight">
+                                  <span className={r.dispatched > 0 ? r.color : "text-muted-foreground/40"}>
+                                    {r.dispatched}
+                                  </span>
+                                  <span className="text-muted-foreground/60 font-normal text-xs">
+                                    {" / "}{r.eligible}
+                                  </span>
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{r.label}</p>
                               </div>
-                              <div>
-                                <p className="text-lg font-bold text-blue-600">{newPreview.interested_followups}</p>
-                                <p className="text-[10px] text-muted-foreground">Interested</p>
-                              </div>
-                              <div>
-                                <p className="text-lg font-bold text-slate-600">{newPreview.retry_eligible}</p>
-                                <p className="text-[10px] text-muted-foreground">Retries</p>
-                              </div>
-                              <div>
-                                <p className="text-lg font-bold text-green-600">{newPreview.pool_available}</p>
-                                <p className="text-[10px] text-muted-foreground">Fresh pool</p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        {!newPreview.closing_only && (
-                          <p className="text-[11px] text-muted-foreground text-center mt-2">
-                            Dispatched in priority order up to quota ({parseInt(newQuota) || 100})
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-center mt-2.5">
+                            <span className={shortfall > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>
+                              {totalDispatched} of {quota} quota
+                            </span>
+                            <span className="text-muted-foreground">
+                              {shortfall > 0
+                                ? ` — ${shortfall} short of quota`
+                                : " will be dispatched in priority order"}
+                            </span>
                           </p>
-                        )}
-                      </>
-                    ) : (
+                        </>
+                      );
+                    })() : (
                       !previewLoading && (
                         <p className="text-xs text-muted-foreground">Preview unavailable for this agent.</p>
                       )
