@@ -324,6 +324,29 @@ export default function CallCommand() {
   const [topUpSubmitting, setTopUpSubmitting] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
 
+  // Fetch live preview whenever the Create dialog is open + fields change.
+  // Debounced so we don't hammer the endpoint while typing.
+  useEffect(() => {
+    if (!createOpen || !newAgent) {
+      setNewPreview(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("agent_id", newAgent);
+        if (newClosingOnly) params.set("closing_only", "true");
+        for (const s of newSourceLists) params.append("source_lists", s);
+        const res = await apiFetch(`${API_BASE}/call-lists/new-preview?${params.toString()}`);
+        if (res.ok) setNewPreview(await res.json());
+      } catch { /* ignore */ } finally {
+        setPreviewLoading(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [createOpen, newAgent, newClosingOnly, newSourceLists]);
+
   const handleTopUp = async () => {
     if (!activeCallListDef) return;
     const count = Math.max(1, Math.min(500, parseInt(topUpCount) || 0));
@@ -357,6 +380,19 @@ export default function CallCommand() {
   const [newQuota, setNewQuota] = useState("100");
   const [newAgent, setNewAgent] = useState("");
   const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
+  const [newClosingOnly, setNewClosingOnly] = useState(false);
+
+  // Live preview of what the new list will contain (fetched when fields change)
+  const [newPreview, setNewPreview] = useState<null | {
+    conversions_due: number;
+    callbacks_due: number;
+    interested_followups: number;
+    retry_eligible: number;
+    pool_available: number;
+    closer_role: "agent" | "closer" | "admin";
+    closing_only: boolean;
+  }>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [carryOver, setCarryOver] = useState(false);
   const [sources, setSources] = useState<string[]>([]);
@@ -485,6 +521,7 @@ export default function CallCommand() {
         name: newName.trim(),
         daily_quota: parseInt(newQuota) || 100,
         assigned_agent_id: newAgent || null,
+        closing_only: newClosingOnly,
         filter_criteria: { source_lists: newSourceLists.length > 0 ? newSourceLists : undefined, exclude_outcomes: ["no-interest"] },
       });
       const data = await res.json();
@@ -511,7 +548,7 @@ export default function CallCommand() {
         }
       }
 
-      setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]);
+      setCreateOpen(false); setNewName(""); setNewQuota("100"); setNewAgent(""); setNewSourceLists([]); setNewClosingOnly(false);
       setCarryOver(false);
       setCurrentCallIndex(0);
       setViewingIndex(null);
@@ -1360,6 +1397,79 @@ export default function CallCommand() {
               </div>
               <p className="text-xs text-muted-foreground">Leave empty to draw from all available contacts.</p>
             </div>
+
+            {/* Closer-only toggle — only meaningful when the selected agent
+                has closer/admin role. For agents, no-op (hidden). */}
+            {newPreview && (newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
+              <div className="flex items-start gap-2 p-3 bg-purple-500/5 border border-purple-500/30 rounded-md">
+                <input
+                  id="closingOnly"
+                  type="checkbox"
+                  checked={newClosingOnly}
+                  onChange={e => setNewClosingOnly(e.target.checked)}
+                  className="h-4 w-4 mt-0.5"
+                />
+                <div className="flex-1">
+                  <label htmlFor="closingOnly" className="text-sm font-medium cursor-pointer">
+                    Closing calls only
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Skip cold outreach. This agent's list will only contain contacts
+                    tagged for closer handoff (tier 0 conversions).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Live preview — what this list will actually contain */}
+            {newAgent && (
+              <Card className="border-border">
+                <CardContent className="py-3 px-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                    You'll get
+                    {previewLoading && <Loader2 className="w-3 h-3 inline ml-1.5 animate-spin" />}
+                  </p>
+                  {newPreview ? (
+                    <div className="grid grid-cols-5 gap-2 text-center">
+                      {(newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
+                        <div>
+                          <p className="text-lg font-bold text-purple-600">{newPreview.conversions_due}</p>
+                          <p className="text-[10px] text-muted-foreground">Conversions</p>
+                        </div>
+                      )}
+                      {!newPreview.closing_only && (
+                        <>
+                          <div>
+                            <p className="text-lg font-bold text-orange-600">{newPreview.callbacks_due}</p>
+                            <p className="text-[10px] text-muted-foreground">Callbacks</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-blue-600">{newPreview.interested_followups}</p>
+                            <p className="text-[10px] text-muted-foreground">Interested</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-slate-600">{newPreview.retry_eligible}</p>
+                            <p className="text-[10px] text-muted-foreground">Retries</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-green-600">{newPreview.pool_available}</p>
+                            <p className="text-[10px] text-muted-foreground">Fresh pool</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Select an agent to see what the list will contain.</p>
+                  )}
+                  {newPreview && !newPreview.closing_only && (
+                    <p className="text-[11px] text-muted-foreground text-center mt-2">
+                      Dispatched in priority order up to quota ({newQuota || 100})
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Pool availability indicator */}
             <Card className={`${
               poolAvailable >= (parseInt(newQuota) || 100)

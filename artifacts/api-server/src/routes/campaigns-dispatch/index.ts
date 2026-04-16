@@ -49,7 +49,7 @@ router.get("/call-lists", async (req, res): Promise<void> => {
 
 // POST /call_lists — create campaign
 router.post("/call-lists", async (req, res): Promise<void> => {
-  const { name, filter_criteria, daily_quota, assigned_agent_id } = req.body;
+  const { name, filter_criteria, daily_quota, assigned_agent_id, closing_only } = req.body;
 
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "name is required" });
@@ -62,6 +62,7 @@ router.post("/call-lists", async (req, res): Promise<void> => {
       filter_criteria: filter_criteria || {},
       daily_quota: daily_quota || 100,
       assigned_agent_id: assigned_agent_id || null,
+      closing_only: closing_only === true,
     }).returning();
 
     res.json({ campaign: created });
@@ -73,7 +74,7 @@ router.post("/call-lists", async (req, res): Promise<void> => {
 // PATCH /call_lists/:id — update campaign
 router.patch("/call-lists/:id", async (req, res): Promise<void> => {
   const { id } = req.params;
-  const { name, filter_criteria, daily_quota, assigned_agent_id, active } = req.body;
+  const { name, filter_criteria, daily_quota, assigned_agent_id, active, closing_only } = req.body;
 
   try {
     const updates: any = {};
@@ -82,6 +83,7 @@ router.patch("/call-lists/:id", async (req, res): Promise<void> => {
     if (daily_quota !== undefined) updates.daily_quota = daily_quota;
     if (assigned_agent_id !== undefined) updates.assigned_agent_id = assigned_agent_id;
     if (active !== undefined) updates.active = active;
+    if (closing_only !== undefined) updates.closing_only = closing_only === true;
 
     const [updated] = await db.update(callListConfigsTable)
       .set(updates).where(eq(callListConfigsTable.id, id)).returning();
@@ -115,6 +117,50 @@ router.get("/call-lists/:id/queue-status", async (req, res): Promise<void> => {
   } catch (err: any) {
     res.status(err.message === "Campaign not found" ? 404 : 500)
       .json({ error: err.message });
+  }
+});
+
+// GET /call-lists/new-preview — preview counts for a hypothetical new list.
+// Mirrors getQueueStatus's eligibility filters but for a list that doesn't
+// exist yet. Used by the Create Call List dialog to show the admin what
+// tiers will fill.
+//
+// Query params:
+//   agent_id       — required; determines role (closer/admin/agent) and scope
+//   source_lists[] — optional; filter_criteria.source_lists
+//   closing_only   — optional; if "true" + agent is closer, only show conversions
+router.get("/call-lists/new-preview", async (req, res): Promise<void> => {
+  try {
+    const agentId = typeof req.query.agent_id === "string" ? req.query.agent_id : null;
+    if (!agentId) { res.status(400).json({ error: "agent_id required" }); return; }
+
+    const closingOnly = req.query.closing_only === "true";
+    const sourceListsRaw = req.query.source_lists;
+    const sourceLists: string[] = Array.isArray(sourceListsRaw)
+      ? sourceListsRaw.map(String)
+      : typeof sourceListsRaw === "string" && sourceListsRaw.length > 0
+        ? sourceListsRaw.split(",").map(s => s.trim()).filter(Boolean)
+        : [];
+
+    // Build a synthetic campaign object so we can reuse getQueueStatus-style
+    // logic. We write a temp config into a fake in-memory campaign object
+    // shape and call a minimal preview path.
+    const fakeCampaign = {
+      id: "__preview__",
+      name: "Preview",
+      daily_quota: 1000, // high; we want absolute eligible counts, not capped
+      assigned_agent_id: agentId,
+      closing_only: closingOnly,
+      filter_criteria: { source_lists: sourceLists },
+    };
+
+    // Inline the preview logic rather than forcing getQueueStatus to accept
+    // a synthetic campaign — keeps that function's contract clean.
+    const { previewEligibility } = await import("../../lib/dispatchService");
+    const preview = await previewEligibility(fakeCampaign);
+    res.json(preview);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Preview failed" });
   }
 });
 

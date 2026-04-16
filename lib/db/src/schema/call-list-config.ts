@@ -14,6 +14,12 @@ export const callListConfigsTable = pgTable("call_list_configs", {
   assigned_agent_id: text("assigned_agent_id"),
   active: boolean("active").notNull().default(true),
 
+  // When true, fillQueue runs ONLY the conversions tier (tier 0) on this list
+  // — no callbacks, interested, retries, or fresh. Only meaningful when the
+  // assigned agent has role='closer' or 'admin' (tier 0 is gated on role).
+  // Used by closers who want to focus exclusively on conversion calls.
+  closing_only: boolean("closing_only").notNull().default(false),
+
   // Stats
   total_dispatched: integer("total_dispatched").notNull().default(0),
   total_called: integer("total_called").notNull().default(0),

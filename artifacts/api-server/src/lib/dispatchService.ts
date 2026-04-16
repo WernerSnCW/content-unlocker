@@ -113,6 +113,100 @@ function buildEligibilityConditions(
 }
 
 /**
+ * Preview eligibility counts for a hypothetical call list — used by the
+ * Create Call List dialog to show admins what they'll get BEFORE the list
+ * exists. Does not require a persisted campaign row; accepts a partial
+ * config object.
+ */
+export async function previewEligibility(campaign: {
+  assigned_agent_id: string | null;
+  closing_only?: boolean;
+  filter_criteria?: Record<string, any>;
+}): Promise<{
+  conversions_due: number;
+  callbacks_due: number;
+  interested_followups: number;
+  retry_eligible: number;
+  pool_available: number;
+  closer_role: "agent" | "closer" | "admin";
+  closing_only: boolean;
+}> {
+  const now = new Date();
+  const role = await resolveAgentRole(campaign.assigned_agent_id);
+  const isCloserCapable = role === "closer" || role === "admin";
+  const closersExist = await hasAnyCloser();
+  const excludeCloserAssigned = !isCloserCapable && closersExist;
+  const closingOnly = !!campaign.closing_only && isCloserCapable;
+
+  let agentUserId: string | null = null;
+  if (isCloserCapable && campaign.assigned_agent_id) {
+    const [r] = await db
+      .select({ user_id: agentsTable.user_id })
+      .from(agentsTable)
+      .where(eq(agentsTable.id, campaign.assigned_agent_id))
+      .limit(1);
+    agentUserId = r?.user_id ?? null;
+  }
+
+  const unassignedSubq = sql`${contactsTable.id} NOT IN (
+    SELECT ${callListMembershipsTable.contact_id} FROM ${callListMembershipsTable}
+    WHERE ${callListMembershipsTable.removed_at} IS NULL
+  )`;
+  const baseEligibility = buildEligibilityConditions(campaign, now, { excludeCloserAssigned });
+  const maxAttempts = await getMaxCallAttempts();
+  const dueFilter = or(
+    isNull(contactsTable.callback_date),
+    lte(contactsTable.callback_date, now),
+  );
+
+  // Conversions tier (closer/admin only)
+  let conversionsDue = 0;
+  if (isCloserCapable) {
+    const closerBase = buildEligibilityConditions(campaign, now, { excludeCloserAssigned: false });
+    const closerFilter = agentUserId
+      ? or(eq(contactsTable.assigned_closer_id, "any"), eq(contactsTable.assigned_closer_id, agentUserId))!
+      : eq(contactsTable.assigned_closer_id, "any");
+    const [cRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+      .where(and(unassignedSubq, isNotNull(contactsTable.assigned_closer_id), closerFilter, dueFilter, ...closerBase));
+    conversionsDue = Number(cRow.count);
+  }
+
+  // If closing_only, everything else is zero (tier skipped by fillQueue).
+  if (closingOnly) {
+    return {
+      conversions_due: conversionsDue,
+      callbacks_due: 0, interested_followups: 0, retry_eligible: 0, pool_available: 0,
+      closer_role: role, closing_only: true,
+    };
+  }
+
+  const [cbRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+    .where(and(unassignedSubq, eq(contactsTable.last_call_outcome, "callback-requested"),
+               lte(contactsTable.callback_date, now), ...baseEligibility));
+  const [intRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+    .where(and(unassignedSubq, eq(contactsTable.last_call_outcome, "interested"),
+               dueFilter, ...baseEligibility));
+  const [retryRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+    .where(and(unassignedSubq,
+               or(eq(contactsTable.last_call_outcome, "no-answer"), eq(contactsTable.last_call_outcome, "hung-up")),
+               sql`${contactsTable.call_attempts} < ${maxAttempts}`,
+               dueFilter, ...baseEligibility));
+  const [freshRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+    .where(and(unassignedSubq, eq(contactsTable.dispatch_status, "pool"),
+               isNull(contactsTable.last_call_outcome), ...baseEligibility));
+
+  return {
+    conversions_due: conversionsDue,
+    callbacks_due: Number(cbRow.count),
+    interested_followups: Number(intRow.count),
+    retry_eligible: Number(retryRow.count),
+    pool_available: Number(freshRow.count),
+    closer_role: role,
+    closing_only: false,
+  };
+}
+
+/**
  * Get the current queue status for a campaign — how many contacts
  * are already dispatched for today vs how many more are eligible to reach quota.
  */
@@ -156,6 +250,7 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
 
   const baseEligibility = buildEligibilityConditions(campaign, now, { excludeCloserAssigned });
   const maxAttempts = await getMaxCallAttempts();
+  const closingOnly = !!campaign.closing_only && isCloserCapable;
 
   // Universal "not due yet" filter used by interested/retry buckets:
   // eligible if callback_date IS NULL or callback_date <= now.
@@ -235,13 +330,16 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
       sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ));
 
-  const callbacks = Number(cbRow.count);
-  const interested = Number(intRow.count);
-  const retries = Number(retryRow.count);
+  // In closing_only mode, the non-conversion tiers are irrelevant — zero them
+  // out so the status preview reflects what fillQueue will actually dispatch.
+  const callbacks = closingOnly ? 0 : Number(cbRow.count);
+  const interested = closingOnly ? 0 : Number(intRow.count);
+  const retries = closingOnly ? 0 : Number(retryRow.count);
   const dispatchedToday = Number(dispatchedRow.count);
 
   const committed = conversionsDue + callbacks + interested + retries + dispatchedToday;
-  const freshNeeded = Math.max(0, campaign.daily_quota - committed);
+  // Fresh quota only matters when non-conversion tiers run.
+  const freshNeeded = closingOnly ? 0 : Math.max(0, campaign.daily_quota - committed);
 
   return {
     campaign_id: campaign.id,
@@ -367,8 +465,13 @@ export async function fillQueue(
     }
   }
 
+  // If the list is configured closing_only AND the agent is a closer, skip
+  // tiers 1-4 entirely. The closer-only setting is ignored for non-closer
+  // agents (shouldn't be configurable on their lists, but defensive).
+  const closingOnly = !!campaign.closing_only && isCloserCapable;
+
   // 1. Callbacks — only if slots remain after conversions tier
-  if (result.dispatched < toFill) {
+  if (!closingOnly && result.dispatched < toFill) {
     const callbacks = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
@@ -390,7 +493,7 @@ export async function fillQueue(
   }
 
   // 2. Interested (respect scheduled callback_date)
-  if (result.dispatched < toFill) {
+  if (!closingOnly && result.dispatched < toFill) {
     const interested = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
@@ -412,7 +515,7 @@ export async function fillQueue(
   }
 
   // 3. Retries (no-answer / hung-up under max attempts, respecting due date)
-  if (result.dispatched < toFill) {
+  if (!closingOnly && result.dispatched < toFill) {
     const retries = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
@@ -438,7 +541,7 @@ export async function fillQueue(
   }
 
   // 4. Fresh from pool (no outcome yet)
-  if (result.dispatched < toFill) {
+  if (!closingOnly && result.dispatched < toFill) {
     const fresh = await db.select().from(contactsTable)
       .where(and(
         unassignedSubq,
