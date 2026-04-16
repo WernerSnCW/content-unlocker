@@ -17,8 +17,11 @@ import { clearQueue as clearPowerDialerQueue, getQueue as getPowerDialerQueue } 
 
 const router: IRouter = Router();
 
-// All admin routes require an authenticated user with role=admin.
-router.use(requireAdmin);
+// All /admin/* routes require an authenticated user with role=admin.
+// Scoped to the /admin path so this middleware does NOT run on unrelated
+// API calls (e.g. /contacts/*, /call-lists/*) that happen to pass through
+// this router — those are handled elsewhere.
+router.use("/admin", requireAdmin);
 
 // ==================== Agents ====================
 
