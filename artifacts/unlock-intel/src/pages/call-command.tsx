@@ -1503,10 +1503,29 @@ export default function CallCommand() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateCallList} disabled={creating || !newName.trim()}>
-              {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Call List
-            </Button>
+            {(() => {
+              // Compute total eligible across all applicable tiers for the
+              // selected agent + filter config. When zero, creating the list
+              // would just produce an empty row — disable with explanation.
+              const p = newPreview;
+              const totalEligible = p
+                ? (p.closing_only
+                    ? p.conversions_due
+                    : p.conversions_due + p.callbacks_due + p.interested_followups + p.retry_eligible + p.pool_available)
+                : null;
+              const agentPicked = !!newAgent && newAgent !== "__none__";
+              const zeroEligible = agentPicked && totalEligible === 0 && !previewLoading;
+              return (
+                <Button
+                  onClick={handleCreateCallList}
+                  disabled={creating || !newName.trim() || zeroEligible}
+                  title={zeroEligible ? "No eligible contacts to dispatch with these filters" : undefined}
+                >
+                  {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {zeroEligible ? "No contacts to dispatch" : "Create Call List"}
+                </Button>
+              );
+            })()}
           </DialogFooter>
         </DialogContent>
       </Dialog>
