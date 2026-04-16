@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
 import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
@@ -13,8 +16,10 @@ import {
   ListPlus, TrendingUp, Headphones, ExternalLink, Settings,
   Building2, Mail, MailWarning,
   Loader2, RefreshCw,
-  Zap, Send
+  Zap, Send,
+  ChevronsUpDown, Check, X
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 import OutcomeDrawer from "@/components/OutcomeDrawer";
 import { useCurrentUser, isAdmin } from "@/hooks/useCurrentUser";
@@ -358,6 +363,7 @@ export default function CallCommand() {
   const [newAgent, setNewAgent] = useState("");
   const [newSourceLists, setNewSourceLists] = useState<string[]>([]);
   const [newClosingOnly, setNewClosingOnly] = useState(false);
+  const [sourcesPopoverOpen, setSourcesPopoverOpen] = useState(false);
 
   // Live preview of what the new list will contain (fetched when fields change)
   const [newPreview, setNewPreview] = useState<null | {
@@ -1345,150 +1351,269 @@ export default function CallCommand() {
 
       {/* Create Call List Dialog */}
       <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCarryOver(false); }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Call List</DialogTitle>
-            <DialogDescription>Define a call list to dispatch contacts from your pool to the call queue.</DialogDescription>
+            <DialogTitle>Create call list</DialogTitle>
+            <DialogDescription>
+              Build a dispatch queue for an agent, drawn from the contact pool.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            {carryOver && staleCount > 0 && (
-              <Card className="border-orange-500/50">
-                <CardContent className="py-2.5 px-3 text-sm">
-                  <span className="font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""}</span>
-                  <span className="text-muted-foreground"> from yesterday will be included. Remaining quota filled with fresh contacts.</span>
-                </CardContent>
-              </Card>
-            )}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Call List Name <span className="text-destructive">*</span></label>
-              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. London HNW Wave 1" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Daily Quota</label>
-                <Input type="number" value={newQuota} onChange={e => setNewQuota(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Assigned Agent</label>
-                <Select value={newAgent} onValueChange={setNewAgent}>
-                  <SelectTrigger><SelectValue placeholder="Select agent..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Unassigned</SelectItem>
-                    {agents.filter(a => a.active).map(a => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Source Lists (filter contacts from these lists)</label>
-              <div className="flex flex-wrap gap-2">
-                {sources.map(s => (
-                  <Badge key={s} variant={newSourceLists.includes(s) ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => setNewSourceLists(prev =>
-                      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
-                    )}>
-                    {s}
-                  </Badge>
-                ))}
-                {sources.length === 0 && <p className="text-sm text-muted-foreground">No contact lists uploaded yet.</p>}
-              </div>
-              <p className="text-xs text-muted-foreground">Leave empty to draw from all available contacts.</p>
-            </div>
 
-            {/* Closer-only toggle — only meaningful when the selected agent
-                has closer/admin role. For agents, no-op (hidden). */}
-            {newPreview && (newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
-              <div className="flex items-start gap-2 p-3 bg-purple-500/5 border border-purple-500/30 rounded-md">
-                <input
-                  id="closingOnly"
-                  type="checkbox"
-                  checked={newClosingOnly}
-                  onChange={e => setNewClosingOnly(e.target.checked)}
-                  className="h-4 w-4 mt-0.5"
-                />
-                <div className="flex-1">
-                  <label htmlFor="closingOnly" className="text-sm font-medium cursor-pointer">
-                    Closing calls only
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Skip cold outreach. This agent's list will only contain contacts
-                    tagged for closer handoff (tier 0 conversions).
-                  </p>
+          <div className="space-y-5 py-1">
+            {/* Carry-over notice — surfaced when the dialog was opened via the
+                "Carry over yesterday" action on the page header. Informational
+                only; the stale contacts are moved into the new list by the
+                /carry-over call inside handleCreateCallList. */}
+            {carryOver && staleCount > 0 && (
+              <div className="rounded-md border border-orange-500/50 bg-orange-500/5 px-3 py-2.5 text-sm">
+                <span className="font-medium">{staleCount} contact{staleCount !== 1 ? "s" : ""}</span>
+                <span className="text-muted-foreground"> from yesterday will be carried over. Remaining quota is filled with fresh contacts.</span>
+              </div>
+            )}
+
+            {/* ===== BASICS ===== */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Basics</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">List name <span className="text-destructive">*</span></label>
+                <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Marie — 16 Apr 2026" />
+                <p className="text-[11px] text-muted-foreground">How this list shows up on the dashboard. Use any label that helps you recognise it.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Assigned agent</label>
+                  <Select value={newAgent} onValueChange={setNewAgent}>
+                    <SelectTrigger><SelectValue placeholder="Select agent…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Unassigned</SelectItem>
+                      {agents.filter(a => a.active).map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">Whose Call Command this list feeds. Required to preview eligibility.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Daily quota</label>
+                  <Input type="number" min={1} value={newQuota} onChange={e => setNewQuota(e.target.value)} />
+                  <p className="text-[11px] text-muted-foreground">Target dispatches per day. Tops up as calls complete.</p>
                 </div>
               </div>
-            )}
+            </section>
 
-            {/* Live preview — what this list will actually contain */}
-            {newAgent && (
-              <Card className="border-border">
-                <CardContent className="py-3 px-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                    You'll get
-                    {previewLoading && <Loader2 className="w-3 h-3 inline ml-1.5 animate-spin" />}
-                  </p>
-                  {newPreview ? (
-                    <div className="grid grid-cols-5 gap-2 text-center">
-                      {(newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
-                        <div>
-                          <p className="text-lg font-bold text-purple-600">{newPreview.conversions_due}</p>
-                          <p className="text-[10px] text-muted-foreground">Conversions</p>
-                        </div>
-                      )}
-                      {!newPreview.closing_only && (
-                        <>
-                          <div>
-                            <p className="text-lg font-bold text-orange-600">{newPreview.callbacks_due}</p>
-                            <p className="text-[10px] text-muted-foreground">Callbacks</p>
-                          </div>
-                          <div>
-                            <p className="text-lg font-bold text-blue-600">{newPreview.interested_followups}</p>
-                            <p className="text-[10px] text-muted-foreground">Interested</p>
-                          </div>
-                          <div>
-                            <p className="text-lg font-bold text-slate-600">{newPreview.retry_eligible}</p>
-                            <p className="text-[10px] text-muted-foreground">Retries</p>
-                          </div>
-                          <div>
-                            <p className="text-lg font-bold text-green-600">{newPreview.pool_available}</p>
-                            <p className="text-[10px] text-muted-foreground">Fresh pool</p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Select an agent to see what the list will contain.</p>
-                  )}
-                  {newPreview && !newPreview.closing_only && (
-                    <p className="text-[11px] text-muted-foreground text-center mt-2">
-                      Dispatched in priority order up to quota ({newQuota || 100})
+            {/* ===== FILTERS ===== */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filters</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Source lists</label>
+                {sources.length === 0 ? (
+                  <div className="text-sm text-muted-foreground rounded-md border border-dashed border-border px-3 py-2.5 text-center">
+                    No contact lists uploaded yet — upload a list to filter by source.
+                  </div>
+                ) : (
+                  <>
+                    <Popover open={sourcesPopoverOpen} onOpenChange={setSourcesPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={sourcesPopoverOpen}
+                          className="w-full justify-between font-normal"
+                        >
+                          <span className={newSourceLists.length === 0 ? "text-muted-foreground" : ""}>
+                            {newSourceLists.length === 0
+                              ? "All lists"
+                              : newSourceLists.length === 1
+                                ? newSourceLists[0]
+                                : `${newSourceLists.length} of ${sources.length} lists selected`}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search lists…" />
+                          <CommandList>
+                            <CommandEmpty>No list matches.</CommandEmpty>
+                            <CommandGroup className="max-h-64 overflow-auto">
+                              {sources.map(s => {
+                                const checked = newSourceLists.includes(s);
+                                return (
+                                  <CommandItem
+                                    key={s}
+                                    value={s}
+                                    onSelect={() => setNewSourceLists(prev =>
+                                      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                                    )}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                                    {s}
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+
+                    {newSourceLists.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {newSourceLists.map(s => (
+                          <Badge key={s} variant="secondary" className="gap-1 pr-1 font-normal">
+                            <span>{s}</span>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${s}`}
+                              className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                              onClick={() => setNewSourceLists(prev => prev.filter(x => x !== s))}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                        {newSourceLists.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setNewSourceLists([])}
+                          >
+                            Clear all
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Draw only from the lists you pick. Leave blank to pull from every uploaded list.
+                </p>
+              </div>
+            </section>
+
+            {/* ===== OPTIONS — only rendered when a role-gated option applies ===== */}
+            {newPreview && (newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Options</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                <div className="flex items-start gap-3 p-3 bg-purple-500/5 border border-purple-500/30 rounded-md">
+                  <Switch
+                    id="closingOnly"
+                    checked={newClosingOnly}
+                    onCheckedChange={setNewClosingOnly}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="closingOnly" className="text-sm font-medium cursor-pointer">
+                      Closing calls only
+                    </label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Skip cold outreach. List contains only contacts tagged for closer handoff (tier 0 conversions).
                     </p>
-                  )}
-                </CardContent>
-              </Card>
+                  </div>
+                </div>
+              </section>
             )}
 
-            {/* Pool availability indicator */}
-            <Card className={`${
-              poolAvailable >= (parseInt(newQuota) || 100)
-                ? "border-green-500/50"
-                : poolAvailable > 0
-                  ? "border-yellow-500/50"
-                  : "border-destructive/50"
-            }`}>
-              <CardContent className="py-3 px-4 flex items-center justify-between">
+            {/* ===== YOU'LL GET — live eligibility preview ===== */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">You'll get</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              {!newAgent || newAgent === "__none__" ? (
+                <div className="text-xs text-muted-foreground rounded-md border border-dashed border-border px-3 py-2.5 text-center">
+                  Pick an agent above to preview what this list will contain.
+                </div>
+              ) : (
+                <Card className="border-border">
+                  <CardContent className="py-3 px-4">
+                    {previewLoading && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Calculating eligibility…
+                      </div>
+                    )}
+                    {newPreview ? (
+                      <>
+                        <div className="grid grid-cols-5 gap-2 text-center">
+                          {(newPreview.closer_role === "closer" || newPreview.closer_role === "admin") && (
+                            <div>
+                              <p className="text-lg font-bold text-purple-600">{newPreview.conversions_due}</p>
+                              <p className="text-[10px] text-muted-foreground">Conversions</p>
+                            </div>
+                          )}
+                          {!newPreview.closing_only && (
+                            <>
+                              <div>
+                                <p className="text-lg font-bold text-orange-600">{newPreview.callbacks_due}</p>
+                                <p className="text-[10px] text-muted-foreground">Callbacks</p>
+                              </div>
+                              <div>
+                                <p className="text-lg font-bold text-blue-600">{newPreview.interested_followups}</p>
+                                <p className="text-[10px] text-muted-foreground">Interested</p>
+                              </div>
+                              <div>
+                                <p className="text-lg font-bold text-slate-600">{newPreview.retry_eligible}</p>
+                                <p className="text-[10px] text-muted-foreground">Retries</p>
+                              </div>
+                              <div>
+                                <p className="text-lg font-bold text-green-600">{newPreview.pool_available}</p>
+                                <p className="text-[10px] text-muted-foreground">Fresh pool</p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {!newPreview.closing_only && (
+                          <p className="text-[11px] text-muted-foreground text-center mt-2">
+                            Dispatched in priority order up to quota ({parseInt(newQuota) || 100})
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      !previewLoading && (
+                        <p className="text-xs text-muted-foreground">Preview unavailable for this agent.</p>
+                      )
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Pool availability — kept as a secondary signal alongside the
+                  eligibility breakdown. Colour follows quota headroom. */}
+              <div className={cn(
+                "rounded-md border px-4 py-2.5 flex items-center justify-between",
+                poolAvailable >= (parseInt(newQuota) || 100)
+                  ? "border-green-500/50"
+                  : poolAvailable > 0
+                    ? "border-yellow-500/50"
+                    : "border-destructive/50"
+              )}>
                 <div>
                   <p className="text-sm">
                     <span className="font-bold">{poolAvailable.toLocaleString()}</span>
                     <span className="text-muted-foreground"> contacts available in pool</span>
                   </p>
                   {poolAvailable < (parseInt(newQuota) || 100) && poolAvailable > 0 && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Below daily quota of {parseInt(newQuota) || 100}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Below daily quota of {parseInt(newQuota) || 100}</p>
                   )}
                   {poolAvailable === 0 && (
-                    <p className="text-xs text-destructive mt-0.5">No contacts available — upload a list first</p>
+                    <p className="text-[11px] text-destructive mt-0.5">No contacts available — upload a list first</p>
                   )}
                 </div>
                 {poolAvailable < (parseInt(newQuota) || 100) && (
@@ -1498,15 +1623,17 @@ export default function CallCommand() {
                     </Button>
                   </Link>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             {(() => {
-              // Compute total eligible across all applicable tiers for the
-              // selected agent + filter config. When zero, creating the list
-              // would just produce an empty row — disable with explanation.
+              // Sum eligibility across tiers that apply for the selected
+              // agent + filter config. Zero across everything means creating
+              // the list would just produce an empty row — disable with a
+              // clear label + tooltip.
               const p = newPreview;
               const totalEligible = p
                 ? (p.closing_only
@@ -1522,7 +1649,7 @@ export default function CallCommand() {
                   title={zeroEligible ? "No eligible contacts to dispatch with these filters" : undefined}
                 >
                   {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  {zeroEligible ? "No contacts to dispatch" : "Create Call List"}
+                  {zeroEligible ? "No contacts to dispatch" : "Create call list"}
                 </Button>
               );
             })()}
