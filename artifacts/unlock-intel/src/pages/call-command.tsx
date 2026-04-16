@@ -84,7 +84,21 @@ function outcomeLabel(outcome: string | null): string {
 interface CallListDef {
   id: string; name: string; daily_quota: number; active: boolean;
   assigned_agent_id: string | null;
+  filter_criteria?: { source_lists?: string[] } | null;
+  closing_only?: boolean;
 }
+
+// Shape returned by GET /call-lists/new-preview — used by both the Create
+// and Top Up dialogs to forecast how a quota/count will fill.
+type ListPreview = {
+  conversions_due: number;
+  callbacks_due: number;
+  interested_followups: number;
+  retry_eligible: number;
+  pool_available: number;
+  closer_role: "agent" | "closer" | "admin";
+  closing_only: boolean;
+};
 
 interface Agent {
   id: string; name: string; email: string | null; active: boolean;
@@ -366,16 +380,13 @@ export default function CallCommand() {
   const [sourcesPopoverOpen, setSourcesPopoverOpen] = useState(false);
 
   // Live preview of what the new list will contain (fetched when fields change)
-  const [newPreview, setNewPreview] = useState<null | {
-    conversions_due: number;
-    callbacks_due: number;
-    interested_followups: number;
-    retry_eligible: number;
-    pool_available: number;
-    closer_role: "agent" | "closer" | "admin";
-    closing_only: boolean;
-  }>(null);
+  const [newPreview, setNewPreview] = useState<ListPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Live preview for the Top Up dialog — same shape, fetched against the
+  // currently active list's config (read-only on top-up).
+  const [topUpPreview, setTopUpPreview] = useState<ListPreview | null>(null);
+  const [topUpPreviewLoading, setTopUpPreviewLoading] = useState(false);
 
   // Fetch live preview whenever the Create dialog is open + fields change.
   // Debounced so we don't hammer the endpoint while typing.
@@ -399,6 +410,31 @@ export default function CallCommand() {
     }, 250);
     return () => clearTimeout(t);
   }, [createOpen, newAgent, newClosingOnly, newSourceLists]);
+
+  // Top Up preview — fetch when the dialog opens using the active list's own
+  // config (agent, source lists, closing_only). Read-only: the user can't
+  // change these from the Top Up dialog, so no debounce needed beyond open.
+  useEffect(() => {
+    if (!topUpOpen || !activeCallListDef?.assigned_agent_id) {
+      setTopUpPreview(null);
+      return;
+    }
+    (async () => {
+      setTopUpPreviewLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("agent_id", activeCallListDef.assigned_agent_id!);
+        if (activeCallListDef.closing_only) params.set("closing_only", "true");
+        const srcs = activeCallListDef.filter_criteria?.source_lists;
+        if (Array.isArray(srcs)) for (const s of srcs) params.append("source_lists", s);
+        const res = await apiFetch(`${API_BASE}/call-lists/new-preview?${params.toString()}`);
+        if (res.ok) setTopUpPreview(await res.json());
+      } catch { /* ignore */ } finally {
+        setTopUpPreviewLoading(false);
+      }
+    })();
+  }, [topUpOpen, activeCallListDef?.id]);
+
   const [creating, setCreating] = useState(false);
   const [carryOver, setCarryOver] = useState(false);
   const [sources, setSources] = useState<string[]>([]);
@@ -592,6 +628,71 @@ export default function CallCommand() {
   const queueFollowUps = callList.filter(c => c.priority === "follow-up").length;
   const queueRetries = callList.filter(c => c.priority === "retry").length;
   const queueFresh = callList.filter(c => c.priority === "fresh").length;
+
+  /**
+   * Shared eligibility forecast renderer — used by both Create Call List
+   * and Top Up dialogs. Walks the server's fillQueue priority order
+   * (Conversions → Callbacks → Interested → Retries → Fresh) and caps each
+   * tier by remaining slots, so the tiles show what will actually dispatch
+   * given the quota/count the user picked.
+   *
+   * See artifacts/api-server/src/lib/dispatchService.ts for the source of
+   * truth on priority order.
+   */
+  function renderForecast(preview: ListPreview, quota: number) {
+    const isCloser = preview.closer_role === "closer" || preview.closer_role === "admin";
+    const tiers: Array<{ key: string; label: string; eligible: number; color: string }> = [];
+    if (isCloser) {
+      tiers.push({ key: "conversions", label: "Conversions", eligible: preview.conversions_due, color: "text-purple-600" });
+    }
+    if (!preview.closing_only) {
+      tiers.push({ key: "callbacks",  label: "Callbacks",  eligible: preview.callbacks_due,         color: "text-orange-600" });
+      tiers.push({ key: "interested", label: "Interested", eligible: preview.interested_followups, color: "text-blue-600" });
+      tiers.push({ key: "retries",    label: "Retries",    eligible: preview.retry_eligible,       color: "text-slate-600" });
+      tiers.push({ key: "fresh",      label: "Fresh",      eligible: preview.pool_available,       color: "text-green-600" });
+    }
+    let remaining = quota;
+    const rows = tiers.map(t => {
+      const dispatched = Math.min(t.eligible, Math.max(0, remaining));
+      remaining -= dispatched;
+      return { ...t, dispatched };
+    });
+    const totalDispatched = quota - Math.max(0, remaining);
+    const shortfall = Math.max(0, quota - totalDispatched);
+    const cols = rows.length || 1;
+    return (
+      <>
+        <div
+          className="grid gap-2 text-center"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
+          {rows.map(r => (
+            <div key={r.key}>
+              <p className="text-lg font-bold leading-tight">
+                <span className={r.dispatched > 0 ? r.color : "text-muted-foreground/40"}>
+                  {r.dispatched}
+                </span>
+                <span className="text-muted-foreground/60 font-normal text-xs">
+                  {" / "}{r.eligible}
+                </span>
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{r.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-center mt-2.5">
+          <span className={shortfall > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>
+            {totalDispatched} of {quota} quota
+          </span>
+          <span className="text-muted-foreground">
+            {shortfall > 0
+              ? ` — ${shortfall} short of quota`
+              : " will be dispatched in priority order"}
+          </span>
+        </p>
+      </>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -1549,70 +1650,11 @@ export default function CallCommand() {
                         <Loader2 className="w-3 h-3 animate-spin" /> Calculating eligibility…
                       </div>
                     )}
-                    {newPreview ? (() => {
-                      // Mirror the server's fillQueue priority order so the
-                      // forecast matches what the agent will actually see in
-                      // their Call Command once the list is created.
-                      // See artifacts/api-server/src/lib/dispatchService.ts
-                      //   Order: Conversions → Callbacks → Interested → Retries → Fresh
-                      const quota = parseInt(newQuota) || 100;
-                      const isCloser = newPreview.closer_role === "closer" || newPreview.closer_role === "admin";
-                      const tiers: Array<{ key: string; label: string; eligible: number; color: string }> = [];
-                      if (isCloser) {
-                        tiers.push({ key: "conversions", label: "Conversions", eligible: newPreview.conversions_due, color: "text-purple-600" });
-                      }
-                      if (!newPreview.closing_only) {
-                        tiers.push({ key: "callbacks",  label: "Callbacks",  eligible: newPreview.callbacks_due,         color: "text-orange-600" });
-                        tiers.push({ key: "interested", label: "Interested", eligible: newPreview.interested_followups, color: "text-blue-600" });
-                        tiers.push({ key: "retries",    label: "Retries",    eligible: newPreview.retry_eligible,       color: "text-slate-600" });
-                        tiers.push({ key: "fresh",      label: "Fresh",      eligible: newPreview.pool_available,       color: "text-green-600" });
-                      }
-                      let remaining = quota;
-                      const rows = tiers.map(t => {
-                        const dispatched = Math.min(t.eligible, Math.max(0, remaining));
-                        remaining -= dispatched;
-                        return { ...t, dispatched };
-                      });
-                      const totalDispatched = quota - Math.max(0, remaining);
-                      const shortfall = Math.max(0, quota - totalDispatched);
-                      const cols = rows.length || 1;
-                      return (
-                        <>
-                          <div
-                            className="grid gap-2 text-center"
-                            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-                          >
-                            {rows.map(r => (
-                              <div key={r.key}>
-                                <p className="text-lg font-bold leading-tight">
-                                  <span className={r.dispatched > 0 ? r.color : "text-muted-foreground/40"}>
-                                    {r.dispatched}
-                                  </span>
-                                  <span className="text-muted-foreground/60 font-normal text-xs">
-                                    {" / "}{r.eligible}
-                                  </span>
-                                </p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">{r.label}</p>
-                              </div>
-                            ))}
-                          </div>
-                          <p className="text-[11px] text-center mt-2.5">
-                            <span className={shortfall > 0 ? "text-amber-600 font-medium" : "text-muted-foreground"}>
-                              {totalDispatched} of {quota} quota
-                            </span>
-                            <span className="text-muted-foreground">
-                              {shortfall > 0
-                                ? ` — ${shortfall} short of quota`
-                                : " will be dispatched in priority order"}
-                            </span>
-                          </p>
-                        </>
-                      );
-                    })() : (
-                      !previewLoading && (
-                        <p className="text-xs text-muted-foreground">Preview unavailable for this agent.</p>
-                      )
-                    )}
+                    {newPreview
+                      ? renderForecast(newPreview, parseInt(newQuota) || 100)
+                      : !previewLoading && (
+                          <p className="text-xs text-muted-foreground">Preview unavailable for this agent.</p>
+                        )}
                   </CardContent>
                 </Card>
               )}
@@ -1684,49 +1726,199 @@ export default function CallCommand() {
           Uses the existing list's fill-queue endpoint; does NOT create a
           new list. */}
       <Dialog open={topUpOpen} onOpenChange={setTopUpOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Top up call list</DialogTitle>
             <DialogDescription>
-              Add more contacts to <strong>{activeCallListDef?.name || "your list"}</strong>.
-              Pulled in priority order: callbacks, conversions (if you're a closer),
-              follow-ups, retries, then fresh from the pool.
+              Add more contacts to the currently active list.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">How many to add?</label>
-              <Input
-                type="number"
-                min={1}
-                max={500}
-                value={topUpCount}
-                onChange={e => setTopUpCount(e.target.value)}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">
-                Current list: {queuedCalls} / {activeCallListDef?.daily_quota || "—"}
-                {activeCallListDef?.daily_quota && queuedCalls >= activeCallListDef.daily_quota && (
-                  <span className="text-amber-600"> — already at or above daily quota.</span>
+          {(() => {
+            const topUpAgentName = activeCallListDef?.assigned_agent_id
+              ? (agents.find(a => a.id === activeCallListDef.assigned_agent_id)?.name ?? "Unknown")
+              : "Unassigned";
+            const topUpSources = activeCallListDef?.filter_criteria?.source_lists;
+            const topUpClosingOnly = !!activeCallListDef?.closing_only;
+            const requestedCount = parseInt(topUpCount) || 0;
+            const isCloserList = topUpPreview && (topUpPreview.closer_role === "closer" || topUpPreview.closer_role === "admin");
+            const showOptions = isCloserList && topUpClosingOnly;
+            const totalEligible = topUpPreview
+              ? (topUpPreview.closing_only
+                  ? topUpPreview.conversions_due
+                  : topUpPreview.conversions_due + topUpPreview.callbacks_due + topUpPreview.interested_followups + topUpPreview.retry_eligible + topUpPreview.pool_available)
+              : null;
+            const zeroEligible = totalEligible === 0 && !topUpPreviewLoading;
+
+            return (
+              <div className="space-y-5 py-1">
+                {/* ===== BASICS (read-only except "how many to add") ===== */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Basics</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">List name</label>
+                    <Input value={activeCallListDef?.name ?? ""} disabled readOnly />
+                    <p className="text-[11px] text-muted-foreground">The list you're topping up. Can't be renamed from here.</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Assigned agent</label>
+                      <Input value={topUpAgentName} disabled readOnly />
+                      <p className="text-[11px] text-muted-foreground">Whose queue this list feeds.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Daily quota</label>
+                      <Input value={String(activeCallListDef?.daily_quota ?? "—")} disabled readOnly />
+                      <p className="text-[11px] text-muted-foreground">
+                        Currently {queuedCalls} / {activeCallListDef?.daily_quota ?? "—"}
+                        {activeCallListDef?.daily_quota && queuedCalls >= activeCallListDef.daily_quota && (
+                          <span className="text-amber-600"> (at quota)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">How many to add <span className="text-destructive">*</span></label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={topUpCount}
+                        onChange={e => setTopUpCount(e.target.value)}
+                        autoFocus
+                      />
+                      <p className="text-[11px] text-muted-foreground">Extra contacts to pull now.</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ===== FILTERS (read-only) ===== */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filters</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Source lists</label>
+                    {Array.isArray(topUpSources) && topUpSources.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+                        {topUpSources.map(s => (
+                          <Badge key={s} variant="secondary" className="font-normal">{s}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                        All lists
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      Inherited from the list. Can't be changed during top up.
+                    </p>
+                  </div>
+                </section>
+
+                {/* ===== OPTIONS — only when closer + closing_only is on ===== */}
+                {showOptions && (
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Options</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-purple-500/5 border border-purple-500/30 rounded-md">
+                      <Switch id="topUpClosingOnly" checked disabled className="mt-0.5" />
+                      <div className="flex-1">
+                        <label htmlFor="topUpClosingOnly" className="text-sm font-medium">
+                          Closing calls only
+                        </label>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          List only tops up with contacts tagged for closer handoff (tier 0 conversions).
+                        </p>
+                      </div>
+                    </div>
+                  </section>
                 )}
-              </p>
-            </div>
 
-            {topUpError && (
-              <p className="text-sm text-destructive">{topUpError}</p>
-            )}
-          </div>
+                {/* ===== YOU'LL GET — dispatch forecast for the requested count ===== */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">You'll get</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTopUpOpen(false)} disabled={topUpSubmitting}>
-              Cancel
-            </Button>
-            <Button onClick={handleTopUp} disabled={topUpSubmitting || !activeCallListDef}>
-              {topUpSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Add {parseInt(topUpCount) || 0} to list
-            </Button>
-          </DialogFooter>
+                  {!activeCallListDef?.assigned_agent_id ? (
+                    <div className="text-xs text-muted-foreground rounded-md border border-dashed border-border px-3 py-2.5 text-center">
+                      This list has no assigned agent — can't preview top-up eligibility.
+                    </div>
+                  ) : (
+                    <Card className="border-border">
+                      <CardContent className="py-3 px-4">
+                        {topUpPreviewLoading && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Calculating eligibility…
+                          </div>
+                        )}
+                        {topUpPreview
+                          ? renderForecast(topUpPreview, requestedCount)
+                          : !topUpPreviewLoading && (
+                              <p className="text-xs text-muted-foreground">Preview unavailable.</p>
+                            )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className={cn(
+                    "rounded-md border px-4 py-2.5 flex items-center justify-between",
+                    poolAvailable >= requestedCount
+                      ? "border-green-500/50"
+                      : poolAvailable > 0
+                        ? "border-yellow-500/50"
+                        : "border-destructive/50"
+                  )}>
+                    <div>
+                      <p className="text-sm">
+                        <span className="font-bold">{poolAvailable.toLocaleString()}</span>
+                        <span className="text-muted-foreground"> contacts available in pool</span>
+                      </p>
+                      {poolAvailable === 0 && (
+                        <p className="text-[11px] text-destructive mt-0.5">No fresh contacts in pool — upload a list first</p>
+                      )}
+                    </div>
+                    {poolAvailable < requestedCount && (
+                      <Link href="/contacts/upload">
+                        <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+                          <Upload className="w-3.5 h-3.5" /> Upload
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+
+                  {topUpError && (
+                    <p className="text-sm text-destructive">{topUpError}</p>
+                  )}
+                </section>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setTopUpOpen(false)} disabled={topUpSubmitting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleTopUp}
+                    disabled={topUpSubmitting || !activeCallListDef || requestedCount <= 0 || zeroEligible}
+                    title={zeroEligible ? "No eligible contacts to add with this list's filters" : undefined}
+                  >
+                    {topUpSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {zeroEligible ? "No contacts to add" : `Add ${requestedCount} to list`}
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
