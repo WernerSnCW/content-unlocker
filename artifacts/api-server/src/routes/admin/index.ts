@@ -1,15 +1,17 @@
 import { Router, type IRouter } from "express";
 import { db, agentsTable, usersTable, integrationConfigsTable, contactsTable, callListConfigsTable, callListMembershipsTable, leadConversationsTable } from "@workspace/db";
-import { eq, desc, and, isNull, sql } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { logger } from "../../lib/logger";
 import { randomUUID } from "crypto";
 import {
-  applyTaggedOutcomeTx,
-  runEngineForConversation,
+  handleCallEnded,
+  handleCallTagged,
+  handleTranscriptionCreated,
+  handleSummaryCreated,
+  logWebhook,
   resolveTag,
   getTagMapping,
-  getCoolOffDays,
 } from "../aircall";
 
 const router: IRouter = Router();
@@ -224,19 +226,27 @@ router.get("/admin/tag-mapping", async (_req, res) => {
 /**
  * POST /api/admin/simulate-call
  *
+ * Fires the same sequence of events Aircall would, through the SAME webhook
+ * handlers (handleCallEnded → handleCallTagged → handleTranscriptionCreated
+ * → handleSummaryCreated). Payloads are constructed in real Aircall shape
+ * so payload parsing, contact resolution by phone, agent resolution by
+ * aircall_user_id, and tag extraction are all exercised. Each event is
+ * recorded in the webhook log so you can see it at /webhook-log.
+ *
+ * The only bypass is the Aircall API fetch inside transcription.created +
+ * summary.created — those handlers detect the sim- prefix on call_id and
+ * use the inline transcript/summary from the payload instead of fetching.
+ *
  * Body: {
  *   contact_id: string,
- *   agent_id: string,       // which agent "made" this call
- *   tag: string,            // name of an Aircall tag (must match tag_mapping)
- *   transcript?: string,    // full transcript text — will be stored + fed to engine
- *   summary?: string,       // optional synthetic Aircall AI summary
+ *   agent_id: string,
+ *   tag: string,
+ *   transcript?: string,
+ *   summary?: string,
  *   duration_seconds?: number,
  *   direction?: "inbound" | "outbound",
- *   ensure_membership?: boolean, // default true — auto-add to Simulator list if no active membership
+ *   ensure_membership?: boolean,
  * }
- *
- * Runs the full post-call path synchronously and returns a detailed report
- * so the admin can see exactly what changed.
  */
 router.post("/admin/simulate-call", async (req, res) => {
   const body = req.body || {};
@@ -254,15 +264,28 @@ router.post("/admin/simulate-call", async (req, res) => {
   if (!tagName) { res.status(400).json({ error: "tag_required" }); return; }
 
   try {
-    // 1. Load the chosen contact + agent (and validate they exist + active)
+    // 1. Validate inputs.
     const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contactId));
     if (!contact) { res.status(404).json({ error: "contact_not_found" }); return; }
 
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
     if (!agent) { res.status(404).json({ error: "agent_not_found" }); return; }
     if (!agent.active) { res.status(400).json({ error: "agent_inactive" }); return; }
+    if (agent.aircall_user_id == null) {
+      res.status(400).json({
+        error: "agent_missing_aircall_user_id",
+        message: `Agent "${agent.name}" has no aircall_user_id. The webhook handlers look agents up by Aircall user ID; set it via Admin → Agents before simulating.`,
+      });
+      return;
+    }
+    if (!contact.phone) {
+      res.status(400).json({
+        error: "contact_missing_phone",
+        message: `Contact "${contact.first_name} ${contact.last_name}" has no phone number. The webhook handlers look contacts up by phone.`,
+      });
+      return;
+    }
 
-    // 2. Resolve the tag → outcome + side_effect
     const tagMapping = await getTagMapping();
     const resolution = resolveTag(tagName, tagMapping);
     if (!resolution) {
@@ -273,11 +296,10 @@ router.post("/admin/simulate-call", async (req, res) => {
       return;
     }
 
-    // 3. Ensure the contact has an active membership if requested.
-    //    Without one, applyTaggedOutcomeTx has nothing to close — which is
-    //    fine for outcomes that archive (global_exclude), but weird for
-    //    callback / immediate_recall paths. Default: silently add to a
-    //    dedicated Simulator Test List to keep behaviour consistent.
+    // 2. Ensure an active membership exists if the admin asked us to.
+    //    Done BEFORE firing webhooks so handleCallTagged's transaction has
+    //    something to close. Mirrors the real world where a contact is
+    //    always on a call list when they get called.
     let createdSimList = false;
     let createdSimMembership = false;
     if (ensureMembership) {
@@ -289,7 +311,6 @@ router.post("/admin/simulate-call", async (req, res) => {
         .limit(1);
 
       if (!activeMembership) {
-        // Find or create the Simulator Test List for this agent.
         const simListName = `Simulator Test List — ${agent.name}`;
         let [simList] = await db.select().from(callListConfigsTable)
           .where(eq(callListConfigsTable.name, simListName))
@@ -304,8 +325,6 @@ router.post("/admin/simulate-call", async (req, res) => {
           }).returning();
           createdSimList = true;
         }
-        // Add a membership + flip contact to dispatched so the outcome tx has
-        // the right state to close.
         await db.insert(callListMembershipsTable).values({
           call_list_id: simList.id,
           contact_id: contactId,
@@ -318,52 +337,101 @@ router.post("/admin/simulate-call", async (req, res) => {
       }
     }
 
-    // 4. Create the synthetic conversation row (as call.ended would).
+    // 3. Fire the 4 webhook events in sequence, through the REAL handlers.
+    //    Each payload is shaped the way Aircall actually sends it, so the
+    //    full parse → resolve → act → log pipeline runs. Each handler's
+    //    response is captured for the result panel.
     const syntheticCallId = `sim-${randomUUID()}`;
-    const now = new Date();
-    const [conv] = await db.insert(leadConversationsTable).values({
-      contact_id: contact.id,
-      lead_id: contact.lead_id || null,
-      source: "aircall",
-      external_id: syntheticCallId,
+    const nowIso = new Date().toISOString();
+    const agentAircallId = agent.aircall_user_id;
+
+    const eventResults: Array<{ event: string; result: string | null; error?: string }> = [];
+
+    // --- call.ended ---
+    const callEndedPayload = {
+      id: syntheticCallId,
       direction,
-      duration_seconds: duration,
-      agent_name: agent.name,
-      agent_notes: null,
-      tags: [tagName],
-      call_outcome: null,
-      transcript_text: transcript || null,
-      summary,
-      conversation_date: now,
-    }).returning();
-
-    // 5. Apply the tag outcome in a transaction (unless it's record_only).
-    let outcomeAppliedDetail = "record_only — no state change";
-    const isRecordOnly = resolution.sideEffect === "record_only";
-    if (!isRecordOnly) {
-      const coolOffDaysGlobal = await getCoolOffDays();
-      await db.transaction(async (tx) => {
-        await applyTaggedOutcomeTx(tx, contact.id, syntheticCallId, tagName, resolution, coolOffDaysGlobal);
-      });
-      outcomeAppliedDetail = `${resolution.outcome} (${resolution.sideEffect})`;
-    } else {
-      // Mirror handleCallTagged's record-only path — append tag, don't mutate.
-      await db.update(leadConversationsTable)
-        .set({
-          tags: sql`COALESCE(${leadConversationsTable.tags}, '[]'::jsonb) || ${JSON.stringify([tagName])}::jsonb`,
-        })
-        .where(eq(leadConversationsTable.id, conv.id));
+      duration,
+      raw_digits: contact.phone,
+      number: { digits: contact.phone },
+      user: { id: agentAircallId, name: agent.name },
+      tags: [],
+      started_at: nowIso,
+      ended_at: nowIso,
+    };
+    try {
+      const r = await handleCallEnded(callEndedPayload);
+      logWebhook("call.ended", "processed", r || null, callEndedPayload);
+      eventResults.push({ event: "call.ended", result: r });
+    } catch (err: any) {
+      logWebhook("call.ended", `error: ${err.message}`, null, callEndedPayload);
+      eventResults.push({ event: "call.ended", result: null, error: err.message });
     }
 
-    // 6. Run the engine on the transcript (if provided).
-    let engineResult: string | null = null;
+    // --- call.tagged ---
+    const callTaggedPayload = {
+      call_id: syntheticCallId,
+      tag: { name: tagName },
+      // Aircall v2 also sends full call object on tagged — include for parity
+      call: {
+        id: syntheticCallId,
+        user: { id: agentAircallId, name: agent.name },
+        raw_digits: contact.phone,
+        direction,
+        duration,
+      },
+    };
+    try {
+      const r = await handleCallTagged(callTaggedPayload);
+      logWebhook("call.tagged", "processed", r || null, callTaggedPayload);
+      eventResults.push({ event: "call.tagged", result: r });
+    } catch (err: any) {
+      logWebhook("call.tagged", `error: ${err.message}`, null, callTaggedPayload);
+      eventResults.push({ event: "call.tagged", result: null, error: err.message });
+    }
+
+    // --- transcription.created (only if transcript provided) ---
     if (transcript.trim()) {
-      engineResult = await runEngineForConversation(contact.id, conv.id, transcript);
+      const transPayload = {
+        call_id: syntheticCallId,
+        _sim_transcript: transcript,
+        _sim_summary: summary || undefined, // capture Aircall's "summary bundled with transcript" shape too
+      };
+      try {
+        const r = await handleTranscriptionCreated(transPayload);
+        logWebhook("transcription.created", "processed", r || null, transPayload);
+        eventResults.push({ event: "transcription.created", result: r });
+      } catch (err: any) {
+        logWebhook("transcription.created", `error: ${err.message}`, null, transPayload);
+        eventResults.push({ event: "transcription.created", result: null, error: err.message });
+      }
+    } else {
+      eventResults.push({ event: "transcription.created", result: "skipped — no transcript provided" });
     }
 
-    // 7. Read back the final state so the admin can see exactly what changed.
+    // --- summary.created (only if summary provided) ---
+    if (summary) {
+      const summaryPayload = {
+        call_id: syntheticCallId,
+        _sim_summary: summary,
+      };
+      try {
+        const r = await handleSummaryCreated(summaryPayload);
+        logWebhook("summary.created", "processed", r || null, summaryPayload);
+        eventResults.push({ event: "summary.created", result: r });
+      } catch (err: any) {
+        logWebhook("summary.created", `error: ${err.message}`, null, summaryPayload);
+        eventResults.push({ event: "summary.created", result: null, error: err.message });
+      }
+    } else {
+      eventResults.push({ event: "summary.created", result: "skipped — no summary provided" });
+    }
+
+    // 4. Read back the final state.
     const [finalContact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contact.id));
-    const [finalConv] = await db.select().from(leadConversationsTable).where(eq(leadConversationsTable.id, conv.id));
+    const [finalConv] = await db.select().from(leadConversationsTable)
+      .where(eq(leadConversationsTable.external_id, syntheticCallId))
+      .limit(1);
     const finalMemberships = await db.select().from(callListMembershipsTable)
       .where(eq(callListMembershipsTable.contact_id, contact.id))
       .orderBy(desc(callListMembershipsTable.added_at));
@@ -374,30 +442,29 @@ router.post("/admin/simulate-call", async (req, res) => {
       agentId: agent.id,
       tag: tagName,
       outcome: resolution.outcome,
-    }, "DEV SIMULATE-CALL used");
+      events: eventResults.map(e => ({ event: e.event, result: e.result })),
+    }, "simulate-call completed");
 
     res.json({
       ok: true,
-      conversation_id: conv.id,
       synthetic_call_id: syntheticCallId,
       resolved: {
         outcome: resolution.outcome,
         side_effect: resolution.sideEffect,
       },
-      outcome_applied: outcomeAppliedDetail,
-      engine: engineResult,
+      events: eventResults,
       created_simulator_list: createdSimList,
       created_simulator_membership: createdSimMembership,
       final: {
-        contact: {
+        contact: finalContact ? {
           id: finalContact.id,
           dispatch_status: finalContact.dispatch_status,
           last_call_outcome: finalContact.last_call_outcome,
           call_attempts: finalContact.call_attempts,
           callback_date: finalContact.callback_date,
           cool_off_until: finalContact.cool_off_until,
-        },
-        conversation: {
+        } : null,
+        conversation: finalConv ? {
           id: finalConv.id,
           call_outcome: finalConv.call_outcome,
           tags: finalConv.tags,
@@ -405,7 +472,7 @@ router.post("/admin/simulate-call", async (req, res) => {
           engine_version: finalConv.engine_version,
           has_transcript: !!finalConv.transcript_text,
           has_summary: !!finalConv.summary,
-        },
+        } : null,
         memberships: finalMemberships.map(m => ({
           id: m.id,
           call_list_id: m.call_list_id,

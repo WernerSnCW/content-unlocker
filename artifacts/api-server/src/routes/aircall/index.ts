@@ -245,7 +245,7 @@ interface WebhookLogEntry {
 const webhookLog: WebhookLogEntry[] = [];
 const MAX_LOG_ENTRIES = 100;
 
-function logWebhook(event: string, status: string, contactMatch: string | null, data: any) {
+export function logWebhook(event: string, status: string, contactMatch: string | null, data: any) {
   webhookLog.unshift({
     timestamp: new Date().toISOString(),
     event,
@@ -347,7 +347,7 @@ router.get("/aircall/webhook", async (_req, res): Promise<void> => {
 //
 // If call.tagged never arrives, the background sweep (sweepUntaggedConversations)
 // processes the conversation as untagged after a timeout.
-async function handleCallEnded(data: any): Promise<string | null> {
+export async function handleCallEnded(data: any): Promise<string | null> {
   const callId = data.id || data.call_id;
   const duration = data.duration || 0;
   const direction = data.direction || "outbound";
@@ -440,7 +440,7 @@ function extractTagName(data: any): { name: string | null; shape: string } {
   return { name: null, shape: "unknown" };
 }
 
-async function handleCallTagged(data: any): Promise<string | null> {
+export async function handleCallTagged(data: any): Promise<string | null> {
   const callId = data.call_id || data.id || data.call?.id;
   const extraction = extractTagName(data);
   if (!extraction.name) {
@@ -583,30 +583,54 @@ export async function runEngineForConversation(
   }
 }
 
-async function handleTranscriptionCreated(data: any): Promise<string> {
+export async function handleTranscriptionCreated(data: any): Promise<string> {
   const callId = data.call_id || data.id;
   if (!callId) return "no call_id in payload";
 
-  // Fetch the transcript from Aircall API
-  const auth = await getAircallAuth();
-  if (!auth) return "no Aircall API credentials configured";
+  // Simulator bypass — if the call_id has the sim- prefix AND the payload
+  // carries the transcript inline, use it directly without hitting the
+  // Aircall API. Real Aircall IDs are numeric strings; they never match
+  // this prefix, so there's no risk of collision. See admin/simulate-call.
+  const isSimulated = String(callId).startsWith("sim-");
+  let transcriptionData: any;
+  if (isSimulated) {
+    // Admin simulator — transcript comes inline; no Aircall API fetch.
+    // Use the pre-formatted text as the transcript directly, bypassing
+    // the utterance-collapsing logic below (which assumes Aircall's
+    // structured response).
+    transcriptionData = {
+      __sim_bypass: true,
+      __sim_transcript_text: typeof data._sim_transcript === "string" ? data._sim_transcript : "",
+      summary: typeof data._sim_summary === "string" ? data._sim_summary : undefined,
+    };
+  } else {
+    // Real flow — fetch the transcript from Aircall API.
+    const auth = await getAircallAuth();
+    if (!auth) return "no Aircall API credentials configured";
 
-  const url = `https://api.aircall.io/v1/calls/${callId}/transcription`;
-  const response = await fetch(url, { headers: { Authorization: auth } });
+    const url = `https://api.aircall.io/v1/calls/${callId}/transcription`;
+    const response = await fetch(url, { headers: { Authorization: auth } });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
+    }
+
+    transcriptionData = await response.json() as any;
   }
-
-  const transcriptionData = await response.json() as any;
 
   // Aircall shape (2026): { transcription: { content: { utterances: [{ text, participant_type, ... }] } } }
   let transcriptText = "";
-  const utterances = transcriptionData?.transcription?.content?.utterances
+  // Simulator bypass short-circuit — transcript already in final shape.
+  if (transcriptionData?.__sim_bypass) {
+    transcriptText = transcriptionData.__sim_transcript_text || "";
+  }
+  const utterances = transcriptText ? [] : (
+    transcriptionData?.transcription?.content?.utterances
     || transcriptionData?.content?.utterances
     || transcriptionData?.transcription?.utterances
-    || [];
+    || []
+  );
 
   if (Array.isArray(utterances) && utterances.length > 0) {
     // Collapse consecutive utterances from the same participant into one line
@@ -688,7 +712,14 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
 
   // No conversation record yet — call.ended might not have arrived first.
   // Fetch call data so we can verify the call was made by one of our agents
-  // before creating a record.
+  // before creating a record. For simulated IDs there's no Aircall call to
+  // fetch — the simulator always fires call.ended first, so reaching here
+  // for a sim- ID indicates a bug.
+  if (isSimulated) {
+    return "simulator: no prior conversation row (call.ended should have fired first)";
+  }
+  const auth = await getAircallAuth();
+  if (!auth) return "no Aircall API credentials configured for fallback fetch";
   const callResponse = await fetch(`https://api.aircall.io/v1/calls/${callId}`, {
     headers: { Authorization: auth },
   });
@@ -724,21 +755,31 @@ async function handleTranscriptionCreated(data: any): Promise<string> {
   return `${summary} (new conversation, contact ${contact.first_name} ${contact.last_name})${engineStatus}`;
 }
 
-async function handleSummaryCreated(data: any): Promise<string> {
+export async function handleSummaryCreated(data: any): Promise<string> {
   const callId = data.call_id || data.id;
   if (!callId) return "no call_id in payload";
 
-  const auth = await getAircallAuth();
-  if (!auth) return "no Aircall API credentials configured";
+  // Simulator bypass — inline summary from payload; skip Aircall fetch.
+  const isSimulated = String(callId).startsWith("sim-");
+  let summaryData: any;
+  if (isSimulated) {
+    if (typeof data._sim_summary !== "string" || !data._sim_summary.trim()) {
+      return "simulator: no _sim_summary provided — nothing to store";
+    }
+    summaryData = { summary: data._sim_summary };
+  } else {
+    const auth = await getAircallAuth();
+    if (!auth) return "no Aircall API credentials configured";
 
-  const url = `https://api.aircall.io/v1/calls/${callId}/summary`;
-  const response = await fetch(url, { headers: { Authorization: auth } });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
+    const url = `https://api.aircall.io/v1/calls/${callId}/summary`;
+    const response = await fetch(url, { headers: { Authorization: auth } });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      return `API ${response.status} from ${url} — ${body.slice(0, 200)}`;
+    }
+
+    summaryData = await response.json() as any;
   }
-
-  const summaryData = await response.json() as any;
   // Aircall may return the summary under various keys — try the common ones
   const summaryText: string =
     summaryData?.summary?.content ||

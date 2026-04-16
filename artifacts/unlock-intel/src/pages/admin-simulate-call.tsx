@@ -36,11 +36,13 @@ interface TagMappingRow {
 
 interface SimulateResult {
   ok: boolean;
-  conversation_id: string;
   synthetic_call_id: string;
   resolved: { outcome: string; side_effect: string };
-  outcome_applied: string;
-  engine: string | null;
+  events: Array<{
+    event: string;
+    result: string | null;
+    error?: string;
+  }>;
   created_simulator_list: boolean;
   created_simulator_membership: boolean;
   final: {
@@ -51,7 +53,7 @@ interface SimulateResult {
       call_attempts: number | null;
       callback_date: string | null;
       cool_off_until: string | null;
-    };
+    } | null;
     conversation: {
       id: string;
       call_outcome: string | null;
@@ -60,7 +62,7 @@ interface SimulateResult {
       engine_version: string | null;
       has_transcript: boolean;
       has_summary: boolean;
-    };
+    } | null;
     memberships: Array<{
       id: string;
       call_list_id: string;
@@ -370,47 +372,71 @@ export default function AdminSimulateCallPage() {
                 </div>
 
                 <div>
-                  <div className="font-semibold mb-1">Outcome</div>
+                  <div className="font-semibold mb-1">Resolved</div>
                   <div className="bg-muted/40 border rounded px-3 py-2">
-                    Applied: <code>{result.outcome_applied}</code>
+                    outcome=<code>{result.resolved.outcome}</code> · side_effect=<code>{result.resolved.side_effect}</code>
                   </div>
                 </div>
 
-                {result.engine && (
+                <div>
+                  <div className="font-semibold mb-1">Webhook event sequence</div>
+                  <div className="bg-muted/40 border rounded divide-y">
+                    {result.events.map(e => (
+                      <div key={e.event} className="px-3 py-2">
+                        <div className="flex items-center gap-2 font-mono text-[11px]">
+                          {e.error
+                            ? <Badge variant="destructive" className="text-[9px]">error</Badge>
+                            : e.result?.startsWith("skipped") || e.result?.startsWith("simulator:")
+                              ? <Badge variant="outline" className="text-[9px]">skipped</Badge>
+                              : <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 text-[9px]">processed</Badge>
+                          }
+                          <code>{e.event}</code>
+                        </div>
+                        <div className="text-muted-foreground mt-1 break-words">
+                          {e.error || e.result || "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Each event was processed by the real webhook handler and logged to <code>/webhook-log</code>.
+                  </p>
+                </div>
+
+                {result.final.contact && (
                   <div>
-                    <div className="font-semibold mb-1">Engine</div>
-                    <div className="bg-muted/40 border rounded px-3 py-2 break-words">
-                      {result.engine}
+                    <div className="font-semibold mb-1">Contact state</div>
+                    <div className="bg-muted/40 border rounded px-3 py-2 space-y-0.5">
+                      <div><code>dispatch_status</code>: {result.final.contact.dispatch_status || "—"}</div>
+                      <div><code>last_call_outcome</code>: {result.final.contact.last_call_outcome || "—"}</div>
+                      <div><code>call_attempts</code>: {result.final.contact.call_attempts ?? 0}</div>
+                      {result.final.contact.callback_date && (
+                        <div><code>callback_date</code>: {new Date(result.final.contact.callback_date).toLocaleString()}</div>
+                      )}
+                      {result.final.contact.cool_off_until && (
+                        <div><code>cool_off_until</code>: {new Date(result.final.contact.cool_off_until).toLocaleString()}</div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                <div>
-                  <div className="font-semibold mb-1">Contact state</div>
-                  <div className="bg-muted/40 border rounded px-3 py-2 space-y-0.5">
-                    <div><code>dispatch_status</code>: {result.final.contact.dispatch_status || "—"}</div>
-                    <div><code>last_call_outcome</code>: {result.final.contact.last_call_outcome || "—"}</div>
-                    <div><code>call_attempts</code>: {result.final.contact.call_attempts ?? 0}</div>
-                    {result.final.contact.callback_date && (
-                      <div><code>callback_date</code>: {new Date(result.final.contact.callback_date).toLocaleString()}</div>
-                    )}
-                    {result.final.contact.cool_off_until && (
-                      <div><code>cool_off_until</code>: {new Date(result.final.contact.cool_off_until).toLocaleString()}</div>
-                    )}
+                {result.final.conversation ? (
+                  <div>
+                    <div className="font-semibold mb-1">Conversation</div>
+                    <div className="bg-muted/40 border rounded px-3 py-2 space-y-0.5">
+                      <div><code>call_outcome</code>: {result.final.conversation.call_outcome || "—"}</div>
+                      <div><code>processed_at</code>: {result.final.conversation.processed_at ? new Date(result.final.conversation.processed_at).toLocaleString() : "—"}</div>
+                      <div><code>engine_version</code>: {result.final.conversation.engine_version || "—"}</div>
+                      <div>has_transcript: {String(result.final.conversation.has_transcript)}</div>
+                      <div>has_summary: {String(result.final.conversation.has_summary)}</div>
+                      <div><code>tags</code>: {JSON.stringify(result.final.conversation.tags)}</div>
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <div className="font-semibold mb-1">Conversation</div>
-                  <div className="bg-muted/40 border rounded px-3 py-2 space-y-0.5">
-                    <div><code>call_outcome</code>: {result.final.conversation.call_outcome || "—"}</div>
-                    <div><code>processed_at</code>: {result.final.conversation.processed_at ? new Date(result.final.conversation.processed_at).toLocaleString() : "—"}</div>
-                    <div><code>engine_version</code>: {result.final.conversation.engine_version || "—"}</div>
-                    <div>has_transcript: {String(result.final.conversation.has_transcript)}</div>
-                    <div>has_summary: {String(result.final.conversation.has_summary)}</div>
-                    <div><code>tags</code>: {JSON.stringify(result.final.conversation.tags)}</div>
+                ) : (
+                  <div className="text-muted-foreground italic">
+                    No conversation row was created — the call.ended handler probably rejected it (check the event results above).
                   </div>
-                </div>
+                )}
 
                 <div>
                   <div className="font-semibold mb-1">Memberships (most recent first)</div>
