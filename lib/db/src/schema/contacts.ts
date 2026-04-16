@@ -27,6 +27,16 @@ export const contactsTable = pgTable("contacts", {
   outreach_paused_until: timestamp("outreach_paused_until", { withTimezone: true }),
   cool_off_until: timestamp("cool_off_until", { withTimezone: true }),
 
+  // Closer-handoff routing.
+  //   NULL   — no handoff; contact is handled by outreach agents per normal tiers
+  //   'any'  — any user with role='closer' can pick up
+  //   <uuid> — specific user id (a closer) picks up
+  // Stamped at tag-application time (applyTaggedOutcomeTx) based on the
+  // tag_mapping entry's maps_to_closer + closer_agent_id fields. Closers
+  // can pick up their own id or 'any'; other roles can't pick up anything
+  // with this column set (unless no closers exist → fallback per config).
+  assigned_closer_id: text("assigned_closer_id"),
+
   // External system IDs (null until pushed)
   aircall_contact_id: integer("aircall_contact_id").unique(),
   pipedrive_person_id: integer("pipedrive_person_id").unique(),

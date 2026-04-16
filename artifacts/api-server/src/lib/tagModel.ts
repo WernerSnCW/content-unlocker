@@ -123,6 +123,25 @@ export interface TagMapping {
   // when side_effect === "cool_off"; ignored otherwise. Undefined/null = use
   // the global cool_off_days value from integration_configs.
   cool_off_days?: number | null;
+
+  // --- Closer routing ---
+  // When true, applying this tag stamps the contact with an assigned_closer_id
+  // so a closer picks up the contact on their next fillQueue (instead of cold
+  // agents). Outcome-agnostic: the admin chooses which tags trigger handoff.
+  maps_to_closer?: boolean;
+  // Optional: if set to a specific user_id (a closer), ONLY that closer can
+  // pick up. Null + maps_to_closer=true means "any closer" (stamped as 'any'
+  // on contacts.assigned_closer_id).
+  closer_agent_id?: string | null;
+
+  // --- Fallback follow-up date ---
+  // If set and the applied side_effect does NOT already schedule a callback
+  // (i.e. side_effect is not one of callback_1d/2d/3d/7d), the system sets
+  // contacts.callback_date = NOW() + default_followup_days days.
+  // Use case: "Cloudworkz" tag (interested) → default 1 day; "demo" tag
+  // (meeting-booked) → default 2 days, in case the agent didn't capture the
+  // real meeting date at tag-time.
+  default_followup_days?: number | null;
 }
 
 // Default mapping seeded when no config is present.

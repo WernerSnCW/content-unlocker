@@ -14,11 +14,16 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name"),
   picture: text("picture"),
-  // Role controls admin-only access (agent management, settings page, etc).
-  // Enforced server-side via the requireAdmin middleware. Default "agent" so
-  // newly-created rows have zero admin privilege — elevate explicitly via SQL
-  // or via an existing admin acting through the Admin UI.
-  role: text("role").notNull().default("agent"), // "agent" | "admin"
+  // Role ladder (ordered, lower inherits nothing, higher inherits lower):
+  //   "agent"  — initial outreach. Sees own call lists only. Cannot pick up
+  //              contacts marked for closer handoff (assigned_closer_id set).
+  //   "closer" — sales closer / follow-up specialist. Can pick up any
+  //              closer-assigned contact on top of regular outreach.
+  //   "admin"  — all of the above + system config (settings, agents, etc).
+  // Enforced server-side via the requireAdmin / requireCloser middlewares.
+  // Default "agent" so newly-created rows have zero elevated privilege —
+  // elevate explicitly via SQL or via an existing admin through the UI.
+  role: text("role").notNull().default("agent"), // "agent" | "closer" | "admin"
   // OAuth tokens — stored for future Calendar scope use.
   // refresh_token is only returned on first consent (access_type=offline, prompt=consent).
   refresh_token: text("refresh_token"),
