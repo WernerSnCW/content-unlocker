@@ -1,21 +1,56 @@
-import { db, contactsTable, callListConfigsTable, callListMembershipsTable, integrationConfigsTable } from "@workspace/db";
-import { eq, and, or, sql, isNull, lte, ne, inArray, notInArray } from "drizzle-orm";
+import { db, contactsTable, callListConfigsTable, callListMembershipsTable, integrationConfigsTable, agentsTable, usersTable } from "@workspace/db";
+import { eq, and, or, sql, isNull, isNotNull, lte, ne, inArray, notInArray } from "drizzle-orm";
 import { DEFAULT_MAX_CALL_ATTEMPTS } from "./tagModel";
+
+/**
+ * Resolve the role of the agent assigned to a call list. Drives closer-tier
+ * gating. Returns 'agent' when the agent isn't linked to a user yet — that's
+ * the safest default (no elevated access).
+ */
+async function resolveAgentRole(agentId: string | null): Promise<"agent" | "closer" | "admin"> {
+  if (!agentId) return "agent";
+  const [row] = await db
+    .select({ role: usersTable.role })
+    .from(agentsTable)
+    .leftJoin(usersTable, eq(usersTable.id, agentsTable.user_id))
+    .where(eq(agentsTable.id, agentId))
+    .limit(1);
+  const role = row?.role;
+  if (role === "admin") return "admin";
+  if (role === "closer") return "closer";
+  return "agent";
+}
+
+/**
+ * Does the org have at least one active user with role='closer'?
+ * Drives the fallback behaviour — when no closer exists, cold agents can
+ * still pick up closer-assigned contacts so leads don't rot.
+ */
+async function hasAnyCloser(): Promise<boolean> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(usersTable)
+    .where(eq(usersTable.role, "closer"));
+  return Number(row.count) > 0;
+}
 
 export interface QueueStatus {
   campaign_id: string;
   campaign_name: string;
   daily_quota: number;
+  conversions_due: number;          // NEW — closer-assigned contacts (closer/admin lists only)
   callbacks_due: number;
   interested_followups: number;
   retry_eligible: number;
   already_dispatched_today: number;
   fresh_needed: number;
   total_queued: number;
+  closer_role: "agent" | "closer" | "admin";  // NEW — surfaces the assigned agent's role
 }
 
 export interface DispatchResult {
   dispatched: number;
+  conversions: number;   // NEW
   callbacks: number;
   interested: number;
   retries: number;
@@ -40,8 +75,17 @@ async function getMaxCallAttempts(): Promise<number> {
  * Build the base eligibility conditions for a call list based on its filter criteria.
  * These conditions filter the contacts pool by source_list, exclude_outcomes, and cool-off.
  * Does NOT include membership/dispatch_status filtering — caller adds that.
+ *
+ * `excludeCloserAssigned` — when true, adds a filter to skip any contact
+ * whose assigned_closer_id is set. Used for cold-agent tiers when at least
+ * one closer exists in the org. Set false for the closer's own tier, or
+ * when no closer exists (fallback so cold agents still pick them up).
  */
-function buildEligibilityConditions(campaign: any, now: Date) {
+function buildEligibilityConditions(
+  campaign: any,
+  now: Date,
+  opts: { excludeCloserAssigned?: boolean } = {},
+) {
   const conditions: any[] = [
     or(isNull(contactsTable.cool_off_until), lte(contactsTable.cool_off_until, now)),
   ];
@@ -59,6 +103,10 @@ function buildEligibilityConditions(campaign: any, now: Date) {
         notInArray(contactsTable.last_call_outcome, excludeOutcomes),
       )!
     );
+  }
+
+  if (opts.excludeCloserAssigned) {
+    conditions.push(isNull(contactsTable.assigned_closer_id));
   }
 
   return conditions;
@@ -84,7 +132,29 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
     WHERE ${callListMembershipsTable.removed_at} IS NULL
   )`;
 
-  const baseEligibility = buildEligibilityConditions(campaign, now);
+  // Role + closer-existence gates the closer handoff tier and the
+  // cold-agent "exclude closer-assigned" filter.
+  const role = await resolveAgentRole(campaign.assigned_agent_id);
+  const isCloserCapable = role === "closer" || role === "admin";
+  const closersExist = await hasAnyCloser();
+  // Cold-agent lists should exclude closer-assigned contacts ONLY when
+  // closers exist. If no closer exists, fallback: cold agents see them.
+  const excludeCloserAssigned = !isCloserCapable && closersExist;
+
+  // Resolve the closer's user_id — needed for "specific closer" matches.
+  // For agents (not closer/admin), we never run the closer tier, so this
+  // can be null.
+  let agentUserId: string | null = null;
+  if (isCloserCapable && campaign.assigned_agent_id) {
+    const [r] = await db
+      .select({ user_id: agentsTable.user_id })
+      .from(agentsTable)
+      .where(eq(agentsTable.id, campaign.assigned_agent_id))
+      .limit(1);
+    agentUserId = r?.user_id ?? null;
+  }
+
+  const baseEligibility = buildEligibilityConditions(campaign, now, { excludeCloserAssigned });
   const maxAttempts = await getMaxCallAttempts();
 
   // Universal "not due yet" filter used by interested/retry buckets:
@@ -93,6 +163,32 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
     isNull(contactsTable.callback_date),
     lte(contactsTable.callback_date, now),
   );
+
+  // 0. Conversions (closer handoff) — only for closer/admin-assigned lists.
+  //    Contacts with assigned_closer_id = 'any' OR = this agent's user_id,
+  //    respecting cool_off + due filter. Not gated by last_call_outcome —
+  //    the tag's maps_to_closer decided, which is already stamped on the row.
+  let conversionsDue = 0;
+  if (isCloserCapable) {
+    // For closer tier, we do NOT apply the excludeCloserAssigned filter —
+    // it's the opposite (we WANT closer-assigned contacts here).
+    const closerBase = buildEligibilityConditions(campaign, now, { excludeCloserAssigned: false });
+    const closerFilter = agentUserId
+      ? or(
+          eq(contactsTable.assigned_closer_id, "any"),
+          eq(contactsTable.assigned_closer_id, agentUserId),
+        )!
+      : eq(contactsTable.assigned_closer_id, "any");
+    const [convRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        isNotNull(contactsTable.assigned_closer_id),
+        closerFilter,
+        dueFilter,
+        ...closerBase,
+      ));
+    conversionsDue = Number(convRow.count);
+  }
 
   // 1. Callbacks due today (eligible, outcome=callback-requested, callback_date <= now)
   const [cbRow] = await db.select({ count: sql<number>`count(*)` }).from(contactsTable)
@@ -144,19 +240,21 @@ export async function getQueueStatus(campaignId: string): Promise<QueueStatus> {
   const retries = Number(retryRow.count);
   const dispatchedToday = Number(dispatchedRow.count);
 
-  const committed = callbacks + interested + retries + dispatchedToday;
+  const committed = conversionsDue + callbacks + interested + retries + dispatchedToday;
   const freshNeeded = Math.max(0, campaign.daily_quota - committed);
 
   return {
     campaign_id: campaign.id,
     campaign_name: campaign.name,
     daily_quota: campaign.daily_quota,
+    conversions_due: conversionsDue,
     callbacks_due: callbacks,
     interested_followups: interested,
     retry_eligible: retries,
     already_dispatched_today: dispatchedToday,
     fresh_needed: freshNeeded,
     total_queued: committed,
+    closer_role: role,
   };
 }
 
@@ -205,39 +303,89 @@ export async function fillQueue(
 
   const status = await getQueueStatus(campaignId);
   const toFill = count ?? status.fresh_needed;
-  if (toFill <= 0) return { dispatched: 0, callbacks: 0, interested: 0, retries: 0, fresh: 0, errors: 0 };
+  if (toFill <= 0) return { dispatched: 0, conversions: 0, callbacks: 0, interested: 0, retries: 0, fresh: 0, errors: 0 };
 
   const now = new Date();
-  const result: DispatchResult = { dispatched: 0, callbacks: 0, interested: 0, retries: 0, fresh: 0, errors: 0 };
+  const result: DispatchResult = { dispatched: 0, conversions: 0, callbacks: 0, interested: 0, retries: 0, fresh: 0, errors: 0 };
 
   const unassignedSubq = sql`${contactsTable.id} NOT IN (
     SELECT ${callListMembershipsTable.contact_id} FROM ${callListMembershipsTable}
     WHERE ${callListMembershipsTable.removed_at} IS NULL
   )`;
-  const baseEligibility = buildEligibilityConditions(campaign, now);
+
+  // Role / closer gating — mirror of getQueueStatus so fillQueue behaves
+  // consistently with the preview.
+  const role = await resolveAgentRole(campaign.assigned_agent_id);
+  const isCloserCapable = role === "closer" || role === "admin";
+  const closersExist = await hasAnyCloser();
+  const excludeCloserAssigned = !isCloserCapable && closersExist;
+
+  let agentUserId: string | null = null;
+  if (isCloserCapable && campaign.assigned_agent_id) {
+    const [r] = await db
+      .select({ user_id: agentsTable.user_id })
+      .from(agentsTable)
+      .where(eq(agentsTable.id, campaign.assigned_agent_id))
+      .limit(1);
+    agentUserId = r?.user_id ?? null;
+  }
+
+  const baseEligibility = buildEligibilityConditions(campaign, now, { excludeCloserAssigned });
   const maxAttempts = await getMaxCallAttempts();
   const dueFilter = or(
     isNull(contactsTable.callback_date),
     lte(contactsTable.callback_date, now),
   );
 
-  // 1. Callbacks
-  const callbacks = await db.select().from(contactsTable)
-    .where(and(
-      unassignedSubq,
-      eq(contactsTable.last_call_outcome, "callback-requested"),
-      lte(contactsTable.callback_date, now),
-      ...baseEligibility,
-    ))
-    .limit(toFill);
+  // 0. Conversions (closer handoff tier) — only for closer/admin-assigned lists.
+  if (isCloserCapable) {
+    const closerBase = buildEligibilityConditions(campaign, now, { excludeCloserAssigned: false });
+    const closerFilter = agentUserId
+      ? or(
+          eq(contactsTable.assigned_closer_id, "any"),
+          eq(contactsTable.assigned_closer_id, agentUserId),
+        )!
+      : eq(contactsTable.assigned_closer_id, "any");
+    const conversions = await db.select().from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        isNotNull(contactsTable.assigned_closer_id),
+        closerFilter,
+        dueFilter,
+        ...closerBase,
+      ))
+      .limit(toFill);
 
-  for (const cb of callbacks) {
-    if (result.dispatched >= toFill) break;
-    if (await dispatchContact(cb.id, campaignId, now)) {
-      result.callbacks++;
-      result.dispatched++;
-    } else {
-      result.errors++;
+    for (const c of conversions) {
+      if (result.dispatched >= toFill) break;
+      if (await dispatchContact(c.id, campaignId, now)) {
+        result.conversions++;
+        result.dispatched++;
+      } else {
+        result.errors++;
+      }
+    }
+  }
+
+  // 1. Callbacks — only if slots remain after conversions tier
+  if (result.dispatched < toFill) {
+    const callbacks = await db.select().from(contactsTable)
+      .where(and(
+        unassignedSubq,
+        eq(contactsTable.last_call_outcome, "callback-requested"),
+        lte(contactsTable.callback_date, now),
+        ...baseEligibility,
+      ))
+      .limit(toFill - result.dispatched);
+
+    for (const cb of callbacks) {
+      if (result.dispatched >= toFill) break;
+      if (await dispatchContact(cb.id, campaignId, now)) {
+        result.callbacks++;
+        result.dispatched++;
+      } else {
+        result.errors++;
+      }
     }
   }
 
@@ -403,10 +551,15 @@ export async function getCallList(campaignId: string): Promise<any[]> {
       sql`${contactsTable.dispatch_date}::date = ${today.toISOString().split("T")[0]}::date`,
     ))
     .orderBy(
-      // Priority tiers:
-      //   1 callbacks, 2 interested, 3 retries, 4 fresh,
+      // Priority tiers (lower is higher priority):
+      //   0 conversions — closer-handoff tagged, closer/admin list
+      //   1 callbacks
+      //   2 interested
+      //   3 retries (no-answer / hung-up under max)
+      //   4 fresh
       //   5 immediate_recall (carried_from_id set, retry-eligible outcome)
       sql`CASE
+        WHEN ${contactsTable.assigned_closer_id} IS NOT NULL THEN 0
         WHEN ${callListMembershipsTable.carried_from_id} IS NOT NULL
              AND ${contactsTable.last_call_outcome} IN ('no-answer', 'hung-up')
           THEN 5
@@ -422,7 +575,8 @@ export async function getCallList(campaignId: string): Promise<any[]> {
     const c = r.contact;
     const isRecall = r.membershipCarriedFrom != null
       && (c.last_call_outcome === "no-answer" || c.last_call_outcome === "hung-up");
-    const priority = isRecall ? "recall"
+    const priority = c.assigned_closer_id != null ? "conversion"
+      : isRecall ? "recall"
       : c.last_call_outcome === "callback-requested" ? "callback"
       : c.last_call_outcome === "interested" ? "follow-up"
       : (c.last_call_outcome === "no-answer" || c.last_call_outcome === "hung-up") ? "retry"
@@ -438,6 +592,7 @@ export async function getCallList(campaignId: string): Promise<any[]> {
       last_call_outcome: c.last_call_outcome,
       callback_date: c.callback_date,
       dispatch_status: c.dispatch_status,
+      assigned_closer_id: c.assigned_closer_id,
       priority,
     };
   });

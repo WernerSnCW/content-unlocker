@@ -216,6 +216,34 @@ export async function applyTaggedOutcomeTx(
       break;
   }
 
+  // 2b. Closer handoff routing — stamp assigned_closer_id based on the
+  // tag mapping's configuration. NULL clears any previous handoff assignment;
+  // 'any' means any closer can pick up; a specific user id routes to that
+  // closer only. Read at fillQueue time by the closer/agent role gating.
+  if (mapping.maps_to_closer) {
+    contactUpdates.assigned_closer_id = mapping.closer_agent_id ?? "any";
+  } else {
+    // Explicit clear — if a previously closer-assigned contact is re-tagged
+    // with a non-handoff tag (e.g. "No Answer"), release them back to cold
+    // outreach.
+    contactUpdates.assigned_closer_id = null;
+  }
+
+  // 2c. Fallback follow-up date — only apply if:
+  //   - the tag mapping specifies default_followup_days
+  //   - the side_effect didn't already set a callback_date (i.e. NOT one of
+  //     callback_1d/2d/3d/7d which explicitly schedule)
+  //   - the value is a positive integer
+  // Useful for "demo" tag (2-day fallback if the agent didn't capture a
+  // specific meeting date) or "Cloudworkz" interested (1-day fallback).
+  const defaultDays = typeof mapping.default_followup_days === "number"
+    ? Math.floor(mapping.default_followup_days) : null;
+  if (defaultDays && defaultDays > 0 && !contactUpdates.callback_date) {
+    const fallback = new Date(now);
+    fallback.setDate(fallback.getDate() + defaultDays);
+    contactUpdates.callback_date = fallback;
+  }
+
   // 3. Apply contact updates atomically.
   await tx.update(contactsTable)
     .set(contactUpdates)
