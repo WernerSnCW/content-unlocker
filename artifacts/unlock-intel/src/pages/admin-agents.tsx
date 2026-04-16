@@ -194,7 +194,7 @@ export default function AdminAgentsPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-5xl mx-auto">
+    <div className="space-y-5 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Agents</h1>

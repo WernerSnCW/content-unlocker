@@ -339,7 +339,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Integration Settings</h1>
         <p className="text-muted-foreground mt-1">Configure external service connections and agent mappings.</p>
@@ -529,6 +529,7 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -680,6 +681,17 @@ export default function Settings() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                <strong>Closer column:</strong> only shows users with the
+                <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[10px]">Closer</code>
+                or
+                <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[10px]">Admin</code>
+                role ({closerOptions.length} available).
+                To add someone here, promote them in
+                <a href="/admin/agents" className="underline mx-1">Admin → Agents</a>
+                by editing their record and setting Role to Closer.
+              </p>
               <div className="flex items-center gap-2 mt-3">
                 <Button variant="outline" size="sm" onClick={() => setTagMappings(prev => [...prev, { aircall_tag: "", outcome: "no-answer", side_effect: "cool_off" }])}>
                   <Plus className="w-4 h-4 mr-1" /> Add Mapping
