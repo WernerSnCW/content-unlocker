@@ -151,6 +151,12 @@ export async function applyTaggedOutcomeTx(
     last_call_outcome: outcome,
     call_attempts: sql`${contactsTable.call_attempts} + 1`,
     dispatch_status: "called", // default; specific side-effects may override below
+    // Reset scheduling fields to NULL at the start of every tag application.
+    // Fresh state each call: the side_effect (callback_Nd / cool_off) or
+    // default_followup_days below may set them again. Without this reset,
+    // stale values from a previous tag linger and block re-dispatch.
+    callback_date: null,
+    cool_off_until: null,
   };
 
   // 1. Close the contact's currently-active membership (if any) — this is
