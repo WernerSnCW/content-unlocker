@@ -12,7 +12,8 @@ import {
   ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
   ListPlus, TrendingUp, Headphones, ExternalLink, Settings,
   Building2, Mail, MailWarning,
-  Loader2, RefreshCw
+  Loader2, RefreshCw,
+  Zap, Send
 } from "lucide-react";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 import OutcomeDrawer from "@/components/OutcomeDrawer";
@@ -254,6 +255,53 @@ export default function CallCommand() {
         id: contact.id,
         name: `${contact.first_name} ${contact.last_name}`.trim(),
       };
+    }
+  };
+
+  // Power Dialer — push the current call list to the agent's Aircall PD queue.
+  // Only relevant when currentUser.agent.dialer_mode === "power_dialer".
+  const [pdPushing, setPdPushing] = useState(false);
+  const [pdLastResult, setPdLastResult] = useState<null | {
+    pushed: number;
+    cleared: number;
+    at: Date;
+    errorMessage?: string;
+  }>(null);
+
+  const handlePushToPowerDialer = async () => {
+    if (!activeCallListDef) return;
+    setPdPushing(true);
+    setPdLastResult(null);
+    try {
+      const res = await apiPost(
+        `${API_BASE}/call-lists/${activeCallListDef.id}/send-to-power-dialer`,
+        {},
+        { redirectOn401: false },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPdLastResult({
+          pushed: 0,
+          cleared: 0,
+          at: new Date(),
+          errorMessage: body.message || body.error || `HTTP ${res.status}`,
+        });
+        return;
+      }
+      setPdLastResult({
+        pushed: body.pushed || 0,
+        cleared: body.cleared || 0,
+        at: new Date(),
+      });
+    } catch (err: any) {
+      setPdLastResult({
+        pushed: 0,
+        cleared: 0,
+        at: new Date(),
+        errorMessage: err?.message || "Request failed",
+      });
+    } finally {
+      setPdPushing(false);
     }
   };
   // Agent identity comes from the authenticated session — no more picker,
@@ -612,7 +660,18 @@ export default function CallCommand() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Good {greeting}, {agentName}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">Good {greeting}, {agentName}</h1>
+            {currentUser?.agent.dialer_mode === "power_dialer" ? (
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/30 gap-1">
+                <Zap className="w-3 h-3" /> Power Dialer
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1">
+                <Phone className="w-3 h-3" /> Manual
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">{today}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -900,7 +959,36 @@ export default function CallCommand() {
 
                 {/* SECTION 2: Call Action Bar */}
                 <div className="px-5 pb-4">
-                  {callStatus === "on_call" ? (
+                  {currentUser?.agent.dialer_mode === "power_dialer" ? (
+                    /* POWER DIALER MODE — push queue instead of single dial */
+                    <div className="space-y-2">
+                      <Button
+                        className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold shadow-lg shadow-blue-500/20"
+                        onClick={handlePushToPowerDialer}
+                        disabled={pdPushing || callList.length === 0}
+                      >
+                        {pdPushing ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
+                        Send queue to Power Dialer ({callList.length})
+                      </Button>
+                      <p className="text-[11px] text-muted-foreground text-center">
+                        After pushing, open your Aircall Workspace and click <strong>Start session</strong>.
+                      </p>
+                      {pdLastResult && (
+                        <div className={`text-xs rounded border px-3 py-2 ${pdLastResult.errorMessage
+                          ? "border-destructive/60 bg-destructive/5 text-destructive"
+                          : "border-green-500/40 bg-green-500/5 text-green-700 dark:text-green-400"
+                        }`}>
+                          {pdLastResult.errorMessage ? (
+                            <>Push failed: {pdLastResult.errorMessage}</>
+                          ) : (
+                            <>Pushed {pdLastResult.pushed} numbers to Aircall
+                              {pdLastResult.cleared > 0 ? ` (cleared ${pdLastResult.cleared} previous)` : ""}
+                              {" · "}{pdLastResult.at.toLocaleTimeString()}</>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : callStatus === "on_call" ? (
                     <div className="w-full h-12 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center gap-2 text-primary font-semibold">
                       <span className="relative flex h-2.5 w-2.5">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />

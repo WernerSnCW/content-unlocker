@@ -14,6 +14,7 @@ export interface CurrentUser {
     name: string;
     email: string | null;
     aircall_user_id: number | null;
+    dialer_mode: "manual" | "power_dialer";
     active: boolean;
   };
 }

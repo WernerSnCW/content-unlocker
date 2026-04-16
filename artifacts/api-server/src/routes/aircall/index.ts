@@ -525,6 +525,42 @@ export async function handleCallTagged(data: any): Promise<string | null> {
 
   notifyQueueChanged({ event: "call.tagged", contactId, callId: String(callId) });
 
+  // Power Dialer parity with the in-app queue.
+  // When side_effect = immediate_recall, the tx above creates a fresh
+  // membership so the contact re-appears at the bottom of our in-app call
+  // list. The equivalent in Power Dialer mode is to append the contact's
+  // phone number to the agent's Aircall PD queue so the agent reaches them
+  // again at the end of the session.
+  //
+  // Only fires when the call's agent is in dialer_mode = "power_dialer".
+  // Failure here does NOT roll back the DB tx — app state is correct,
+  // Aircall queue may just drift (operator can re-send to PD).
+  if (resolution!.sideEffect === "immediate_recall" && !String(callId).startsWith("sim-")) {
+    try {
+      const [contact] = await db.select().from(contactsTable).where(eq(contactsTable.id, contactId!));
+      const [convUpdated] = await db.select().from(leadConversationsTable)
+        .where(eq(leadConversationsTable.external_id, String(callId)))
+        .limit(1);
+      const agentName = convUpdated?.agent_name;
+      const [agentRow] = agentName
+        ? await db.select().from(agentsTable).where(eq(agentsTable.name, agentName)).limit(1)
+        : [null as any];
+      if (agentRow?.dialer_mode === "power_dialer" && agentRow.aircall_user_id && contact?.phone) {
+        const { pushNumbers } = await import("../../lib/aircallPowerDialer");
+        const push = await pushNumbers(agentRow.aircall_user_id, [contact.phone]);
+        logWebhook(
+          "aircall.power_dialer_requeue",
+          push.pushed > 0 ? "processed" : `failed: ${push.failedBatches.map(b => b.body).join(";")}`,
+          contactId,
+          { phone: contact.phone, aircall_user_id: agentRow.aircall_user_id, pushed: push.pushed },
+        );
+      }
+    } catch (err: any) {
+      console.warn(`[Aircall Webhook] PD requeue failed for contact ${contactId}:`, err.message);
+      logWebhook("aircall.power_dialer_requeue", `error: ${err.message}`, contactId, {});
+    }
+  }
+
   return `tagged → ${resolution!.outcome} (${resolution!.sideEffect})`;
 }
 

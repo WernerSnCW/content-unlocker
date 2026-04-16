@@ -3,6 +3,8 @@ import { db, callListConfigsTable, contactsTable, agentsTable, callListMembershi
 import { eq, and, or, desc, sql, isNull } from "drizzle-orm";
 import { getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts } from "../../lib/dispatchService";
 import { requireAuth } from "../../middlewares/requireAuth";
+import { syncQueue as syncPowerDialerQueue } from "../../lib/aircallPowerDialer";
+import { logger } from "../../lib/logger";
 
 const router: IRouter = Router();
 
@@ -132,6 +134,117 @@ router.get("/call-lists/:id/call-list", async (req, res): Promise<void> => {
   } catch (err: any) {
     res.status(err.message === "Campaign not found" ? 404 : 500)
       .json({ error: err.message });
+  }
+});
+
+// POST /call-lists/:id/send-to-power-dialer — push the call list's current
+// prioritised contacts to the agent's Aircall Power Dialer queue.
+//
+// The agent's aircall_user_id identifies which Aircall user's queue to push
+// to. The list is fetched via the same getCallList() helper that Call
+// Command uses, so what gets pushed is exactly what the agent sees in-app.
+//
+// Safety:
+// - Caller must be the owner-agent (agent_id == assigned_agent_id) OR have
+//   user.role === "admin".
+// - Agent must be in dialer_mode === "power_dialer".
+// - Agent must have aircall_user_id populated.
+// - Requires Aircall integration credentials (api_id + api_token) saved in
+//   integration_configs; the syncQueue helper surfaces the Aircall REST
+//   errors (403 if plan doesn't support Power Dialer, etc).
+router.post("/call-lists/:id/send-to-power-dialer", async (req, res): Promise<void> => {
+  try {
+    const authedAgent = req.auth!.agent;
+    const authedUser = req.auth!.user;
+    const [callList] = await db
+      .select()
+      .from(callListConfigsTable)
+      .where(eq(callListConfigsTable.id, req.params.id));
+    if (!callList) {
+      res.status(404).json({ error: "call_list_not_found" });
+      return;
+    }
+
+    // Permission — owner or admin.
+    if (callList.assigned_agent_id !== authedAgent.id && authedUser.role !== "admin") {
+      res.status(403).json({ error: "not_owner_of_list" });
+      return;
+    }
+
+    // Resolve which agent owns this list — their Aircall user is the target.
+    // Fall back to the authed agent if the list is unassigned AND they're
+    // an admin pushing it to themselves.
+    let targetAgentId = callList.assigned_agent_id;
+    if (!targetAgentId) {
+      if (authedUser.role !== "admin") {
+        res.status(400).json({ error: "call_list_unassigned" });
+        return;
+      }
+      targetAgentId = authedAgent.id;
+    }
+    const [targetAgent] = await db.select().from(agentsTable).where(eq(agentsTable.id, targetAgentId));
+    if (!targetAgent) {
+      res.status(404).json({ error: "target_agent_not_found" });
+      return;
+    }
+    if (targetAgent.dialer_mode !== "power_dialer") {
+      res.status(400).json({
+        error: "agent_not_in_power_dialer_mode",
+        message: `Agent "${targetAgent.name}" is in dialer_mode "${targetAgent.dialer_mode}". Switch them to power_dialer in Admin → Agents first.`,
+      });
+      return;
+    }
+    if (targetAgent.aircall_user_id == null) {
+      res.status(400).json({
+        error: "agent_missing_aircall_user_id",
+        message: `Agent "${targetAgent.name}" has no aircall_user_id. Can't identify which Aircall user to push the queue to.`,
+      });
+      return;
+    }
+
+    // Fetch the prioritised call list (same shape Call Command receives).
+    const contacts = await getCallList(callList.id);
+    const phoneNumbers: string[] = contacts
+      .map((c: any) => (c.phone || "").trim())
+      .filter((p: string) => p.length > 0);
+
+    if (phoneNumbers.length === 0) {
+      res.json({
+        ok: true,
+        pushed: 0,
+        cleared: 0,
+        contacts_total: contacts.length,
+        phones_valid: 0,
+        message: "No valid phone numbers to push — nothing sent to Aircall.",
+      });
+      return;
+    }
+
+    // Clear + push in one shot.
+    const result = await syncPowerDialerQueue(targetAgent.aircall_user_id, phoneNumbers);
+
+    logger.info({
+      callListId: callList.id,
+      targetAgentId: targetAgent.id,
+      aircallUserId: targetAgent.aircall_user_id,
+      pushed: result.pushed,
+      cleared: result.cleared,
+    }, "Power Dialer queue synced");
+
+    res.json({
+      ok: true,
+      pushed: result.pushed,
+      cleared: result.cleared,
+      contacts_total: contacts.length,
+      phones_valid: phoneNumbers.length,
+      errors: {
+        clear: result.clearErrors,
+        push: result.failedBatches,
+      },
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "send-to-power-dialer failed");
+    res.status(500).json({ error: "push_failed", message: err.message });
   }
 });
 

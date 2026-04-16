@@ -30,6 +30,7 @@ router.get("/admin/agents", async (_req, res) => {
         name: agentsTable.name,
         email: agentsTable.email,
         aircall_user_id: agentsTable.aircall_user_id,
+        dialer_mode: agentsTable.dialer_mode,
         active: agentsTable.active,
         user_id: agentsTable.user_id,
         created_at: agentsTable.created_at,
@@ -106,6 +107,7 @@ router.patch("/admin/agents/:id", async (req, res) => {
     name: string;
     aircall_user_id: number | null;
     active: boolean;
+    dialer_mode: "manual" | "power_dialer";
   }> = {};
 
   if (typeof req.body?.name === "string") {
@@ -131,6 +133,14 @@ router.patch("/admin/agents/:id", async (req, res) => {
   }
   if (typeof req.body?.active === "boolean") {
     updates.active = req.body.active;
+  }
+  if (typeof req.body?.dialer_mode === "string") {
+    const m = req.body.dialer_mode.trim();
+    if (m !== "manual" && m !== "power_dialer") {
+      res.status(400).json({ error: "dialer_mode_invalid", message: "must be 'manual' or 'power_dialer'" });
+      return;
+    }
+    updates.dialer_mode = m;
   }
 
   if (Object.keys(updates).length === 0) {

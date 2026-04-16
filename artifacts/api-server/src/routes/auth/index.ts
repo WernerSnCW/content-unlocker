@@ -355,6 +355,7 @@ router.get("/auth/me", requireAuth, (req, res) => {
       name: agent.name,
       email: agent.email,
       aircall_user_id: agent.aircall_user_id,
+      dialer_mode: agent.dialer_mode,
       active: agent.active,
     },
   });

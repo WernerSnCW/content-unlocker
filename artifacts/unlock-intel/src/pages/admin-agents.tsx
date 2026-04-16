@@ -14,6 +14,7 @@ interface AdminAgent {
   name: string;
   email: string | null;
   aircall_user_id: number | null;
+  dialer_mode: "manual" | "power_dialer";
   active: boolean;
   user_id: string | null;
   user_email: string | null;
@@ -44,6 +45,7 @@ export default function AdminAgentsPage() {
   const [fEmail, setFEmail] = useState("");
   const [fAircall, setFAircall] = useState<string>("");
   const [fActive, setFActive] = useState(true);
+  const [fDialerMode, setFDialerMode] = useState<"manual" | "power_dialer">("manual");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -87,6 +89,7 @@ export default function AdminAgentsPage() {
     setFEmail("");
     setFAircall("");
     setFActive(true);
+    setFDialerMode("manual");
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -97,6 +100,7 @@ export default function AdminAgentsPage() {
     setFEmail(a.email || "");
     setFAircall(a.aircall_user_id ? String(a.aircall_user_id) : "");
     setFActive(a.active);
+    setFDialerMode(a.dialer_mode || "manual");
     setSubmitError(null);
     setDialogOpen(true);
   };
@@ -111,6 +115,7 @@ export default function AdminAgentsPage() {
         name: fName.trim(),
         aircall_user_id: aircallValue,
         active: fActive,
+        dialer_mode: fDialerMode,
       };
       if (!editing) payload.email = fEmail.trim().toLowerCase();
 
@@ -191,6 +196,7 @@ export default function AdminAgentsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Aircall user</TableHead>
+                  <TableHead>Dialer</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Last login</TableHead>
                   <TableHead>Status</TableHead>
@@ -213,6 +219,15 @@ export default function AdminAgentsPage() {
                           </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {a.dialer_mode === "power_dialer" ? (
+                          <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/30 text-[10px]">
+                            Power Dialer
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">Manual</Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -310,6 +325,23 @@ export default function AdminAgentsPage() {
               )}
               <p className="text-xs text-muted-foreground">
                 Used to attribute calls and drive the mismatch warning. Optional — can be set later.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Dialer mode</label>
+              <Select value={fDialerMode} onValueChange={(v: any) => setFDialerMode(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual — one-at-a-time via the app's dial button</SelectItem>
+                  <SelectItem value="power_dialer">Power Dialer — batch push to Aircall queue</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Power Dialer requires an Aircall Professional plan. The agent must manually click
+                "Start session" in the Aircall Workspace after a queue is pushed.
               </p>
             </div>
 
