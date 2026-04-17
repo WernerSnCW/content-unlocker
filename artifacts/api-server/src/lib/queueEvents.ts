@@ -10,6 +10,7 @@ import type { Response } from "express";
 export interface QueueEvent {
   event: string;             // "call.ended" | "call.tagged" | "untagged-sweep" | "ping"
   contactId?: string;
+  contactName?: string;      // populated on call.tagged so the frontend can add a tray entry for out-of-band taggings (Power Dialer, simulator, etc.) where handleCallEnded didn't run
   callId?: string;
   at?: string;               // ISO timestamp
 }

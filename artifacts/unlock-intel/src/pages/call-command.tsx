@@ -192,13 +192,34 @@ export default function CallCommand() {
       loadAll();
       try {
         const payload = JSON.parse(ev.data);
-        if (payload?.contactId) {
-          setPendingOutcomes(prev => prev.map(p =>
-            p.contactId === payload.contactId && p.status === "awaiting_tag"
-              ? { ...p, status: "ready" as const }
-              : p
-          ));
-        }
+        if (!payload?.contactId) return;
+        setPendingOutcomes(prev => {
+          const existing = prev.find(p => p.contactId === payload.contactId);
+          if (existing) {
+            // Normal dial flow — flip awaiting_tag → ready
+            return prev.map(p =>
+              p.contactId === payload.contactId && p.status === "awaiting_tag"
+                ? { ...p, status: "ready" as const }
+                : p
+            );
+          }
+          // Out-of-band tagging (Power Dialer session, Simulator, back-office
+          // re-tag) — insert a new ready entry so the operator can still open
+          // the drawer for it. contactName comes from the SSE payload; falls
+          // back to a placeholder if absent.
+          return [
+            ...prev,
+            {
+              contactId: payload.contactId,
+              contactName: payload.contactName || "Contact",
+              status: "ready" as const,
+              startedAt: Date.now(),
+            },
+          ];
+        });
+        // Auto-open the tray (collapsed pill) so operator notices the new
+        // out-of-band entry. Same UX as when handleCallEnded fires.
+        setTrayExpanded(true);
       } catch { /* ignore */ }
     };
     es.addEventListener("call.ended", onChange);

@@ -557,7 +557,17 @@ export async function handleCallTagged(data: any): Promise<string | null> {
     await applyTaggedOutcomeTx(tx, contactId!, String(callId), tagName, resolution!, coolOffDaysGlobal);
   });
 
-  notifyQueueChanged({ event: "call.tagged", contactId, callId: String(callId) });
+  // Fetch name so the SSE payload carries enough for the frontend to add a
+  // tray entry when handleCallEnded never ran (Power Dialer, Simulator,
+  // any out-of-band path).
+  let contactName: string | undefined;
+  try {
+    const [c] = await db.select({ first_name: contactsTable.first_name, last_name: contactsTable.last_name })
+      .from(contactsTable).where(eq(contactsTable.id, contactId!)).limit(1);
+    if (c) contactName = `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || undefined;
+  } catch { /* non-fatal */ }
+
+  notifyQueueChanged({ event: "call.tagged", contactId, contactName, callId: String(callId) });
 
   // Power Dialer parity with the in-app queue.
   // When side_effect = immediate_recall, the tx above creates a fresh
