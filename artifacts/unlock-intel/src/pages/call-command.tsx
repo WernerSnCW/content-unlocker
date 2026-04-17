@@ -283,8 +283,13 @@ export default function CallCommand() {
   const [pdLastResult, setPdLastResult] = useState<null | {
     pushed: number;
     cleared: number;
+    phonesValid: number;
     at: Date;
     errorMessage?: string;
+    // When Aircall's REST rejects a batch the server responds 200 with
+    // pushed=0 and errors.push populated — we surface that here so the
+    // operator actually sees what Aircall said.
+    aircallErrors?: Array<{ status: number; body: string }>;
   }>(null);
 
   const handlePushToPowerDialer = async () => {
@@ -302,20 +307,28 @@ export default function CallCommand() {
         setPdLastResult({
           pushed: 0,
           cleared: 0,
+          phonesValid: 0,
           at: new Date(),
           errorMessage: body.message || body.error || `HTTP ${res.status}`,
         });
         return;
       }
+      const pushErrors: Array<{ status: number; body: string }> =
+        Array.isArray(body?.errors?.push)
+          ? body.errors.push.map((e: any) => ({ status: e.status, body: e.body }))
+          : [];
       setPdLastResult({
         pushed: body.pushed || 0,
         cleared: body.cleared || 0,
+        phonesValid: body.phones_valid || 0,
         at: new Date(),
+        aircallErrors: pushErrors.length > 0 ? pushErrors : undefined,
       });
     } catch (err: any) {
       setPdLastResult({
         pushed: 0,
         cleared: 0,
+        phonesValid: 0,
         at: new Date(),
         errorMessage: err?.message || "Request failed",
       });
@@ -1186,22 +1199,52 @@ export default function CallCommand() {
                         Send queue to Power Dialer ({callList.length})
                       </Button>
                       <p className="text-[11px] text-muted-foreground text-center">
-                        After pushing, open your Aircall Workspace and click <strong>Start session</strong>.
+                        After pushing, click <strong>Start session</strong> in the Aircall widget on this page — no need to leave Call Command.
                       </p>
-                      {pdLastResult && (
-                        <div className={`text-xs rounded border px-3 py-2 ${pdLastResult.errorMessage
-                          ? "border-destructive/60 bg-destructive/5 text-destructive"
-                          : "border-green-500/40 bg-green-500/5 text-green-700 dark:text-green-400"
-                        }`}>
-                          {pdLastResult.errorMessage ? (
-                            <>Push failed: {pdLastResult.errorMessage}</>
-                          ) : (
-                            <>Pushed {pdLastResult.pushed} numbers to Aircall
-                              {pdLastResult.cleared > 0 ? ` (cleared ${pdLastResult.cleared} previous)` : ""}
-                              {" · "}{pdLastResult.at.toLocaleTimeString()}</>
-                          )}
-                        </div>
-                      )}
+                      {pdLastResult && (() => {
+                        // Three display states:
+                        //  1. Transport/server error (errorMessage set) — red
+                        //  2. Aircall rejected the batch (pushed=0 & phonesValid>0) — red, surface
+                        //     the Aircall response so the operator knows what to fix
+                        //     (403 = plan/permissions, 422 = bad phone format, etc.)
+                        //  3. Success — green
+                        const isTransportErr = !!pdLastResult.errorMessage;
+                        const aircallRejected =
+                          !isTransportErr &&
+                          pdLastResult.pushed === 0 &&
+                          pdLastResult.phonesValid > 0;
+                        const bad = isTransportErr || aircallRejected;
+                        return (
+                          <div className={`text-xs rounded border px-3 py-2 ${bad
+                            ? "border-destructive/60 bg-destructive/5 text-destructive"
+                            : "border-green-500/40 bg-green-500/5 text-green-700 dark:text-green-400"
+                          }`}>
+                            {isTransportErr ? (
+                              <>Push failed: {pdLastResult.errorMessage}</>
+                            ) : aircallRejected ? (
+                              <div className="space-y-1">
+                                <div>
+                                  Aircall rejected the push ({pdLastResult.phonesValid} number{pdLastResult.phonesValid !== 1 ? "s" : ""} sent, 0 accepted).
+                                </div>
+                                {pdLastResult.aircallErrors && pdLastResult.aircallErrors.length > 0 && (
+                                  <div className="font-mono text-[10px] opacity-80 break-all">
+                                    {pdLastResult.aircallErrors.slice(0, 2).map((e, i) => (
+                                      <div key={i}>HTTP {e.status}: {e.body || "(no body)"}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="opacity-80">
+                                  Common causes: Aircall plan doesn't include Power Dialer (403), phone number format rejected (422), or the Aircall user isn't in a team with PD enabled.
+                                </div>
+                              </div>
+                            ) : (
+                              <>Pushed {pdLastResult.pushed} number{pdLastResult.pushed !== 1 ? "s" : ""} to Aircall
+                                {pdLastResult.cleared > 0 ? ` (cleared ${pdLastResult.cleared} previous)` : ""}
+                                {" · "}{pdLastResult.at.toLocaleTimeString()}</>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : callStatus === "on_call" ? (
                     <div className="w-full h-12 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center gap-2 text-primary font-semibold">
