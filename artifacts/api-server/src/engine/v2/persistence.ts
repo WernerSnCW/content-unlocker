@@ -87,6 +87,22 @@ export interface SaveEngineRunArgs {
   conversationId?: string | null;
   callType: CallType;
   output: EngineOutput;
+  // Phase 4.9 audit info. When status="ok" with LLM path, populate all llm_*.
+  // When status="keyword" (pre-4.9 or flag off), leave llm_* undefined.
+  // When status="failed", populate llmError with the reason; output should
+  // be a minimal placeholder from the caller so the drawer can render
+  // something rather than crash.
+  llm?: {
+    status: "ok" | "keyword" | "failed";
+    model?: string;
+    latencyMs?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+    extraction?: unknown;
+    error?: string;
+  };
 }
 
 /**
@@ -106,6 +122,15 @@ export async function saveEngineRun(args: SaveEngineRunArgs): Promise<string> {
     call_type: callType,
     engine_version: output.engineVersion,
     output: output as any,
+    status: args.llm?.status ?? "keyword",
+    llm_extraction: args.llm?.extraction as any,
+    llm_model: args.llm?.model ?? null,
+    llm_latency_ms: args.llm?.latencyMs ?? null,
+    llm_input_tokens: args.llm?.inputTokens ?? null,
+    llm_output_tokens: args.llm?.outputTokens ?? null,
+    llm_cache_read_tokens: args.llm?.cacheReadTokens ?? null,
+    llm_cache_creation_tokens: args.llm?.cacheCreationTokens ?? null,
+    llm_error: args.llm?.error ?? null,
   }).returning({ id: engineRunsTable.id });
 
   const runId = run.id;

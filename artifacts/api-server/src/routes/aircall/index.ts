@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
 import { eq, or, sql, and, isNull, lte } from "drizzle-orm";
-import { loadInvestor, processTranscript, saveEngineRun } from "../../engine/v2";
+import { loadInvestor, processTranscript, processTranscriptWithLLM, saveEngineRun, ExtractionError } from "../../engine/v2";
 import type { CallType } from "../../engine/v2";
 import {
   DEFAULT_TAG_MAPPING,
@@ -670,8 +670,90 @@ export async function runEngineForConversation(
 
     const callType = inferCallType(conv.duration_seconds);
     const investor = await loadInvestor(contactId);
-    const output = processTranscript(transcript, callType, investor);
-    const runId = await saveEngineRun({ contactId, conversationId, callType, output });
+
+    // Phase 4.9 — Layer 1 selection.
+    // Flag: ENGINE_LAYER_1_LLM=true switches persona/hot-button/signals/
+    // questions/fact-find extraction from keyword pattern matching to a
+    // Claude Sonnet call. Per directive: NO fallback to keyword on LLM
+    // failure. Record the failure and let an admin reprocess.
+    const useLLM = process.env.ENGINE_LAYER_1_LLM === "true";
+
+    let output;
+    let runId;
+    if (useLLM) {
+      try {
+        const llmRun = await processTranscriptWithLLM(transcript, callType, investor);
+        output = llmRun.output;
+        runId = await saveEngineRun({
+          contactId,
+          conversationId,
+          callType,
+          output,
+          llm: {
+            status: "ok",
+            model: llmRun.audit.model,
+            latencyMs: llmRun.audit.latencyMs,
+            inputTokens: llmRun.audit.inputTokens,
+            outputTokens: llmRun.audit.outputTokens,
+            cacheReadTokens: llmRun.audit.cacheReadTokens,
+            cacheCreationTokens: llmRun.audit.cacheCreationTokens,
+            extraction: llmRun.rawExtraction,
+          },
+        });
+      } catch (err: any) {
+        // Directive rule: never fall back silently to keyword path. Mark
+        // as failed so it's visible to admins. Output is a minimal
+        // placeholder so drawer doesn't crash on run read; admin can
+        // re-run from the reprocess endpoint.
+        const reason = err instanceof ExtractionError ? err.reason : "unknown";
+        const message = err?.message || String(err);
+        console.error("[Engine V3 LLM] extraction failed:", { reason, message });
+        // Persist a minimal failed-run record. We don't have a real
+        // EngineOutput, but saveEngineRun requires one for schema. Build
+        // a stub that renders as "no analysis available".
+        const stubOutput: any = {
+          engineVersion: "failed",
+          processedAt: new Date().toISOString(),
+          callType,
+          investorId: investor.investorId,
+          signalUpdates: [],
+          factFindUpdates: {},
+          personaAssessment: { persona: investor.persona, confidence: "low", evidence: "LLM extraction failed" },
+          hotButton: { primary: investor.hotButton, evidence: "" },
+          demoScore: investor.demoScore,
+          gateStatus: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: ["engine_failed"], activeRoute: "pending", blockedSignals: [] },
+          nextBestAction: { actionType: "schedule_call", detail: "Engine extraction failed — review transcript manually", owner: "agent", timing: "immediate", contentToSend: null },
+          pipelineTransition: null,
+          crmNote: "Engine extraction failed. Admin can reprocess via /engine/reprocess.",
+          flags: [{ type: "missing_data", message: `Layer 1 LLM extraction failed: ${reason}` }],
+          questionsDetected: [],
+          demoSegmentAnalysis: null,
+          emailDraft: null,
+          postCloseActions: null,
+          adviserLoopActions: null,
+          book2Routing: null,
+        };
+        runId = await saveEngineRun({
+          contactId,
+          conversationId,
+          callType,
+          output: stubOutput,
+          llm: { status: "failed", error: `${reason}: ${message}` },
+        });
+        return `engine run ${runId}: FAILED (${reason}) — admin can reprocess`;
+      }
+    } else {
+      // Pre-4.9 keyword path. Stays runnable until we delete it after
+      // LLM path is validated.
+      output = processTranscript(transcript, callType, investor);
+      runId = await saveEngineRun({
+        contactId,
+        conversationId,
+        callType,
+        output,
+        llm: { status: "keyword" },
+      });
+    }
 
     // Tag the conversation with the engine version that processed it
     await db.update(leadConversationsTable)
