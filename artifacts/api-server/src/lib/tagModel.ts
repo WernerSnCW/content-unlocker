@@ -142,16 +142,48 @@ export interface TagMapping {
   // (meeting-booked) → default 2 days, in case the agent didn't capture the
   // real meeting date at tag-time.
   default_followup_days?: number | null;
+
+  // --- Engine gating (Phase 4.7) ---
+  // Controls whether the intelligence engine runs on transcripts belonging
+  // to calls tagged with this Aircall tag. Default (undefined) = true for
+  // backward compatibility. Set explicitly to false for tags where running
+  // the engine wastes tokens / creates noise (DNC, No Answer, wrong number).
+  runs_engine?: boolean;
+
+  // --- Outcome review gating (Phase 4.7) ---
+  // Controls whether an outcome_review row is created in the call.tagged
+  // transaction for this tag. Default (undefined) = true. Set false for
+  // tags that don't warrant operator follow-up (terminal tags, no-action
+  // tags). Orthogonal from runs_engine: you can run the engine to capture
+  // context for future calls without creating an operator to-do item.
+  creates_outcome_review?: boolean;
 }
 
 // Default mapping seeded when no config is present.
+//
+// Phase 4.7 seed: runs_engine + creates_outcome_review per-tag.
+//   - Run the engine on tags where analysis adds value for the current or
+//     next call (interested / meeting-booked / callback / hung-up).
+//   - Create outcome_review only where an operator decision is required
+//     (interested / meeting-booked / callback — NOT hung-up: the engine
+//     output is useful context for NEXT call but no action needed now).
+//   - Terminal / informational tags skip both (DNC, DNE, No Answer, Not
+//     Interested) to save tokens and keep the review queue focused.
 export const DEFAULT_TAG_MAPPING: TagMapping[] = [
-  { aircall_tag: "Cloudworkz", outcome: "interested", side_effect: "none" },
-  { aircall_tag: "Not Interested", outcome: "no-interest", side_effect: "exclude_from_campaign" },
-  { aircall_tag: "No Answer", outcome: "no-answer", side_effect: "immediate_recall" },
-  { aircall_tag: "Callbacks", outcome: "callback-requested", side_effect: "callback_1d" },
-  { aircall_tag: "DNC", outcome: "do-not-call", side_effect: "global_exclude" },
-  { aircall_tag: "demo", outcome: "meeting-booked", side_effect: "none" },
-  { aircall_tag: "Hung Up", outcome: "hung-up", side_effect: "cool_off" },
-  { aircall_tag: "DNE", outcome: "does-not-exist", side_effect: "global_exclude" },
+  { aircall_tag: "Cloudworkz", outcome: "interested", side_effect: "none",
+    runs_engine: true, creates_outcome_review: true },
+  { aircall_tag: "Not Interested", outcome: "no-interest", side_effect: "exclude_from_campaign",
+    runs_engine: false, creates_outcome_review: false },
+  { aircall_tag: "No Answer", outcome: "no-answer", side_effect: "immediate_recall",
+    runs_engine: false, creates_outcome_review: false },
+  { aircall_tag: "Callbacks", outcome: "callback-requested", side_effect: "callback_1d",
+    runs_engine: true, creates_outcome_review: true },
+  { aircall_tag: "DNC", outcome: "do-not-call", side_effect: "global_exclude",
+    runs_engine: false, creates_outcome_review: false },
+  { aircall_tag: "demo", outcome: "meeting-booked", side_effect: "none",
+    runs_engine: true, creates_outcome_review: true },
+  { aircall_tag: "Hung Up", outcome: "hung-up", side_effect: "cool_off",
+    runs_engine: true, creates_outcome_review: false },
+  { aircall_tag: "DNE", outcome: "does-not-exist", side_effect: "global_exclude",
+    runs_engine: false, creates_outcome_review: false },
 ];

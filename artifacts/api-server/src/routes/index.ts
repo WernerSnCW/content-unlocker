@@ -31,6 +31,7 @@ import engineRouter from "./engine";
 import eventsRouter from "./events";
 import authRouter from "./auth";
 import adminRouter from "./admin";
+import outcomeReviewsRouter from "./outcome-reviews";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,7 @@ router.use(contactsRouter);
 router.use(campaignsDispatchRouter);
 router.use(aircallRouter);
 router.use(engineRouter);
+router.use(outcomeReviewsRouter);
 router.use(eventsRouter);
 
 export default router;

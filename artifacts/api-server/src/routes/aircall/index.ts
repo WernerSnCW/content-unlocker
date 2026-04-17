@@ -13,6 +13,7 @@ import {
   type TagMapping as CanonicalTagMapping,
 } from "../../lib/tagModel";
 import { notifyQueueChanged } from "../../lib/queueEvents";
+import { maybeCreateOutcomeReview } from "../../lib/outcomeReviews";
 
 const router: IRouter = Router();
 
@@ -635,6 +636,13 @@ function inferCallType(durationSeconds: number | null | undefined): CallType {
 // Run the V2 engine against a stored transcript and persist the output.
 // Returns a short status string for the webhook log.
 // Exported for the admin simulator.
+//
+// Phase 4.7 gating: if the conversation has been tagged and the applied
+// tag's mapping has `runs_engine === false`, skip the engine run entirely.
+// Saves tokens on terminal / informational tags (DNC, No Answer, etc.)
+// where engine output adds no value. If tagging hasn't happened yet (race
+// where transcription.created arrives before call.tagged), we run — the
+// default is engine-ON for backward compatibility.
 export async function runEngineForConversation(
   contactId: string,
   conversationId: string,
@@ -646,6 +654,20 @@ export async function runEngineForConversation(
       .limit(1);
     if (!conv) return `engine: conversation ${conversationId} not found`;
 
+    // Gate: check applied tag against tag_mapping.runs_engine
+    const convTags = Array.isArray(conv.tags) ? (conv.tags as string[]) : [];
+    if (convTags.length > 0) {
+      const tagMapping = await getTagMapping();
+      // Walk tags in reverse (last-applied first — this is the most
+      // recently state-changing tag in typical flows).
+      for (const tagName of [...convTags].reverse()) {
+        const mapping = tagMapping.find(m => m.aircall_tag === tagName);
+        if (mapping && mapping.runs_engine === false) {
+          return `engine skipped: tag "${tagName}" configured runs_engine=false`;
+        }
+      }
+    }
+
     const callType = inferCallType(conv.duration_seconds);
     const investor = await loadInvestor(contactId);
     const output = processTranscript(transcript, callType, investor);
@@ -656,7 +678,19 @@ export async function runEngineForConversation(
       .set({ engine_version: output.engineVersion })
       .where(eq(leadConversationsTable.id, conversationId));
 
-    return `engine ${output.engineVersion} run ${runId}: ${output.signalUpdates.length} signal updates, persona=${output.personaAssessment.persona}, next=${output.nextBestAction.actionType}`;
+    // Phase 4.7 — create outcome_review when the applied tag's mapping
+    // has creates_outcome_review=true (default true for backward compat).
+    // Skip silently on config=false or when we can't resolve an owner
+    // (resolver falls back through Aircall user → active call list's
+    // assigned agent → null). A null owner means "unclaimed" — an admin
+    // or closer can pick it up from the dedicated Outcomes page later.
+    const reviewStatus = await maybeCreateOutcomeReview({
+      engineRunId: runId,
+      contactId,
+      convTags,
+    });
+
+    return `engine ${output.engineVersion} run ${runId}: ${output.signalUpdates.length} signal updates, persona=${output.personaAssessment.persona}, next=${output.nextBestAction.actionType}${reviewStatus ? " | " + reviewStatus : ""}`;
   } catch (err: any) {
     console.error("[Aircall Webhook] engine run failed:", err);
     return `engine run failed: ${err.message}`;
