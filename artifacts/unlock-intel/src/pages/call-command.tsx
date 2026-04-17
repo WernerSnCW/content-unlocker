@@ -155,6 +155,11 @@ export default function CallCommand() {
     setPendingOutcomes(prev => prev.filter(p => p.contactId !== contactId));
   }, []);
 
+  // Ref used by the persist-tray effects below — declared here so it's
+  // stable across renders. The effects themselves are placed after
+  // `activeAgentId` is defined (avoids a TDZ reference).
+  const trayHydratedRef = useRef(false);
+
   // Derived counts used by the tray header
   const readyCount = pendingOutcomes.filter(p => p.status === "ready").length;
   const awaitingCount = pendingOutcomes.filter(p => p.status === "awaiting_tag").length;
@@ -362,6 +367,36 @@ export default function CallCommand() {
   const { data: currentUser } = useCurrentUser();
   const activeAgentId = currentUser?.agent.id || "";
   const agentName = currentUser?.agent.name?.split(" ")[0] || "there";
+
+  // Persist the outcomes tray across page refresh. Keyed per agent so a
+  // shared machine doesn't leak one user's tray into another's. Entries
+  // older than 7 days are pruned on hydration. engine_runs is the system
+  // of record; the tray is just the operator's personal to-do surface.
+  useEffect(() => {
+    trayHydratedRef.current = false;
+    if (!activeAgentId) return;
+    try {
+      const raw = localStorage.getItem(`pendingOutcomes:${activeAgentId}`);
+      if (raw) {
+        const loaded = JSON.parse(raw);
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        setPendingOutcomes(Array.isArray(loaded)
+          ? loaded.filter((p: any) => p && typeof p.startedAt === "number" && p.startedAt > cutoff)
+          : []);
+      } else {
+        setPendingOutcomes([]);
+      }
+    } catch {
+      setPendingOutcomes([]);
+    }
+    trayHydratedRef.current = true;
+  }, [activeAgentId]);
+  useEffect(() => {
+    if (!activeAgentId || !trayHydratedRef.current) return;
+    try {
+      localStorage.setItem(`pendingOutcomes:${activeAgentId}`, JSON.stringify(pendingOutcomes));
+    } catch { /* quota / disabled — non-fatal */ }
+  }, [pendingOutcomes, activeAgentId]);
 
   // The full agents list is still used by the "Create Call List" dialog so
   // a list can be assigned to any agent (admin-style setup).
