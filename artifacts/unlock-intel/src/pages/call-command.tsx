@@ -843,8 +843,9 @@ export default function CallCommand() {
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); dismissPending(p.contactId); }}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 rounded text-xs"
-                          title="Dismiss"
+                          className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1 rounded text-base leading-none shrink-0"
+                          title="Dismiss this outcome"
+                          aria-label="Dismiss this outcome"
                         >
                           ×
                         </button>
