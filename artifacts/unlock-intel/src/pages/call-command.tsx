@@ -369,9 +369,10 @@ export default function CallCommand() {
   const agentName = currentUser?.agent.name?.split(" ")[0] || "there";
 
   // Persist the outcomes tray across page refresh. Keyed per agent so a
-  // shared machine doesn't leak one user's tray into another's. Entries
-  // older than 7 days are pruned on hydration. engine_runs is the system
-  // of record; the tray is just the operator's personal to-do surface.
+  // shared machine doesn't leak one user's tray into another's. Phase 4.7
+  // narrows retention to TODAY only — older outcomes live on the
+  // dedicated Outcomes page (Phase 4.8) where they can be managed without
+  // cluttering the pill. engine_runs remains the system of record.
   useEffect(() => {
     trayHydratedRef.current = false;
     if (!activeAgentId) return;
@@ -379,9 +380,12 @@ export default function CallCommand() {
       const raw = localStorage.getItem(`pendingOutcomes:${activeAgentId}`);
       if (raw) {
         const loaded = JSON.parse(raw);
-        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        // Today-only cutoff — operator's local midnight
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const cutoff = todayStart.getTime();
         setPendingOutcomes(Array.isArray(loaded)
-          ? loaded.filter((p: any) => p && typeof p.startedAt === "number" && p.startedAt > cutoff)
+          ? loaded.filter((p: any) => p && typeof p.startedAt === "number" && p.startedAt >= cutoff)
           : []);
       } else {
         setPendingOutcomes([]);

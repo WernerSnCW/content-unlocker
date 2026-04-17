@@ -73,6 +73,10 @@ export default function Settings() {
     closer_agent_id?: string | null; // null + maps_to_closer=true = "any closer"
     // Fallback callback date when the side_effect doesn't already schedule one
     default_followup_days?: number | null;
+    // Phase 4.7 — engine and review gating per tag.
+    // Both default to true when undefined (back-compat).
+    runs_engine?: boolean;
+    creates_outcome_review?: boolean;
   }
 
   interface CloserOption {
@@ -540,6 +544,8 @@ export default function Settings() {
                     <TableHead className="w-20">Handoff</TableHead>
                     <TableHead className="w-40">Closer</TableHead>
                     <TableHead className="w-24">Follow-up (days)</TableHead>
+                    <TableHead className="w-16" title="Runs engine? Controls whether the intelligence engine processes transcripts for this tag">Engine</TableHead>
+                    <TableHead className="w-16" title="Creates a review? Controls whether an outcome review row is created for operator action">Review</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -669,6 +675,41 @@ export default function Settings() {
                           }}
                           className="h-8"
                           title="If no specific callback date is set, schedule this many days out. Ignored when side_effect is callback_Nd."
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {/* runs_engine — should the intelligence engine process transcripts
+                            for calls tagged with this? Default (undefined) = true. Unticking
+                            saves tokens on terminal/informational tags. */}
+                        <input
+                          type="checkbox"
+                          checked={mapping.runs_engine !== false}
+                          onChange={e => {
+                            const updated = [...tagMappings];
+                            const next = { ...updated[i], runs_engine: e.target.checked };
+                            // Can't create a review if the engine didn't run
+                            if (!e.target.checked) next.creates_outcome_review = false;
+                            updated[i] = next;
+                            setTagMappings(updated);
+                          }}
+                          className="h-4 w-4"
+                          title="Run the intelligence engine on transcripts with this tag (uses AI tokens). Disable for tags like DNC, No Answer, wrong-number where analysis adds no value."
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {/* creates_outcome_review — does an operator need to action this?
+                            Disabled when runs_engine=false (nothing to review if engine didn't run). */}
+                        <input
+                          type="checkbox"
+                          checked={mapping.creates_outcome_review !== false && mapping.runs_engine !== false}
+                          disabled={mapping.runs_engine === false}
+                          onChange={e => {
+                            const updated = [...tagMappings];
+                            updated[i] = { ...updated[i], creates_outcome_review: e.target.checked };
+                            setTagMappings(updated);
+                          }}
+                          className="h-4 w-4 disabled:opacity-40"
+                          title="Create an outcome review entry so an operator reviews/acts on the engine output. Disable for tags where the engine output is just context for future calls and no immediate action is needed (e.g. Hung Up)."
                         />
                       </TableCell>
                       <TableCell>

@@ -7,13 +7,14 @@
 // Data source: /api/engine/contact/:id (engine view) + /api/engine/runs/:id
 // (full output) + /api/engine/config/questions (question registry, cached).
 //
-// Phase 4.6 — Bucket 1 only:
-//   - Display only; no approve/edit/reject controls (4.7 territory)
-//   - Call Objectives block derived client-side until Phase 4.5a moves
-//     derivation into the engine output contract
+// Phase 4.7 — Operator decisions + handoff layer added on top of 4.6.
+//   - Handoff banner appears when viewing a handed review.
+//   - Per-item approve/edit/reject controls on NBA, Email Draft,
+//     Post-Close items, Adviser Loop items, Book 2.
+//   - Hand to Closer button with note dialog.
 //   - Data we don't yet produce (verbatim provenance, anchor phrase,
 //     transcript prohibited-phrase detection) is NOT rendered; those land
-//     with Phase 4.5a
+//     with Phase 4.5a.
 
 import { useEffect, useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -21,10 +22,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Loader2, AlertCircle, ArrowRight, FileText, Send, SkipForward, Clock,
   Target, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Mail,
-  ListChecks, Users, Sparkles,
+  ListChecks, Users, Sparkles, Check, X as XIcon, Undo2, Edit3, UserPlus,
+  CornerUpLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -169,6 +174,54 @@ interface QuestionDef {
   category: string;
   signal: string | null;
   gateRole: string | null;
+}
+
+// --- Phase 4.7 types ---
+type ActionType = "nba" | "email" | "post_close_item" | "adviser_loop_item" | "book2";
+type ActionDecision = "approved" | "edited" | "rejected" | "deferred";
+
+interface OutcomeReviewRow {
+  id: string;
+  engine_run_id: string;
+  contact_id: string;
+  current_owner_user_id: string | null;
+  status: "awaiting_review" | "under_review" | "handed_to_closer" | "handed_to_agent" | "actioned" | "stale_escaped";
+  handed_from_user_id: string | null;
+  hand_note: string | null;
+  handed_at: string | null;
+  claimed_at: string | null;
+  resolved_at: string | null;
+  resolution_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+interface OutcomeActionDecisionRow {
+  id: string;
+  outcome_review_id: string;
+  engine_run_id: string;
+  action_type: ActionType;
+  action_key: string;
+  decision: ActionDecision;
+  edited_payload: any | null;
+  decided_by_user_id: string;
+  decided_at: string;
+}
+interface UserRef {
+  id: string;
+  name: string | null;
+  email: string;
+}
+interface ReviewBundle {
+  review: OutcomeReviewRow;
+  decisions: OutcomeActionDecisionRow[];
+  currentOwner: UserRef | null;
+  handedFrom: UserRef | null;
+}
+interface CloserOption {
+  id: string;
+  name: string | null;
+  email: string;
+  role: "closer" | "admin";
 }
 
 // ============================================================================
@@ -382,7 +435,20 @@ export default function OutcomeDrawer({
 }: Props) {
   const [view, setView] = useState<EngineContactView | null>(null);
   const [fullRun, setFullRun] = useState<FullRun | null>(null);
+  const [reviewBundle, setReviewBundle] = useState<ReviewBundle | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Phase 4.7 — handoff dialog state
+  const [handOffOpen, setHandOffOpen] = useState(false);
+  const [handOffTargets, setHandOffTargets] = useState<CloserOption[]>([]);
+  const [handOffTargetId, setHandOffTargetId] = useState<string>("");
+  const [handOffNote, setHandOffNote] = useState("");
+  const [handOffDirection, setHandOffDirection] = useState<"to_closer" | "to_agent">("to_closer");
+  const [handOffSubmitting, setHandOffSubmitting] = useState(false);
+  const [handOffError, setHandOffError] = useState<string | null>(null);
+
+  // Decision submit state — prevents double-clicks / shows spinner per row
+  const [decidingKey, setDecidingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -436,8 +502,20 @@ export default function OutcomeDrawer({
             const full = await r.json();
             if (!cancelled) setFullRun({ id: full.id, output: full.output });
           }
+          // Phase 4.7 — fetch the outcome_review for this run, if one exists.
+          // 204 = no review created (tag's creates_outcome_review=false).
+          try {
+            const rev = await fetch(`${API_BASE}/outcome-reviews/by-run/${run.id}`);
+            if (rev.ok && rev.status !== 204) {
+              const bundle = await rev.json();
+              if (!cancelled) setReviewBundle(bundle);
+            } else if (!cancelled) {
+              setReviewBundle(null);
+            }
+          } catch { /* non-fatal */ }
         } else {
           setFullRun(null);
+          setReviewBundle(null);
         }
       } catch (err: any) {
         if (!cancelled) setError(err.message || "Failed to load");
@@ -447,6 +525,20 @@ export default function OutcomeDrawer({
     })();
     return () => { cancelled = true; };
   }, [open, contactId, conversationId, refreshTick]);
+
+  // Reload just the review bundle (after a decision or handoff action).
+  const refreshReview = async () => {
+    if (!reviewBundle?.review?.id && !fullRun?.id) return;
+    const runId = fullRun?.id;
+    if (!runId) return;
+    try {
+      const rev = await fetch(`${API_BASE}/outcome-reviews/by-run/${runId}`);
+      if (rev.ok && rev.status !== 204) {
+        const bundle = await rev.json();
+        setReviewBundle(bundle);
+      }
+    } catch { /* ignore */ }
+  };
 
   // Poll while drawer is open and we haven't got a run yet — covers the window
   // between call.ended (drawer opens) and call.tagged (engine run lands).
@@ -476,6 +568,178 @@ export default function OutcomeDrawer({
   const postCloseActions = output?.postCloseActions;
   const adviserLoopActions = output?.adviserLoopActions;
   const book2 = output?.book2Routing;
+
+  // Phase 4.7 — per-item decision lookup.
+  // Build a map keyed by "<action_type>:<action_key>" → decision row, so
+  // rendering can show "✓ Approved by X" or the edit/reject state next to
+  // each actionable engine output.
+  const decisionByKey = useMemo(() => {
+    const m = new Map<string, OutcomeActionDecisionRow>();
+    if (reviewBundle?.decisions) {
+      for (const d of reviewBundle.decisions) {
+        m.set(`${d.action_type}:${d.action_key}`, d);
+      }
+    }
+    return m;
+  }, [reviewBundle]);
+
+  // Submit a per-item decision. Optimistic UX: show spinner on the row
+  // while we POST, then refresh the review bundle on success.
+  const submitDecision = async (
+    actionType: ActionType,
+    actionKey: string,
+    decision: ActionDecision,
+    editedPayload?: any,
+  ) => {
+    if (!reviewBundle?.review?.id) return;
+    const rowKey = `${actionType}:${actionKey}`;
+    setDecidingKey(rowKey);
+    try {
+      const res = await fetch(`${API_BASE}/outcome-reviews/${reviewBundle.review.id}/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_type: actionType,
+          action_key: actionKey,
+          decision,
+          edited_payload: editedPayload ?? null,
+        }),
+      });
+      if (res.ok) await refreshReview();
+    } catch { /* swallowed — surfaced via missing state change */ }
+    finally { setDecidingKey(null); }
+  };
+
+  // Open the hand-off dialog. Direction = to_closer by default, but if the
+  // review's already on a closer (current owner is a closer/admin) and the
+  // authed user is that owner, they can bounce back via to_agent.
+  const openHandOff = async (direction: "to_closer" | "to_agent") => {
+    setHandOffDirection(direction);
+    setHandOffError(null);
+    setHandOffNote("");
+    setHandOffTargetId("");
+    try {
+      const res = await fetch(`${API_BASE}/users/closers`);
+      if (res.ok) {
+        const data = await res.json();
+        setHandOffTargets(data.closers || []);
+      }
+    } catch { /* non-fatal */ }
+    setHandOffOpen(true);
+  };
+
+  // Render the Approve / Edit / Reject triad for a given item. If a
+  // decision already exists, show its decided-state + an Undo button
+  // (which rejects the existing decision by resubmitting as "deferred"
+  // — effectively clearing the commitment without a hard delete).
+  //
+  // Renders nothing when there's no review for this run (e.g. the applied
+  // tag was configured creates_outcome_review=false).
+  const renderDecisionBar = (actionType: ActionType, actionKey: string) => {
+    if (!reviewBundle?.review?.id) return null;
+    const rowKey = `${actionType}:${actionKey}`;
+    const existing = decisionByKey.get(rowKey);
+    const busy = decidingKey === rowKey;
+
+    if (existing) {
+      const color =
+        existing.decision === "approved" ? "text-green-700 bg-green-500/10 border-green-500/30"
+        : existing.decision === "edited" ? "text-amber-700 bg-amber-500/10 border-amber-500/30"
+        : existing.decision === "rejected" ? "text-red-700 bg-red-500/10 border-red-500/30"
+        : "text-muted-foreground bg-muted/50 border-border";
+      const label =
+        existing.decision === "approved" ? "Approved"
+        : existing.decision === "edited" ? "Edited"
+        : existing.decision === "rejected" ? "Rejected"
+        : "Deferred";
+      return (
+        <div className={cn("flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs", color)}>
+          <span className="flex items-center gap-1.5">
+            {existing.decision === "approved" && <Check className="w-3 h-3" />}
+            {existing.decision === "rejected" && <XIcon className="w-3 h-3" />}
+            {existing.decision === "edited" && <Edit3 className="w-3 h-3" />}
+            <span className="font-medium">{label}</span>
+            <span className="opacity-70">
+              · {new Date(existing.decided_at).toLocaleTimeString()}
+            </span>
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs gap-1"
+            disabled={busy}
+            onClick={() => submitDecision(actionType, actionKey, "deferred")}
+          >
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+            Undo
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs gap-1 border-green-500/40 text-green-700 hover:bg-green-500/10"
+          disabled={busy}
+          onClick={() => submitDecision(actionType, actionKey, "approved")}
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+          Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs gap-1 border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
+          disabled={busy}
+          title="Editing UI lands in a future pass — for now this marks the item as 'edited' (operator-acknowledged)"
+          onClick={() => submitDecision(actionType, actionKey, "edited")}
+        >
+          <Edit3 className="w-3 h-3" /> Edit
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs gap-1 border-red-500/40 text-red-700 hover:bg-red-500/10"
+          disabled={busy}
+          onClick={() => submitDecision(actionType, actionKey, "rejected")}
+        >
+          <XIcon className="w-3 h-3" /> Reject
+        </Button>
+      </div>
+    );
+  };
+
+  const submitHandOff = async () => {
+    if (!reviewBundle?.review?.id) return;
+    if (!handOffTargetId) { setHandOffError("Pick a user to hand to."); return; }
+    setHandOffSubmitting(true);
+    setHandOffError(null);
+    try {
+      const res = await fetch(`${API_BASE}/outcome-reviews/${reviewBundle.review.id}/hand-off`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to_user_id: handOffTargetId,
+          note: handOffNote.trim() || null,
+          direction: handOffDirection,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setHandOffError(body.message || body.error || `Request failed (${res.status})`);
+        return;
+      }
+      setHandOffOpen(false);
+      await refreshReview();
+    } catch (err: any) {
+      setHandOffError(err?.message || "Hand-off failed");
+    } finally {
+      setHandOffSubmitting(false);
+    }
+  };
 
   // Call Objectives — derive client-side (Phase 4.6 temporary)
   const callObjectives = useMemo(() => {
@@ -578,6 +842,50 @@ export default function OutcomeDrawer({
 
           {hasRun && (
             <>
+              {/* ============================================================
+                  HAND-OFF BANNER — Phase 4.7
+                  Shown when this review was handed from someone else. Gives
+                  the recipient immediate context: who sent it, when, and
+                  their note. Lives ABOVE Call Objectives because the
+                  recipient needs to know WHY they're seeing this before
+                  working through the output.
+                ============================================================ */}
+              {reviewBundle?.review && reviewBundle.handedFrom && reviewBundle.review.handed_at && (
+                <Card className={cn(
+                  "border-l-4",
+                  reviewBundle.review.status === "handed_to_closer"
+                    ? "border-l-purple-500 bg-purple-500/5 border-purple-500/30"
+                    : "border-l-amber-500 bg-amber-500/5 border-amber-500/30",
+                )}>
+                  <CardContent className="py-3 px-4 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      {reviewBundle.review.status === "handed_to_closer"
+                        ? <UserPlus className="w-3.5 h-3.5 text-purple-700" />
+                        : <CornerUpLeft className="w-3.5 h-3.5 text-amber-700" />}
+                      <span className={cn(
+                        "font-semibold uppercase tracking-wider",
+                        reviewBundle.review.status === "handed_to_closer" ? "text-purple-700" : "text-amber-700",
+                      )}>
+                        {reviewBundle.review.status === "handed_to_closer"
+                          ? "Handed to you by"
+                          : "Bounced back by"}
+                      </span>
+                      <span className="font-medium">
+                        {reviewBundle.handedFrom.name ?? reviewBundle.handedFrom.email}
+                      </span>
+                      <span className="text-muted-foreground">
+                        · {new Date(reviewBundle.review.handed_at).toLocaleString()}
+                      </span>
+                    </div>
+                    {reviewBundle.review.hand_note && (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap pl-5">
+                        {reviewBundle.review.hand_note}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* ============================================================
                   CALL OBJECTIVES — NEXT CALL  (leads every output — canonical)
                   Rule: project_call_objectives_rule.md
@@ -912,18 +1220,22 @@ export default function OutcomeDrawer({
                         </div>
                       </>
                     )}
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        className="gap-1"
-                        disabled
-                        title="Sending requires Phase 7.5 website integration"
-                      >
-                        <Send className="w-3.5 h-3.5" /> Send
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-1" onClick={onSkip}>
-                        <SkipForward className="w-3.5 h-3.5" /> Skip
-                      </Button>
+                    <div className="pt-1">
+                      {renderDecisionBar("nba", "primary") ?? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="gap-1"
+                            disabled
+                            title="Sending requires Phase 7.5 website integration"
+                          >
+                            <Send className="w-3.5 h-3.5" /> Send
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-1" onClick={onSkip}>
+                            <SkipForward className="w-3.5 h-3.5" /> Skip
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -990,6 +1302,32 @@ export default function OutcomeDrawer({
                         ))}
                       </div>
                     )}
+                    {/* Phase 4.7 — per-item decision controls */}
+                    <div className="pt-1">{renderDecisionBar("email", "primary")}</div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ============================================================
+                  Book 2 routing decision (when triggered) — Phase 4.7
+                  Book 2 routing is a single item; surface it as an
+                  actionable card so the operator can approve the routing
+                  or reject it (e.g. "no, don't route to book 2 this time").
+                ============================================================ */}
+              {book2?.triggered && (
+                <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
+                  <CardContent className="py-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-700" />
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Book 2 routing</p>
+                    </div>
+                    {book2.reason && <p className="text-sm">{book2.reason}</p>}
+                    {book2.actions && book2.actions.length > 0 && (
+                      <ul className="text-xs text-muted-foreground space-y-0.5 pl-3 list-disc list-inside">
+                        {book2.actions.map((a, i) => (<li key={i}>{a}</li>))}
+                      </ul>
+                    )}
+                    <div className="pt-1">{renderDecisionBar("book2", "primary")}</div>
                   </CardContent>
                 </Card>
               )}
@@ -1004,19 +1342,29 @@ export default function OutcomeDrawer({
                       <ListChecks className="w-4 h-4 text-green-700" />
                       <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Post-close checklist</p>
                     </div>
-                    <div className="space-y-1.5">
-                      {postCloseActions.map((a, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm border-b border-border/50 last:border-b-0 pb-1.5 last:pb-0">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0 opacity-60" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">{a.action}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {a.owner} · {a.timing}
-                            </p>
-                            {a.detail && <p className="text-xs text-muted-foreground/90 mt-0.5">{a.detail}</p>}
+                    <div className="space-y-2.5">
+                      {postCloseActions.map((a, i) => {
+                        // Derive a stable item key — ideally the engine
+                        // would emit unique IDs, but the (action, owner)
+                        // pair is stable across identical runs and is
+                        // fine for decision identity in 4.7.
+                        const itemKey = `post_close:${i}:${a.action.slice(0, 40)}`;
+                        return (
+                          <div key={i} className="border-b border-border/50 last:border-b-0 pb-2 last:pb-0 space-y-1">
+                            <div className="flex items-start gap-2 text-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0 opacity-60" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium">{a.action}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {a.owner} · {a.timing}
+                                </p>
+                                {a.detail && <p className="text-xs text-muted-foreground/90 mt-0.5">{a.detail}</p>}
+                              </div>
+                            </div>
+                            <div className="pl-5">{renderDecisionBar("post_close_item", itemKey)}</div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -1039,18 +1387,24 @@ export default function OutcomeDrawer({
                         : phase === "during_call" ? "During call"
                         : "Post-call";
                       return (
-                        <div key={phase} className="space-y-1">
+                        <div key={phase} className="space-y-1.5">
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{phaseLabel}</p>
-                          {group.actions.map((a, i) => (
-                            <div key={i} className="flex items-start gap-2 text-sm pl-2">
-                              <Sparkles className="w-3 h-3 text-purple-500 mt-1 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p>{a.action}</p>
-                                <p className="text-[10px] text-muted-foreground">{a.owner} · {a.timing}</p>
-                                {a.detail && <p className="text-xs text-muted-foreground/90 mt-0.5">{a.detail}</p>}
+                          {group.actions.map((a, i) => {
+                            const itemKey = `adviser_loop:${phase}:${i}:${a.action.slice(0, 40)}`;
+                            return (
+                              <div key={i} className="pl-2 space-y-1">
+                                <div className="flex items-start gap-2 text-sm">
+                                  <Sparkles className="w-3 h-3 text-purple-500 mt-1 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p>{a.action}</p>
+                                    <p className="text-[10px] text-muted-foreground">{a.owner} · {a.timing}</p>
+                                    {a.detail && <p className="text-xs text-muted-foreground/90 mt-0.5">{a.detail}</p>}
+                                  </div>
+                                </div>
+                                <div className="pl-5">{renderDecisionBar("adviser_loop_item", itemKey)}</div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })}
@@ -1146,6 +1500,41 @@ export default function OutcomeDrawer({
             </Card>
           )}
 
+          {/* ============================================================
+              REVIEW ACTIONS — Phase 4.7
+              Hand to Closer / bounce back. Only shown when there IS a
+              review to act on. The dialog itself is rendered outside
+              the main scroll area so it overlays the drawer cleanly.
+            ============================================================ */}
+          {reviewBundle?.review && (
+            <div className="flex gap-2 border-t border-border pt-3">
+              {/* Primary action: agent → closer. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 flex-1"
+                onClick={() => openHandOff("to_closer")}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Hand to closer
+              </Button>
+              {/* Bounce back appears only when this review has already been
+                  handed from someone else (banner present) — so a closer
+                  viewing Marie's handoff can bounce it back with a note. */}
+              {reviewBundle.handedFrom && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 flex-1"
+                  onClick={() => openHandOff("to_agent")}
+                >
+                  <CornerUpLeft className="w-3.5 h-3.5" />
+                  Bounce back
+                </Button>
+              )}
+            </div>
+          )}
+
           {conversationId && (
             <Button variant="ghost" size="sm" className="w-full text-xs gap-1" asChild>
               <a href={`/api/aircall/webhook-log#conv-${conversationId}`} target="_blank" rel="noreferrer">
@@ -1154,6 +1543,79 @@ export default function OutcomeDrawer({
             </Button>
           )}
         </div>
+
+        {/* ============================================================
+            HAND-OFF DIALOG — Phase 4.7
+            Agent picks a closer (or bouncing back — any user picker);
+            adds an optional context note; submits.
+          ============================================================ */}
+        <Dialog open={handOffOpen} onOpenChange={setHandOffOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {handOffDirection === "to_closer" ? "Hand to closer" : "Bounce back"}
+              </DialogTitle>
+              <DialogDescription>
+                {handOffDirection === "to_closer"
+                  ? "Send this outcome to a closer. They'll see your note and the full engine output."
+                  : "Send this outcome back with a note explaining what needs the original agent's attention."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-1">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  {handOffDirection === "to_closer" ? "Closer" : "Recipient"}
+                  <span className="text-destructive ml-0.5">*</span>
+                </label>
+                <Select value={handOffTargetId} onValueChange={setHandOffTargetId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={`Select ${handOffDirection === "to_closer" ? "closer" : "user"}…`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {handOffTargets.length === 0 ? (
+                      <SelectItem value="__none__" disabled>
+                        No eligible users
+                      </SelectItem>
+                    ) : handOffTargets.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name ?? t.email}
+                        {t.role === "admin" && <span className="opacity-60 ml-1">(admin)</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Context note (optional)</label>
+                <Textarea
+                  value={handOffNote}
+                  onChange={e => setHandOffNote(e.target.value)}
+                  placeholder="Anything the recipient should know — e.g. 'They specifically asked about BPR — prep the BPR Explainer angle'"
+                  rows={4}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Shown to the recipient as a banner at the top of the drawer when they open this outcome.
+                </p>
+              </div>
+
+              {handOffError && (
+                <p className="text-sm text-destructive">{handOffError}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setHandOffOpen(false)} disabled={handOffSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={submitHandOff} disabled={handOffSubmitting || !handOffTargetId}>
+                {handOffSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {handOffDirection === "to_closer" ? "Hand over" : "Send back"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   );

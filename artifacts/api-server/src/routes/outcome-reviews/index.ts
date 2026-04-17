@@ -51,6 +51,49 @@ async function checkReviewAccess(
   return { ok: false, review, reason: "not_owner_of_review" };
 }
 
+// GET /outcome-reviews/by-run/:runId — drawer lookup path.
+// Returns the review (if one exists for this engine_run) + decisions +
+// display-enriched owner/handed-from users. If no review exists for this
+// run (e.g. the applied tag had creates_outcome_review=false), returns
+// 204 with no body so the drawer can cleanly distinguish "no review" from
+// "couldn't load".
+router.get("/outcome-reviews/by-run/:runId", async (req, res): Promise<void> => {
+  try {
+    const authedUser = req.auth!.user;
+    const [review] = await db.select().from(outcomeReviewsTable)
+      .where(eq(outcomeReviewsTable.engine_run_id, req.params.runId))
+      .limit(1);
+    if (!review) {
+      res.status(204).end();
+      return;
+    }
+    const check = await checkReviewAccess(review.id, authedUser.id, authedUser.role as any);
+    if (!check.ok) {
+      res.status(check.reason === "review_not_found" ? 404 : 403).json({ error: check.reason });
+      return;
+    }
+    const decisions = await db.select().from(outcomeActionDecisionsTable)
+      .where(eq(outcomeActionDecisionsTable.outcome_review_id, review.id));
+
+    let currentOwner: { id: string; name: string | null; email: string } | null = null;
+    let handedFrom: { id: string; name: string | null; email: string } | null = null;
+    if (review.current_owner_user_id) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, review.current_owner_user_id)).limit(1);
+      if (u) currentOwner = u;
+    }
+    if (review.handed_from_user_id) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, review.handed_from_user_id)).limit(1);
+      if (u) handedFrom = u;
+    }
+
+    res.json({ review, decisions, currentOwner, handedFrom });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "failed_to_load_review" });
+  }
+});
+
 // GET /outcome-reviews/:id — read one review + its decisions
 router.get("/outcome-reviews/:id", async (req, res): Promise<void> => {
   try {
