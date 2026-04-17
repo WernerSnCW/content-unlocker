@@ -41,4 +41,5 @@ export {
   COMPLIANCE,
   RED_SIGNAL_ACTIONS,
   PIPELINE_STAGES,
+  QUESTION_REGISTRY,
 } from "./config";

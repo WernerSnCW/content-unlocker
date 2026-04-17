@@ -15,6 +15,7 @@ import {
   ENGINE_SPEC,
   ENGINE_UPDATED,
   SIGNAL_REGISTRY,
+  QUESTION_REGISTRY,
   type CallType,
 } from "../../engine/v2";
 
@@ -34,6 +35,37 @@ router.get("/engine/version", async (_req, res): Promise<void> => {
     spec: ENGINE_SPEC,
     updated: ENGINE_UPDATED,
     signalCount: SIGNAL_REGISTRY.length,
+  });
+});
+
+// GET /engine/config/questions — the QUESTION_REGISTRY, used by Outcome Drawer
+// (Phase 4.6) to render question text against QuestionDetection rows. Public
+// read-only config surface; no mutation. Kept separate from /engine/version
+// because the response is larger and cached client-side.
+router.get("/engine/config/questions", async (_req, res): Promise<void> => {
+  res.json({
+    questions: QUESTION_REGISTRY.map(q => ({
+      qNum: q.qNum,
+      text: q.text,
+      call: q.call,
+      category: q.category,
+      signal: q.signal,
+      gateRole: q.gateRole ?? null,
+    })),
+  });
+});
+
+// GET /engine/config/signals — signal catalog for display lookups.
+router.get("/engine/config/signals", async (_req, res): Promise<void> => {
+  res.json({
+    signals: SIGNAL_REGISTRY.map(s => ({
+      code: s.code,
+      name: s.name,
+      category: s.category,
+      persona: s.persona,
+      priority: s.priority,
+      gateRole: s.gateRole ?? null,
+    })),
   });
 });
 
