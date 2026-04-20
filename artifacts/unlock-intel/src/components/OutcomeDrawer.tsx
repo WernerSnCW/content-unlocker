@@ -972,14 +972,27 @@ export default function OutcomeDrawer({
                 <Card>
                   <CardContent className="py-3">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Signal changes this call</p>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {signalUpdates.map((u) => (
-                        <div key={u.code} className="flex items-center gap-2 text-sm">
-                          <span className="font-mono text-xs w-10 shrink-0">{u.code}</span>
-                          <Badge className={`${stateClasses(u.previousState)} text-xs`} variant="outline">{u.previousState}</Badge>
-                          <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                          <Badge className={`${stateClasses(u.newState)} text-xs`} variant="outline">{u.newState}</Badge>
-                          {u.evidence && <span className="text-xs text-muted-foreground truncate">· {u.evidence}</span>}
+                        <div key={u.code} className="text-sm">
+                          {/* Row 1 — code + transition badges. Always one line. */}
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs w-10 shrink-0">{u.code}</span>
+                            <Badge className={`${stateClasses(u.previousState)} text-xs`} variant="outline">{u.previousState}</Badge>
+                            <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <Badge className={`${stateClasses(u.newState)} text-xs`} variant="outline">{u.newState}</Badge>
+                          </div>
+                          {/* Row 2 — evidence quote, wraps to as many lines as
+                              needed. Click-to-expand would be nicer still;
+                              Phase 4.8 Outcomes page gets the full detail. */}
+                          {u.evidence && (
+                            <details className="ml-12 mt-0.5 text-xs text-muted-foreground">
+                              <summary className="cursor-pointer select-none line-clamp-2 break-words">
+                                · {u.evidence}
+                              </summary>
+                              <p className="whitespace-pre-wrap break-words mt-0.5">{u.evidence}</p>
+                            </details>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1106,7 +1119,7 @@ export default function OutcomeDrawer({
                   {qualificationGates.anyFailed && (
                     <div className="mt-2 rounded px-2 py-1.5 text-xs bg-red-500/10 border border-red-500/30 text-red-700">
                       <AlertTriangle className="w-3 h-3 inline mr-1" />
-                      Qualification failure — route suggestion: <strong>LONG-HORIZON</strong> (not CLOSED). Override in 4.7.
+                      Qualification gate not passed — suggested route: <strong>LONG-HORIZON</strong> (not CLOSED).
                     </div>
                   )}
                 </CardContent>
@@ -1258,6 +1271,23 @@ export default function OutcomeDrawer({
                       </div>
                     </div>
                     <p className="text-sm font-semibold">{emailDraft.subject}</p>
+                    {/* Placeholder warning — EMAIL_1 template uses [DAY]/[TIME]
+                        tokens that the agent is expected to fill in before
+                        sending. Surface this clearly so the operator doesn't
+                        miss it. Proper inline editing is Phase 4.7 Edit flow. */}
+                    {(() => {
+                      const text = `${emailDraft.subject}\n${emailDraft.body}`;
+                      const tokens = Array.from(new Set(text.match(/\[[A-Z_0-9]+\]/g) || []));
+                      if (tokens.length === 0) return null;
+                      return (
+                        <div className="rounded bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          <span>
+                            Fill in before sending: <span className="font-mono">{tokens.join(" ")}</span>
+                          </span>
+                        </div>
+                      );
+                    })()}
                     <div className="text-xs bg-muted/40 border border-border rounded p-2 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
                       {emailDraft.body}
                     </div>
