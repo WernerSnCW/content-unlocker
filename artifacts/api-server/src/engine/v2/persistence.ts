@@ -180,8 +180,26 @@ export async function saveEngineRun(args: SaveEngineRunArgs): Promise<string> {
     });
   }
 
-  // 3. Upsert investor state
-  const stateUpdate = {
+  // 3. Upsert investor state — persona/hot-button/demo-score + fact-find.
+  //
+  // Fact-find merge rule (per rule in project_phase_4_5a_engine_enrichment
+  // and adaptExtraction): new non-null values overwrite; null/undefined
+  // from the current run NEVER clobber existing non-null values (LLM may
+  // omit fields it didn't touch — we preserve earlier-call captures).
+  // exact_phrases specifically ACCUMULATES across calls (dedup case-
+  // insensitively) because distinctive investor language from any call
+  // is asset material for all future follow-ups.
+  const [existingState] = await db.select().from(engineInvestorStateTable)
+    .where(eq(engineInvestorStateTable.contact_id, contactId))
+    .limit(1);
+
+  const ff = (output.factFindUpdates as any) || {};
+  const preserveString = (newVal: any, existing: any) =>
+    (newVal == null || newVal === "") ? (existing ?? null) : newVal;
+  const preserveNumber = (newVal: any, existing: any) =>
+    (newVal == null) ? (existing ?? null) : newVal;
+
+  const stateUpdate: any = {
     contact_id: contactId,
     persona: output.personaAssessment.persona,
     persona_confidence: output.personaAssessment.confidence,
@@ -191,11 +209,31 @@ export async function saveEngineRun(args: SaveEngineRunArgs): Promise<string> {
     demo_score: output.demoScore,
     pack1_gate: output.gateStatus.pack1,
     engine_version: output.engineVersion,
+    // Fact find — merge-preserving
+    practical_problem: preserveString(ff.practicalProblem, existingState?.practical_problem),
+    current_pressure: preserveString(ff.currentPressure, existingState?.current_pressure),
+    personal_angle: preserveString(ff.personalAngle, existingState?.personal_angle),
+    desired_outcome: preserveString(ff.desiredOutcome, existingState?.desired_outcome),
+    portfolio_shape: preserveString(ff.portfolioShape, existingState?.portfolio_shape),
+    annual_tax_liability: preserveNumber(ff.annualTaxLiability, existingState?.annual_tax_liability),
+    decision_stakeholders: preserveString(ff.decisionStakeholders, existingState?.decision_stakeholders),
+    questions_for_call3: preserveString(ff.questionsForCall3, existingState?.questions_for_call3),
+    decision_style: ff.decisionStyle && ff.decisionStyle !== "unknown"
+      ? ff.decisionStyle
+      : (existingState?.decision_style ?? "unknown"),
   };
 
-  const [existingState] = await db.select().from(engineInvestorStateTable)
-    .where(eq(engineInvestorStateTable.contact_id, contactId))
-    .limit(1);
+  // exact_phrases accumulate — case-insensitive dedup against existing list.
+  if (Array.isArray(ff.exactPhrases) && ff.exactPhrases.length > 0) {
+    const existingPhrases = (existingState?.exact_phrases as string[] | null) ?? [];
+    const existingLower = new Set(existingPhrases.map((p) => p.trim().toLowerCase()));
+    const additions = ff.exactPhrases.filter(
+      (p: any) => typeof p === "string" && p.trim() && !existingLower.has(p.trim().toLowerCase()),
+    );
+    stateUpdate.exact_phrases = additions.length > 0
+      ? [...existingPhrases, ...additions]
+      : existingPhrases;
+  }
 
   if (existingState) {
     await db.update(engineInvestorStateTable)
