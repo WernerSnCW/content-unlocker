@@ -12,6 +12,7 @@
 // full scope.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Inbox, UserPlus, CornerUpLeft, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { apiFetch } from "@/lib/apiClient";
-import OutcomeDrawer from "@/components/OutcomeDrawer";
 import { cn } from "@/lib/utils";
 
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
@@ -100,6 +100,7 @@ function ageLabel(iso: string): string {
 }
 
 export default function OutcomesPage() {
+  const [, setLocation] = useLocation();
   const { data: currentUser } = useCurrentUser();
   // role in the hook type-narrows to "agent" | "admin" because "closer"
   // wasn't in the original ladder. Cast through string for the comparison
@@ -113,10 +114,6 @@ export default function OutcomesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Drawer state — reuses the OutcomeDrawer component from Call Command.
-  // We just need contactId + name; the drawer fetches everything else.
-  const [selectedReview, setSelectedReview] = useState<ReviewRow | null>(null);
 
   // SSE refresh — when a new call.tagged lands, refresh the list if the
   // user is viewing this page. Same stream Call Command listens to.
@@ -155,13 +152,6 @@ export default function OutcomesPage() {
     loadList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, statusFilter]);
-
-  // Also refresh when the drawer closes — the user may have handed the
-  // review off or actioned an item, and the list should reflect that.
-  const onDrawerClose = () => {
-    setSelectedReview(null);
-    loadList();
-  };
 
   // Count-badge ticker alongside the tabs. Shows active-inbox sizes.
   const [counts, setCounts] = useState<{ mine: number; all: number | null }>({ mine: 0, all: null });
@@ -290,7 +280,7 @@ export default function OutcomesPage() {
                     <TableRow
                       key={r.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedReview(r)}
+                      onClick={() => setLocation(`/outcomes/${r.id}`)}
                     >
                       <TableCell>
                         <div className="font-medium">{fullName}</div>
@@ -349,19 +339,6 @@ export default function OutcomesPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Reuse the drawer as the detail view for session 1. Session 2
-          replaces this with a dedicated expanded page. */}
-      <OutcomeDrawer
-        open={selectedReview !== null}
-        contactId={selectedReview?.contact_id ?? null}
-        contactName={selectedReview
-          ? `${selectedReview.contact.first_name ?? ""} ${selectedReview.contact.last_name ?? ""}`.trim() || "Contact"
-          : null}
-        conversationId={null}
-        outcomeTag={selectedReview?.outcomeTag ?? undefined}
-        onClose={onDrawerClose}
-      />
     </div>
   );
 }
