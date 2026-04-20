@@ -408,12 +408,7 @@ export default function OutcomeDetailPage() {
 
       {/* Handoff banner */}
       {bundle.handedFrom && r.handed_at && (
-        <Card className={cn(
-          "border-l-4 bg-card",
-          r.status === "handed_to_closer"
-            ? "border-l-purple-500 border-purple-500/40"
-            : "border-l-amber-500 border-amber-500/40",
-        )}>
+        <Card className="bg-card">
           <CardContent className="py-4 px-5 space-y-1.5">
             <div className="flex items-center gap-2 text-xs">
               {r.status === "handed_to_closer"
@@ -498,10 +493,12 @@ export default function OutcomeDetailPage() {
           <FollowUpWorkspace nba={output?.nextBestAction} />
 
           {output?.postCloseActions && output.postCloseActions.length > 0 && (
-            <Card className="border-l-4 border-l-green-500 bg-card">
+            <Card className="bg-card">
               <CardContent className="py-4 px-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <ListChecks className="w-4 h-4 text-green-700" />
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-md bg-green-500/15 text-green-700 flex items-center justify-center shrink-0">
+                    <ListChecks className="w-4 h-4" />
+                  </div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-green-700">Post-close checklist</p>
                 </div>
                 {output.postCloseActions.map((a, i) => {
@@ -531,10 +528,12 @@ export default function OutcomeDetailPage() {
           )}
 
           {output?.adviserLoopActions && output.adviserLoopActions.length > 0 && (
-            <Card className="border-l-4 border-l-purple-500 bg-card">
+            <Card className="bg-card">
               <CardContent className="py-4 px-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-purple-700" />
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-md bg-purple-500/15 text-purple-700 flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
                   <p className="text-sm font-semibold uppercase tracking-wider text-purple-700">Adviser loop</p>
                 </div>
                 {(["pre_call", "during_call", "post_call"] as const).map(phase => {
@@ -576,9 +575,14 @@ export default function OutcomeDetailPage() {
           )}
 
           {output?.book2Routing?.triggered && (
-            <Card className="border-l-4 border-l-indigo-500 bg-card">
+            <Card className="bg-card">
               <CardContent className="py-4 px-5 space-y-2">
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-md bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
+                </div>
                 {output.book2Routing.reason && <p className="text-sm">{output.book2Routing.reason}</p>}
                 {output.book2Routing.actions && output.book2Routing.actions.length > 0 && (
                   <ul className="text-sm text-muted-foreground space-y-0.5 pl-5 list-disc">
@@ -599,8 +603,10 @@ export default function OutcomeDetailPage() {
           {/* OPERATOR NOTES */}
           <Card>
             <CardContent className="py-4 px-5 space-y-2">
-              <div className="flex items-center gap-2">
-                <StickyNote className="w-4 h-4 text-muted-foreground" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                  <StickyNote className="w-4 h-4" />
+                </div>
                 <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Operator notes</p>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -957,9 +963,14 @@ function NBAWorkspace({
   onSubmitDecision: (t: ActionType, k: string, d: ActionDecision, payload?: any) => void;
 }) {
   return (
-    <Card className="border-l-4 border-l-primary bg-card">
+    <Card className="bg-card">
       <CardContent className="py-4 px-5 space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary">Next best action</p>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-md bg-primary/15 text-primary flex items-center justify-center shrink-0">
+            <Target className="w-4 h-4" />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-wider text-primary">Next best action</p>
+        </div>
         <p className="font-semibold text-base">{nba.detail || nba.actionType}</p>
         <p className="text-sm text-muted-foreground">{nba.owner} · {nba.timing}</p>
         {nba.contentToSend && (
@@ -1066,11 +1077,13 @@ function EmailWorkspace({
   const attachmentCandidates = availableDocs.filter(d => !attachments.find(a => a.docId === d.docId));
 
   return (
-    <Card className="border-l-4 border-l-blue-500 bg-card">
+    <Card className="bg-card">
       <CardContent className="py-4 px-5 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4 text-blue-600" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-blue-500/15 text-blue-700 flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4" />
+            </div>
             <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Email to send</p>
             <Badge variant="outline" className="text-[10px] font-mono">{email.templateId}</Badge>
             <Badge variant="outline" className="text-[10px]">{email.timing}</Badge>
@@ -1247,9 +1260,11 @@ function FollowUpWorkspace({ nba }: { nba: EngineOutput["nextBestAction"] | unde
   return (
     <Card>
       <CardContent className="py-4 px-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-          <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Follow-up</p>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-md bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+            <CalendarIcon className="w-4 h-4" />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-wider text-amber-700">Follow-up</p>
           {nba?.timing && (
             <Badge variant="outline" className="text-[10px]">Engine: {nba.timing}</Badge>
           )}
