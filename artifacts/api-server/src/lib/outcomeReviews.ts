@@ -79,18 +79,32 @@ export async function maybeCreateOutcomeReview(input: {
   }
 
   const tagMapping = await getTagMapping();
-  // Check if ANY applied tag has creates_outcome_review=true. In the
-  // common case there's only one state-changing tag; multi-tag cases
-  // default to "create if any says yes".
-  let shouldCreate = false;
+  // Check if the applied tag permits outcome_review creation. Default
+  // semantics: undefined or true → create; only explicit false blocks.
+  // This matches runs_engine's default-true semantic, which is critical
+  // for back-compat: tag_mappings saved before 4.7 don't have this
+  // field, and we want them to keep producing reviews until an admin
+  // explicitly opts a tag out via Settings.
+  //
+  // Also: if ANY matched tag explicitly opts out, we skip (explicit
+  // opt-out wins over implicit opt-in from another tag in the same
+  // multi-tag call).
+  let anyMappedTag = false;
+  let anyExplicitOptOut = false;
   for (const tagName of input.convTags) {
     const m = tagMapping.find(x => x.aircall_tag === tagName);
-    if (m && m.creates_outcome_review === true) {
-      shouldCreate = true;
+    if (!m) continue;
+    anyMappedTag = true;
+    if (m.creates_outcome_review === false) {
+      anyExplicitOptOut = true;
       break;
     }
   }
-  if (!shouldCreate) return undefined;
+  // No matched tag at all = nothing to key off; skip. (Unmapped tags
+  // are recorded via record_only path elsewhere and wouldn't warrant
+  // operator review.)
+  if (!anyMappedTag) return undefined;
+  if (anyExplicitOptOut) return undefined;
 
   const ownerUserId = await resolveDefaultOwnerUserId(input.contactId);
 
