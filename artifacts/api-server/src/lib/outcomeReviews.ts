@@ -27,20 +27,28 @@ import {
   callListConfigsTable,
   agentsTable,
 } from "@workspace/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { getTagMapping } from "../routes/aircall";
 
 /**
  * Resolve the user who should own a new outcome_review for the given
  * contact. Tries in order:
- *   1. The agent currently assigned to the contact's active call-list
- *      membership, via their linked user_id.
+ *   1. The agent assigned to the contact's MOST-RECENT call-list membership
+ *      (active OR closed), via their linked user_id.
  *   2. null — unclaimed. The dedicated Outcomes page will surface these
- *      as "needs assignment" so an admin or closer can claim them.
+ *      as "Unclaimed" so an admin or closer can reclaim them.
  *
- * (Future: resolve by the Aircall user who actually placed the call. That
- * requires tracking aircall_user_id on lead_conversations, which we don't
- * today. See Phase 4.5a notes.)
+ * Why most-recent rather than active-only: applyTaggedOutcomeTx (the
+ * call.tagged transaction) marks the active membership as removed for
+ * tags with state-changing side-effects (meeting-booked, no-interest,
+ * DNC, etc). By the time transcription.created fires and we run the
+ * engine + create the review, there's no "active" membership left — but
+ * the AGENT WHO JUST PROCESSED THE CALL owned the most recently closed
+ * one. That's the right person to route the review to.
+ *
+ * (Future: persist aircall_user_id on lead_conversations at call.ended
+ * time and resolve from that directly. Cleaner but a larger change. See
+ * Phase 4.5a notes.)
  */
 async function resolveDefaultOwnerUserId(contactId: string): Promise<string | null> {
   const [row] = await db
@@ -48,10 +56,10 @@ async function resolveDefaultOwnerUserId(contactId: string): Promise<string | nu
     .from(callListMembershipsTable)
     .innerJoin(callListConfigsTable, eq(callListConfigsTable.id, callListMembershipsTable.call_list_id))
     .innerJoin(agentsTable, eq(agentsTable.id, callListConfigsTable.assigned_agent_id))
-    .where(and(
-      eq(callListMembershipsTable.contact_id, contactId),
-      isNull(callListMembershipsTable.removed_at),
-    ))
+    .where(eq(callListMembershipsTable.contact_id, contactId))
+    // Most recent first — either the still-active membership or the one
+    // we just closed a moment ago during the call.tagged transaction.
+    .orderBy(desc(callListMembershipsTable.added_at))
     .limit(1);
   return row?.user_id ?? null;
 }
