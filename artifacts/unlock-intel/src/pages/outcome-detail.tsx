@@ -849,20 +849,19 @@ function EmailEditor({
   return (
     <Card className="border-blue-500/30 bg-blue-500/[0.02]">
       <CardContent className="py-4 px-5 space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Mail className="w-4 h-4 text-blue-600" />
-            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Email draft</p>
-          </div>
-          <div className="flex gap-1 items-center">
+            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Email draft</p>
             <Badge variant="outline" className="text-[10px] font-mono">{email.templateId}</Badge>
             <Badge variant="outline" className="text-[10px]">{email.timing}</Badge>
-            {!editMode && (
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => setEditMode(true)}>
-                <Edit3 className="w-3 h-3" /> Edit
-              </Button>
-            )}
           </div>
+          {!editMode && (
+            <Button variant="outline" size="sm" className="gap-1.5 border-blue-500/40 text-blue-700 hover:bg-blue-500/10"
+                    onClick={() => setEditMode(true)}>
+              <Edit3 className="w-3.5 h-3.5" /> Edit subject & body
+            </Button>
+          )}
         </div>
 
         {/* Token replacer — shown whenever tokens are detected, editable or view */}
@@ -872,19 +871,17 @@ function EmailEditor({
               <AlertTriangle className="w-3 h-3" />
               Replace placeholders before sending
             </p>
-            <div className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+            <div className="space-y-1.5">
               {tokens.map(t => (
-                <>
-                  <span key={`${t}-label`} className="font-mono text-xs text-amber-900">{t}</span>
+                <div key={t} className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-amber-900 w-20 shrink-0">{t}</span>
                   <Input
-                    key={`${t}-input`}
                     value={tokenValues[t] ?? ""}
                     onChange={e => setTokenValues(v => ({ ...v, [t]: e.target.value }))}
                     placeholder={t === "[DAY]" ? "e.g. Tuesday 23 April" : t === "[TIME]" ? "e.g. 2pm" : "value"}
-                    className="h-7 text-xs"
+                    className="h-7 text-xs flex-1"
                   />
-                  <span key={`${t}-pad`} />
-                </>
+                </div>
               ))}
             </div>
             <Button size="sm" variant="outline" className="h-7 text-xs"

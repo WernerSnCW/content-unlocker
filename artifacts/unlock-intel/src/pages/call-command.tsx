@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Switch } from "@/components/ui/switch";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, CalendarClock, UserPlus,
   ArrowRight, Clock, Upload, CheckCircle, XCircle, Calendar,
@@ -105,6 +105,15 @@ interface Agent {
 }
 
 export default function CallCommand() {
+  const [, setLocation] = useLocation();
+  // Navigate from tray → dedicated outcome page. Falls back to /outcomes
+  // list if we don't yet have a reviewId for this pending entry (the
+  // review lookup is done lazily on SSE polling — for a brief window
+  // after call.tagged the reviewId may still be unknown).
+  const openOutcome = (p: { contactId: string; reviewId?: string }) => {
+    if (p.reviewId) setLocation(`/outcomes/${p.reviewId}`);
+    else setLocation("/outcomes");
+  };
   const [poolAvailable, setPoolAvailable] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
   const [todayOutcomes, setTodayOutcomes] = useState<{ total: number; uniqueContacts: number; outcomes: Record<string, number> }>({ total: 0, uniqueContacts: 0, outcomes: {} });
@@ -127,6 +136,10 @@ export default function CallCommand() {
     contactName: string;
     status: PendingStatus;
     startedAt: number;
+    // Populated when the review has been created for this outcome. Allows
+    // tray click to navigate directly to /outcomes/:reviewId (the
+    // dedicated detail page — replaces the old drawer for real work).
+    reviewId?: string;
   }
   const [pendingOutcomes, setPendingOutcomes] = useState<PendingOutcome[]>([]);
   const [trayExpanded, setTrayExpanded] = useState(false);
@@ -258,7 +271,17 @@ export default function CallCommand() {
           const data = await res.json();
           const newest = data?.runs?.[0];
           if (newest?.created_at && new Date(newest.created_at).getTime() > p.startedAt) {
-            updatePending(p.contactId, { status: "ready" });
+            // Also pull the review id if one was created — lets tray click
+            // navigate straight to /outcomes/:reviewId.
+            let reviewId: string | undefined;
+            try {
+              const revRes = await apiFetch(`${API_BASE}/outcome-reviews/by-run/${newest.id}`);
+              if (revRes.ok && revRes.status !== 204) {
+                const revData = await revRes.json();
+                reviewId = revData?.review?.id;
+              }
+            } catch { /* non-fatal */ }
+            updatePending(p.contactId, { status: "ready", ...(reviewId ? { reviewId } : {}) });
           }
         } catch { /* ignore */ }
       }));
@@ -431,22 +454,34 @@ export default function CallCommand() {
         todayStart.setHours(0, 0, 0, 0);
         const cutoff = todayStart.getTime();
         setPendingOutcomes(prev => {
-          const haveByContact = new Set(prev.map(p => p.contactId));
+          const byContact = new Map(prev.map(p => [p.contactId, p]));
           const additions: PendingOutcome[] = [];
+          const updates: Array<{ contactId: string; reviewId: string }> = [];
           for (const r of data.reviews || []) {
-            if (haveByContact.has(r.contact_id)) continue;
-            // Only hydrate today's entries into the tray — older ones live
-            // on the /outcomes page (today-only tray scope).
             const created = new Date(r.created_at).getTime();
             if (created < cutoff) continue;
+            const existing = byContact.get(r.contact_id);
+            if (existing) {
+              // Backfill reviewId onto existing entries that were inserted
+              // via SSE before the review was known.
+              if (!existing.reviewId) updates.push({ contactId: r.contact_id, reviewId: r.id });
+              continue;
+            }
             additions.push({
               contactId: r.contact_id,
               contactName: `${r.contact.first_name ?? ""} ${r.contact.last_name ?? ""}`.trim() || "Contact",
               status: "ready" as const, // review already has engine output
               startedAt: created,
+              reviewId: r.id,
             });
           }
-          return additions.length > 0 ? [...additions, ...prev] : prev;
+          if (additions.length === 0 && updates.length === 0) return prev;
+          const updateMap = new Map(updates.map(u => [u.contactId, u.reviewId]));
+          const patched = prev.map(p => {
+            const rid = updateMap.get(p.contactId);
+            return rid ? { ...p, reviewId: rid } : p;
+          });
+          return [...additions, ...patched];
         });
       } catch { /* non-fatal — SSE will cover the live case */ }
     })();
@@ -900,7 +935,7 @@ export default function CallCommand() {
                       className={`group px-4 py-3 border-b last:border-b-0 cursor-pointer transition-colors ${
                         p.status === "ready" ? "hover:bg-primary/5" : "hover:bg-muted/50"
                       }`}
-                      onClick={() => setDetailContactId(p.contactId)}
+                      onClick={() => openOutcome(p)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
