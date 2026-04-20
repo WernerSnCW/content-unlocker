@@ -1,16 +1,22 @@
-// Phase 4.8 session 2 — Dedicated Outcome detail page.
+// Phase 4.8 session 3 — Outcome detail page, redesigned.
 //
-// The drawer (OutcomeDrawer) remains the compact triage surface on
-// Call Command. This page is the full workspace — expanded quotes,
-// full fact-find, inline email editing, admin controls. Opened by
-// clicking a row on /outcomes.
+// Philosophy (per Werner's 2026-04-20 feedback):
+//   - This page is the WORKSPACE, not a bigger drawer.
+//   - Split surfaces by PURPOSE: actions you take (workspace) vs evidence
+//     the engine produced (reference).
+//   - Actions are primary, visible without scrolling past reference.
+//   - Engine recommends ONE of everything by default; operators can
+//     layer on top — add attachments, override timing, add notes.
 //
-// Intentionally duplicates some fetch + derivation logic from
-// OutcomeDrawer rather than refactoring — the two surfaces will
-// diverge (page adds editors, admin controls, decision history) and
-// sharing through a tangle of props would cost more than copy-paste.
+// Layout:
+//   [Header]          contact + outcome tag + status + admin reclaim
+//   [Handoff banner]  when review was handed from another user
+//   [Workspace]       email editor + attachments + follow-up + notes
+//                     + post-close + adviser loop + book 2
+//   [Reference]       collapsed accordions for intelligence evidence
+//   [History]         collapsed accordions for decision + handoff trail
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,9 +27,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Loader2, AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2,
-  XCircle, MinusCircle, Clock, FileText, Mail, Target, UserPlus, CornerUpLeft,
-  ListChecks, Users, Sparkles, Edit3, Save, RotateCcw, Undo2, Check, X as XIcon,
-  History, ShieldAlert,
+  X as XIcon, Clock, FileText, Mail, UserPlus, CornerUpLeft,
+  ListChecks, Users, Sparkles, Edit3, Save, RotateCcw, Undo2, Check, History,
+  ShieldAlert, Calendar as CalendarIcon, StickyNote, Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -32,21 +38,15 @@ import { apiFetch } from "@/lib/apiClient";
 const API_BASE = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/api";
 
 // ============================================================================
-// Types — mirror server-side shapes. Keep in sync with OutcomeDrawer.
+// Types
 // ============================================================================
 
 type ActionType = "nba" | "email" | "post_close_item" | "adviser_loop_item" | "book2";
 type ActionDecision = "approved" | "edited" | "rejected" | "deferred";
 
 interface EngineSignalRow {
-  id: string;
-  code: string;
-  state: string;
-  evidence: string | null;
-  confidence: string;
-  updated_at: string;
+  id: string; code: string; state: string; evidence: string | null; confidence: string; updated_at: string;
 }
-
 interface InvestorState {
   id: string;
   persona: string;
@@ -68,45 +68,29 @@ interface InvestorState {
   decision_style: string;
   book_track: string | null;
 }
-
 interface ReviewRow {
-  id: string;
-  engine_run_id: string;
-  contact_id: string;
+  id: string; engine_run_id: string; contact_id: string;
   current_owner_user_id: string | null;
   status: string;
   handed_from_user_id: string | null;
-  hand_note: string | null;
-  handed_at: string | null;
-  claimed_at: string | null;
-  resolved_at: string | null;
-  resolution_notes: string | null;
-  created_at: string;
-  updated_at: string;
+  hand_note: string | null; handed_at: string | null;
+  claimed_at: string | null; resolved_at: string | null; resolution_notes: string | null;
+  created_at: string; updated_at: string;
 }
-interface OutcomeActionDecisionRow {
-  id: string;
-  outcome_review_id: string;
-  engine_run_id: string;
-  action_type: ActionType;
-  action_key: string;
+interface DecisionRow {
+  id: string; outcome_review_id: string; engine_run_id: string;
+  action_type: ActionType; action_key: string;
   decision: ActionDecision;
   edited_payload: any | null;
-  decided_by_user_id: string;
-  decided_at: string;
+  decided_by_user_id: string; decided_at: string;
 }
 interface UserRef { id: string; name: string | null; email: string; }
 interface ReviewBundle {
-  review: ReviewRow;
-  decisions: OutcomeActionDecisionRow[];
-  currentOwner: UserRef | null;
-  handedFrom: UserRef | null;
+  review: ReviewRow; decisions: DecisionRow[];
+  currentOwner: UserRef | null; handedFrom: UserRef | null;
 }
-
 interface EngineOutput {
-  engineVersion: string;
-  processedAt: string;
-  callType: string;
+  engineVersion: string; processedAt: string; callType: string;
   signalUpdates?: Array<{ code: string; previousState: string; newState: string; evidence: string; confidence: string }>;
   personaAssessment?: { persona: string; confidence?: string; evidence?: string };
   hotButton?: { primary?: string | null; evidence?: string };
@@ -128,7 +112,6 @@ interface EngineOutput {
   adviserLoopActions?: Array<{ phase: "pre_call" | "during_call" | "post_call"; actions: Array<{ action: string; owner: string; timing: string; detail?: string }> }> | null;
   book2Routing?: { triggered: boolean; reason: string; actions: string[] } | null;
 }
-
 interface EngineContactView {
   contactId: string;
   investorState: InvestorState | null;
@@ -136,18 +119,19 @@ interface EngineContactView {
   transitions: any[];
   runs: Array<{ id: string; call_type: string; engine_version: string; created_at: string; conversation_id: string | null }>;
 }
-
 interface ContactRow {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: string | null;
-  company: string | null;
+  id: string; first_name: string; last_name: string;
+  email: string | null; phone: string | null; company: string | null;
+  last_call_outcome?: string | null;
+}
+interface DocOption {
+  docId: number;
+  docName: string;
+  usedFor?: string[];
 }
 
 // ============================================================================
-// Visual constants — shared pattern with drawer
+// Visual constants
 // ============================================================================
 
 const STATE_COLORS: Record<string, string> = {
@@ -168,7 +152,6 @@ const PERSONA_LABELS: Record<string, string> = {
   legacy_builder: "The Legacy Builder",
   undetermined: "Undetermined",
 };
-
 const STATUS_LABELS: Record<string, string> = {
   awaiting_review: "Awaiting review",
   under_review: "Under review",
@@ -177,6 +160,13 @@ const STATUS_LABELS: Record<string, string> = {
   actioned: "Actioned",
   stale_escaped: "Stale",
 };
+const OUTCOME_COLORS: Record<string, string> = {
+  "EIS-QUALIFIED": "bg-green-500/15 text-green-700 border-green-500/40",
+  "LONG-HORIZON":  "bg-amber-500/15 text-amber-700 border-amber-500/40",
+  "INTERMEDIARY":  "bg-blue-500/15 text-blue-700 border-blue-500/40",
+  "CLOUDWORKZ":    "bg-purple-500/15 text-purple-700 border-purple-500/40",
+  "CLOSED":        "bg-slate-500/15 text-slate-700 border-slate-500/40",
+};
 
 // ============================================================================
 // Page
@@ -184,7 +174,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function OutcomeDetailPage() {
   const [, params] = useRoute("/outcomes/:id");
-  const [, setLocation] = useLocation();
   const reviewId = params?.id ?? null;
   const { data: currentUser } = useCurrentUser();
   const role = String(currentUser?.user?.role ?? "agent");
@@ -194,10 +183,10 @@ export default function OutcomeDetailPage() {
   const [view, setView] = useState<EngineContactView | null>(null);
   const [contact, setContact] = useState<ContactRow | null>(null);
   const [output, setOutput] = useState<EngineOutput | null>(null);
+  const [conversationTags, setConversationTags] = useState<string[]>([]);
+  const [availableDocs, setAvailableDocs] = useState<DocOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const decidingKeyRef = useRef<string | null>(null);
   const [decidingKey, setDecidingKey] = useState<string | null>(null);
 
   const load = async () => {
@@ -205,45 +194,35 @@ export default function OutcomeDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      // 1. The review bundle — fetches review + decisions + owner/handed_from
       const rRes = await apiFetch(`${API_BASE}/outcome-reviews/${reviewId}`);
       if (!rRes.ok) throw new Error(`Review load failed: HTTP ${rRes.status}`);
-      const rData = await rRes.json();
-      const b: ReviewBundle = rData;
+      const b: ReviewBundle = await rRes.json();
       setBundle(b);
 
-      // 2. The engine view for this contact (signals, transitions, runs)
-      const vRes = await apiFetch(`${API_BASE}/engine/contact/${b.review.contact_id}`);
-      if (vRes.ok) setView(await vRes.json());
+      const [vRes, runRes, docsRes, contactRes] = await Promise.all([
+        apiFetch(`${API_BASE}/engine/contact/${b.review.contact_id}`),
+        apiFetch(`${API_BASE}/engine/runs/${b.review.engine_run_id}`),
+        apiFetch(`${API_BASE}/engine/config/documents`),
+        apiFetch(`${API_BASE}/contacts?id=${b.review.contact_id}`),
+      ]);
 
-      // 3. The full engine run output (persona, NBA, email, etc.)
-      const runRes = await apiFetch(`${API_BASE}/engine/runs/${b.review.engine_run_id}`);
+      if (vRes.ok) setView(await vRes.json());
       if (runRes.ok) {
         const full = await runRes.json();
         setOutput(full.output);
       }
-
-      // 4. Contact for the header display
-      const cRes = await apiFetch(`${API_BASE}/engine/contact/${b.review.contact_id}`);
-      if (cRes.ok) {
-        const data = await cRes.json();
-        // engine/contact returns investor state, not contact row directly.
-        // Use the state's first_name/last_name proxy from /contacts if needed.
-        // For now, rely on the engine view's investorState (has persona etc.)
-        // and fetch the raw contact via a minimal endpoint.
+      if (docsRes.ok) {
+        const docData = await docsRes.json();
+        setAvailableDocs(docData.documents || []);
       }
-      // Fallback: fetch contact by id from the reviews list endpoint result —
-      // but we came in by reviewId only. Use the engine/contact endpoint,
-      // which joins the contact row into investorState is not ideal. Simplest:
-      // fetch /contacts/:id.
-      try {
-        const cr = await apiFetch(`${API_BASE}/contacts?id=${b.review.contact_id}`);
-        if (cr.ok) {
-          const cd = await cr.json();
-          const first = cd.contacts?.[0] ?? cd ?? null;
-          if (first) setContact(first);
+      if (contactRes.ok) {
+        const cd = await contactRes.json();
+        const first = cd.contacts?.[0] ?? null;
+        if (first) {
+          setContact(first);
+          if (first.last_call_outcome) setConversationTags([first.last_call_outcome]);
         }
-      } catch { /* non-fatal */ }
+      }
     } catch (err: any) {
       setError(err?.message || "Failed to load outcome");
     } finally {
@@ -251,21 +230,13 @@ export default function OutcomeDetailPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [reviewId]);
 
-  // Decision upsert — fire the /decisions endpoint; refresh bundle on success.
   const submitDecision = async (
-    actionType: ActionType,
-    actionKey: string,
-    decision: ActionDecision,
-    editedPayload?: any,
+    actionType: ActionType, actionKey: string, decision: ActionDecision, editedPayload?: any,
   ) => {
     if (!bundle?.review.id) return;
     const rowKey = `${actionType}:${actionKey}`;
-    decidingKeyRef.current = rowKey;
     setDecidingKey(rowKey);
     try {
       const res = await apiFetch(`${API_BASE}/outcome-reviews/${bundle.review.id}/decisions`, {
@@ -274,18 +245,14 @@ export default function OutcomeDetailPage() {
         body: JSON.stringify({ action_type: actionType, action_key: actionKey, decision, edited_payload: editedPayload ?? null }),
       });
       if (res.ok) {
-        // Refresh just the review bundle so we see the new decision state.
         const rRes = await apiFetch(`${API_BASE}/outcome-reviews/${bundle.review.id}`);
         if (rRes.ok) setBundle(await rRes.json());
       }
     } catch { /* silent */ }
-    finally {
-      decidingKeyRef.current = null;
-      setDecidingKey(null);
-    }
+    finally { setDecidingKey(null); }
   };
 
-  // Admin reclaim — bounces a review to a chosen user (or null for unclaim).
+  // Admin reclaim
   const [reclaimTargetId, setReclaimTargetId] = useState<string>("");
   const [reclaimUsers, setReclaimUsers] = useState<Array<{ id: string; name: string | null; email: string; role: string }>>([]);
   useEffect(() => {
@@ -293,10 +260,7 @@ export default function OutcomeDetailPage() {
     (async () => {
       try {
         const res = await apiFetch(`${API_BASE}/users/closers`);
-        if (res.ok) {
-          const data = await res.json();
-          setReclaimUsers(data.closers || []);
-        }
+        if (res.ok) setReclaimUsers((await res.json()).closers || []);
       } catch { /* ignore */ }
     })();
   }, [isAdmin]);
@@ -313,23 +277,42 @@ export default function OutcomeDetailPage() {
     } catch { /* ignore */ }
   };
 
-  // --- DERIVED DATA ---
+  // Notes — save independently of actioning
+  const [notes, setNotes] = useState("");
+  const [notesDirty, setNotesDirty] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
+  useEffect(() => {
+    if (bundle?.review.resolution_notes != null) {
+      setNotes(bundle.review.resolution_notes || "");
+      setNotesDirty(false);
+    }
+  }, [bundle?.review?.id]);
+  const saveNotes = async () => {
+    if (!bundle?.review.id) return;
+    setNotesSaving(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/outcome-reviews/${bundle.review.id}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: notes || null }),
+      });
+      if (res.ok) {
+        setNotesDirty(false);
+        await load();
+      }
+    } finally { setNotesSaving(false); }
+  };
+
+  // Derived
   const decisionByKey = useMemo(() => {
-    const m = new Map<string, OutcomeActionDecisionRow>();
+    const m = new Map<string, DecisionRow>();
     if (bundle?.decisions) for (const d of bundle.decisions) m.set(`${d.action_type}:${d.action_key}`, d);
     return m;
   }, [bundle]);
 
   const persona = view?.investorState?.persona || output?.personaAssessment?.persona || "undetermined";
   const hotButton = view?.investorState?.hot_button || output?.hotButton?.primary;
-
-  const nba = output?.nextBestAction;
-  const emailDraft = output?.emailDraft;
-  const postClose = output?.postCloseActions;
-  const adviserLoop = output?.adviserLoopActions;
-  const book2 = output?.book2Routing;
-  const flags = output?.flags ?? [];
-  const signalUpdates = output?.signalUpdates ?? [];
+  const outcomeTag = conversationTags[conversationTags.length - 1] ?? null;
 
   // ==========================================================================
   // RENDER
@@ -337,7 +320,7 @@ export default function OutcomeDetailPage() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto py-12 text-center text-muted-foreground">
+      <div className="max-w-6xl mx-auto py-12 text-center text-muted-foreground">
         <Loader2 className="w-6 h-6 animate-spin mx-auto" />
       </div>
     );
@@ -345,7 +328,7 @@ export default function OutcomeDetailPage() {
 
   if (error || !bundle || !reviewId) {
     return (
-      <div className="max-w-5xl mx-auto space-y-4">
+      <div className="max-w-6xl mx-auto space-y-4">
         <Link href="/outcomes" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Back to outcomes
         </Link>
@@ -364,44 +347,68 @@ export default function OutcomeDetailPage() {
     : "Contact";
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <Link href="/outcomes" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> Back to outcomes
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            {contactName}
-            <Badge variant="outline" className="text-xs">{STATUS_LABELS[r.status] ?? r.status}</Badge>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {contact?.company && <>{contact.company} · </>}
-            Engine {output?.engineVersion ?? "?"} · {output?.callType ?? "?"} · updated {new Date(r.updated_at).toLocaleString()}
-          </p>
-        </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <Select value={reclaimTargetId} onValueChange={setReclaimTargetId}>
-              <SelectTrigger className="w-[200px] h-9">
-                <SelectValue placeholder="Reassign to…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__unclaim__">Unclaim</SelectItem>
-                {reclaimUsers.map(u => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name ?? u.email} {u.role === "admin" && <span className="opacity-60 ml-1">(admin)</span>}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" className="gap-1" disabled={!reclaimTargetId} onClick={submitReclaim}>
-              <ShieldAlert className="w-3.5 h-3.5" /> Reclaim
-            </Button>
+    <div className="max-w-6xl mx-auto space-y-5 pb-16">
+      {/* ======================================================================
+          HEADER — outcome tag is the lead visual.
+      ====================================================================== */}
+      <div className="space-y-2">
+        <Link href="/outcomes" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+          <ArrowLeft className="w-4 h-4" /> Back to outcomes
+        </Link>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold tracking-tight">{contactName}</h1>
+              {outcomeTag && (
+                <Badge variant="outline" className={cn("text-sm font-semibold px-3 py-1", OUTCOME_COLORS[outcomeTag] ?? "")}>
+                  {outcomeTag}
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">{STATUS_LABELS[r.status] ?? r.status}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {contact?.company && <>{contact.company} · </>}
+              Engine {output?.engineVersion ?? "?"} · {output?.callType ?? "?"} · updated {new Date(r.updated_at).toLocaleString()}
+            </p>
           </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Select value={reclaimTargetId} onValueChange={setReclaimTargetId}>
+                <SelectTrigger className="w-[200px] h-9"><SelectValue placeholder="Reassign to…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__unclaim__">Unclaim</SelectItem>
+                  {reclaimUsers.map(u => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name ?? u.email} {u.role === "admin" && <span className="opacity-60 ml-1">(admin)</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm" className="gap-1" disabled={!reclaimTargetId} onClick={submitReclaim}>
+                <ShieldAlert className="w-3.5 h-3.5" /> Reclaim
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick-glance badges row */}
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline"><span className="text-muted-foreground mr-1">Persona:</span>
+          <span className="font-semibold">{PERSONA_LABELS[persona] || persona}</span></Badge>
+        {hotButton && <Badge variant="outline"><span className="text-muted-foreground mr-1">Hot button:</span>
+          <span className="font-semibold capitalize">{hotButton}</span></Badge>}
+        {view?.investorState?.demo_score != null && (
+          <Badge variant="outline"><span className="text-muted-foreground mr-1">Demo score:</span>
+            <span className="font-semibold">{view.investorState.demo_score}/100</span></Badge>
+        )}
+        {bundle.currentOwner && (
+          <Badge variant="outline"><span className="text-muted-foreground mr-1">Owner:</span>
+            <span className="font-semibold">{bundle.currentOwner.name ?? bundle.currentOwner.email}</span></Badge>
         )}
       </div>
 
-      {/* HANDOFF BANNER (full detail, not truncated) */}
+      {/* Handoff banner */}
       {bundle.handedFrom && r.handed_at && (
         <Card className={cn(
           "border-l-4",
@@ -423,260 +430,321 @@ export default function OutcomeDetailPage() {
               <span className="font-medium">{bundle.handedFrom.name ?? bundle.handedFrom.email}</span>
               <span className="text-muted-foreground">· {new Date(r.handed_at).toLocaleString()}</span>
             </div>
-            {r.hand_note && (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap pl-5">{r.hand_note}</p>
-            )}
+            {r.hand_note && <p className="text-sm leading-relaxed whitespace-pre-wrap pl-5">{r.hand_note}</p>}
           </CardContent>
         </Card>
       )}
 
-      {/* BADGES ROW */}
-      <div className="flex flex-wrap gap-2">
-        <Badge variant="outline" className="gap-1">
-          <span className="text-muted-foreground">Persona:</span>
-          <span className="font-semibold">{PERSONA_LABELS[persona] || persona}</span>
-        </Badge>
-        {hotButton && (
-          <Badge variant="outline" className="gap-1">
-            <span className="text-muted-foreground">Hot button:</span>
-            <span className="font-semibold capitalize">{hotButton}</span>
-          </Badge>
-        )}
-        {view?.investorState?.demo_score != null && (
-          <Badge variant="outline" className="gap-1">
-            <span className="text-muted-foreground">Demo score:</span>
-            <span className="font-semibold">{view.investorState.demo_score}/100</span>
-          </Badge>
-        )}
-        {book2?.triggered && (
-          <Badge variant="outline" className="gap-1 bg-indigo-500/10 text-indigo-700 border-indigo-500/30">
-            <span className="text-xs opacity-70">Book 2:</span>
-            <span className="font-semibold">{book2.reason || "triggered"}</span>
-          </Badge>
-        )}
-      </div>
-
-      {/* SIGNAL CHANGES — full evidence, no truncation */}
-      {signalUpdates.length > 0 && (
-        <Card>
-          <CardContent className="py-4 px-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Signal changes this call</p>
-            <div className="space-y-3">
-              {signalUpdates.map(u => (
-                <div key={u.code} className="grid grid-cols-[auto_auto_auto_auto_1fr] gap-3 items-start text-sm">
-                  <span className="font-mono text-xs w-10 shrink-0 pt-1">{u.code}</span>
-                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.previousState))} variant="outline">{u.previousState}</Badge>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground mt-1.5" />
-                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.newState))} variant="outline">{u.newState}</Badge>
-                  {u.evidence && (
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">
-                      "{u.evidence}"
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* NEXT BEST ACTION + inline decision controls */}
-      {nba && (
-        <Card className="border-primary/40 bg-primary/[0.02]">
-          <CardContent className="py-4 px-5 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Next best action</p>
-            <p className="font-semibold text-base">{nba.detail || nba.actionType}</p>
-            <p className="text-sm text-muted-foreground">{nba.owner} · {nba.timing}</p>
-            {nba.contentToSend && (
-              <>
-                <Separator />
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileText className="w-4 h-4" />
-                  <span>Send: <span className="font-medium">{nba.contentToSend.docName}</span> (doc {nba.contentToSend.docId})</span>
-                </div>
-              </>
-            )}
-            <DecisionBar
-              actionType="nba"
-              actionKey="primary"
-              decision={decisionByKey.get("nba:primary")}
-              busy={decidingKey === "nba:primary"}
-              onSubmit={submitDecision}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* EMAIL DRAFT — EDITABLE */}
-      {emailDraft && (
-        <EmailEditor
-          email={emailDraft}
-          review={r}
-          decision={decisionByKey.get("email:primary")}
-          busy={decidingKey === "email:primary"}
-          onSubmitDecision={submitDecision}
-        />
-      )}
-
-      {/* BOOK 2 */}
-      {book2?.triggered && (
-        <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
-          <CardContent className="py-4 px-5 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
-            {book2.reason && <p className="text-sm">{book2.reason}</p>}
-            {book2.actions && book2.actions.length > 0 && (
-              <ul className="text-sm text-muted-foreground space-y-0.5 pl-5 list-disc">
-                {book2.actions.map((a, i) => (<li key={i}>{a}</li>))}
-              </ul>
-            )}
-            <DecisionBar
-              actionType="book2"
-              actionKey="primary"
-              decision={decisionByKey.get("book2:primary")}
-              busy={decidingKey === "book2:primary"}
-              onSubmit={submitDecision}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* POST-CLOSE CHECKLIST — with per-item decisions */}
-      {postClose && postClose.length > 0 && (
-        <Card className="border-green-500/30 bg-green-500/[0.02]">
-          <CardContent className="py-4 px-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <ListChecks className="w-4 h-4 text-green-700" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-green-700">Post-close checklist</p>
-            </div>
-            {postClose.map((a, i) => {
-              const key = `post_close:${i}:${a.action.slice(0, 40)}`;
-              return (
-                <div key={i} className="space-y-2 border-b border-border/50 last:border-b-0 pb-3 last:pb-0">
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 opacity-60 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">{a.action}</p>
-                      <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
-                      {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
-                    </div>
-                  </div>
-                  <DecisionBar
-                    actionType="post_close_item"
-                    actionKey={key}
-                    decision={decisionByKey.get(`post_close_item:${key}`)}
-                    busy={decidingKey === `post_close_item:${key}`}
-                    onSubmit={submitDecision}
-                  />
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ADVISER LOOP */}
-      {adviserLoop && adviserLoop.length > 0 && (
-        <Card className="border-purple-500/30 bg-purple-500/[0.02]">
-          <CardContent className="py-4 px-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-purple-700" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-purple-700">Adviser loop</p>
-            </div>
-            {(["pre_call", "during_call", "post_call"] as const).map(phase => {
-              const group = adviserLoop.find(g => g.phase === phase);
-              if (!group || group.actions.length === 0) return null;
-              const phaseLabel = phase === "pre_call" ? "Pre-call" : phase === "during_call" ? "During call" : "Post-call";
-              return (
-                <div key={phase} className="space-y-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{phaseLabel}</p>
-                  {group.actions.map((a, i) => {
-                    const key = `adviser_loop:${phase}:${i}:${a.action.slice(0, 40)}`;
-                    return (
-                      <div key={i} className="pl-3 space-y-2">
-                        <div className="flex items-start gap-2 text-sm">
-                          <Sparkles className="w-3 h-3 text-purple-500 mt-1.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium">{a.action}</p>
-                            <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
-                            {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
-                          </div>
-                        </div>
-                        <div className="pl-5">
-                          <DecisionBar
-                            actionType="adviser_loop_item"
-                            actionKey={key}
-                            decision={decisionByKey.get(`adviser_loop_item:${key}`)}
-                            busy={decidingKey === `adviser_loop_item:${key}`}
-                            onSubmit={submitDecision}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* FLAGS */}
-      {flags.length > 0 && (
+      {/* Flags (kept prominent — compliance matters) */}
+      {output?.flags && output.flags.length > 0 && (
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="py-3 px-5 space-y-1">
-            <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wide">
-              Flags ({flags.length})
+            <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">
+              Flags ({output.flags.length})
             </p>
-            {flags.map((f, i) => (
+            {output.flags.map((f, i) => (
               <div key={i} className="text-sm flex items-start gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-amber-500 shrink-0" />
-                <span className="text-amber-700 dark:text-amber-400">
-                  <span className="opacity-70">[{f.type}]</span> {f.message}
-                </span>
+                <span className="text-amber-700"><span className="opacity-70">[{f.type}]</span> {f.message}</span>
               </div>
             ))}
           </CardContent>
         </Card>
       )}
 
-      {/* FACT FIND — fully expanded */}
-      {view?.investorState && (
-        <Card>
-          <CardContent className="py-4 px-5 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fact find</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <FactFindField label="Practical problem"       value={view.investorState.practical_problem} />
-              <FactFindField label="Current pressure"        value={view.investorState.current_pressure} />
-              <FactFindField label="Personal angle"          value={view.investorState.personal_angle} />
-              <FactFindField label="Desired outcome"         value={view.investorState.desired_outcome} />
-              <FactFindField label="Decision stakeholders"   value={view.investorState.decision_stakeholders} />
-              <FactFindField label="Decision style"          value={view.investorState.decision_style} />
-              <FactFindField label="Portfolio shape"         value={view.investorState.portfolio_shape} />
-              <FactFindField label="Annual tax liability"    value={view.investorState.annual_tax_liability ? `£${view.investorState.annual_tax_liability}` : null} />
-              <FactFindField label="Questions for Call 3"    value={view.investorState.questions_for_call3} fullWidth />
-            </div>
-            {view.investorState.exact_phrases && view.investorState.exact_phrases.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Verbatim phrases</p>
-                <ul className="space-y-1">
-                  {view.investorState.exact_phrases.map((q, i) => (
-                    <li key={i} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30">"{q}"</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* ======================================================================
+          WORKSPACE — actions the operator takes. The whole point of this page.
+      ====================================================================== */}
+      <div className="space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-2 border-t">
+          Actions to take
+        </h2>
 
-      {/* DECISION HISTORY */}
-      {bundle.decisions.length > 0 && (
+        {/* EMAIL + ATTACHMENTS */}
+        {output?.emailDraft && (
+          <EmailWorkspace
+            email={output.emailDraft}
+            decision={decisionByKey.get("email:primary")}
+            busy={decidingKey === "email:primary"}
+            availableDocs={availableDocs}
+            nbaDoc={output.nextBestAction?.contentToSend ?? null}
+            onSubmitDecision={submitDecision}
+          />
+        )}
+
+        {/* NEXT BEST ACTION (non-email actions — e.g. schedule_call, send_content without email path) */}
+        {output?.nextBestAction && !output.emailDraft && (
+          <NBAWorkspace
+            nba={output.nextBestAction}
+            decision={decisionByKey.get("nba:primary")}
+            busy={decidingKey === "nba:primary"}
+            onSubmitDecision={submitDecision}
+          />
+        )}
+
+        {/* FOLLOW-UP scheduling */}
+        <FollowUpWorkspace
+          nba={output?.nextBestAction}
+        />
+
+        {/* POST-CLOSE CHECKLIST */}
+        {output?.postCloseActions && output.postCloseActions.length > 0 && (
+          <Card className="border-green-500/30 bg-green-500/[0.02]">
+            <CardContent className="py-4 px-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <ListChecks className="w-4 h-4 text-green-700" />
+                <p className="text-sm font-semibold uppercase tracking-wider text-green-700">Post-close checklist</p>
+              </div>
+              {output.postCloseActions.map((a, i) => {
+                const key = `post_close:${i}:${a.action.slice(0, 40)}`;
+                return (
+                  <div key={i} className="space-y-2 border-b border-border/50 last:border-b-0 pb-3 last:pb-0">
+                    <div className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 opacity-60 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium">{a.action}</p>
+                        <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
+                        {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+                      </div>
+                    </div>
+                    <DecisionBar
+                      actionType="post_close_item"
+                      actionKey={key}
+                      decision={decisionByKey.get(`post_close_item:${key}`)}
+                      busy={decidingKey === `post_close_item:${key}`}
+                      onSubmit={submitDecision}
+                    />
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ADVISER LOOP */}
+        {output?.adviserLoopActions && output.adviserLoopActions.length > 0 && (
+          <Card className="border-purple-500/30 bg-purple-500/[0.02]">
+            <CardContent className="py-4 px-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-purple-700" />
+                <p className="text-sm font-semibold uppercase tracking-wider text-purple-700">Adviser loop</p>
+              </div>
+              {(["pre_call", "during_call", "post_call"] as const).map(phase => {
+                const group = output.adviserLoopActions?.find(g => g.phase === phase);
+                if (!group || group.actions.length === 0) return null;
+                const phaseLabel = phase === "pre_call" ? "Pre-call" : phase === "during_call" ? "During call" : "Post-call";
+                return (
+                  <div key={phase} className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{phaseLabel}</p>
+                    {group.actions.map((a, i) => {
+                      const key = `adviser_loop:${phase}:${i}:${a.action.slice(0, 40)}`;
+                      return (
+                        <div key={i} className="pl-3 space-y-2">
+                          <div className="flex items-start gap-2 text-sm">
+                            <Sparkles className="w-3 h-3 text-purple-500 mt-1.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium">{a.action}</p>
+                              <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
+                              {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+                            </div>
+                          </div>
+                          <div className="pl-5">
+                            <DecisionBar
+                              actionType="adviser_loop_item"
+                              actionKey={key}
+                              decision={decisionByKey.get(`adviser_loop_item:${key}`)}
+                              busy={decidingKey === `adviser_loop_item:${key}`}
+                              onSubmit={submitDecision}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* BOOK 2 */}
+        {output?.book2Routing?.triggered && (
+          <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
+            <CardContent className="py-4 px-5 space-y-2">
+              <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
+              {output.book2Routing.reason && <p className="text-sm">{output.book2Routing.reason}</p>}
+              {output.book2Routing.actions && output.book2Routing.actions.length > 0 && (
+                <ul className="text-sm text-muted-foreground space-y-0.5 pl-5 list-disc">
+                  {output.book2Routing.actions.map((a, i) => <li key={i}>{a}</li>)}
+                </ul>
+              )}
+              <DecisionBar
+                actionType="book2"
+                actionKey="primary"
+                decision={decisionByKey.get("book2:primary")}
+                busy={decidingKey === "book2:primary"}
+                onSubmit={submitDecision}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* OPERATOR NOTES */}
         <Card>
           <CardContent className="py-4 px-5 space-y-2">
             <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-muted-foreground" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Decision history</p>
+              <StickyNote className="w-4 h-4 text-muted-foreground" />
+              <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Operator notes</p>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Free-form notes for yourself or whoever picks this up next. Not sent to the investor.
+            </p>
+            <Textarea
+              value={notes}
+              onChange={(e) => { setNotes(e.target.value); setNotesDirty(true); }}
+              rows={4}
+              placeholder="e.g. Adviser wants the IHT-5M-estate version; avoid portfolio language."
+            />
+            <div className="flex justify-end">
+              <Button size="sm" onClick={saveNotes} disabled={!notesDirty || notesSaving} className="gap-1">
+                {notesSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save notes
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ======================================================================
+          REFERENCE — intelligence evidence. Collapsed by default.
+      ====================================================================== */}
+      <div className="space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-4 border-t">
+          Intelligence reference
+        </h2>
+
+        <Collapsible title="Signal changes this call" count={(output?.signalUpdates ?? []).length}>
+          {output?.signalUpdates && output.signalUpdates.length > 0 && (
+            <div className="space-y-3">
+              {output.signalUpdates.map(u => (
+                <div key={u.code} className="grid grid-cols-[auto_auto_auto_auto_1fr] gap-3 items-start text-sm">
+                  <span className="font-mono text-xs w-10 shrink-0 pt-1">{u.code}</span>
+                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.previousState))} variant="outline">{u.previousState}</Badge>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground mt-1.5" />
+                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.newState))} variant="outline">{u.newState}</Badge>
+                  {u.evidence && (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">"{u.evidence}"</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Collapsible>
+
+        <Collapsible
+          title="Fact find"
+          count={view?.investorState
+            ? Object.values({
+                pp: view.investorState.practical_problem,
+                cp: view.investorState.current_pressure,
+                pa: view.investorState.personal_angle,
+                doo: view.investorState.desired_outcome,
+                ds: view.investorState.decision_stakeholders,
+                ps: view.investorState.portfolio_shape,
+                q3: view.investorState.questions_for_call3,
+              }).filter(Boolean).length
+            : 0}
+        >
+          {view?.investorState && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <FactFindField label="Practical problem" value={view.investorState.practical_problem} />
+                <FactFindField label="Current pressure" value={view.investorState.current_pressure} />
+                <FactFindField label="Personal angle" value={view.investorState.personal_angle} />
+                <FactFindField label="Desired outcome" value={view.investorState.desired_outcome} />
+                <FactFindField label="Decision stakeholders" value={view.investorState.decision_stakeholders} />
+                <FactFindField label="Decision style" value={view.investorState.decision_style} />
+                <FactFindField label="Portfolio shape" value={view.investorState.portfolio_shape} />
+                <FactFindField label="Annual tax liability" value={view.investorState.annual_tax_liability ? `£${view.investorState.annual_tax_liability}` : null} />
+                <FactFindField label="Questions for Call 3" value={view.investorState.questions_for_call3} fullWidth />
+              </div>
+              {view.investorState.exact_phrases && view.investorState.exact_phrases.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Verbatim phrases</p>
+                  <ul className="space-y-1">
+                    {view.investorState.exact_phrases.map((q, i) => (
+                      <li key={i} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30">"{q}"</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Collapsible>
+
+        <Collapsible title="Questions asked" count={(output?.questionsDetected ?? []).filter(q => q.detected).length}>
+          {output?.questionsDetected && output.questionsDetected.length > 0 && (
+            <div className="space-y-1">
+              {output.questionsDetected.map((qd, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm py-1 border-b border-border/50 last:border-b-0">
+                  {qd.detected
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                    : <XIcon className="w-3.5 h-3.5 text-muted-foreground/40 mt-0.5 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p>
+                      <span className="font-mono text-muted-foreground/70 mr-1">Q{qd.questionNumber}</span>
+                      {qd.signalTarget && <span className="font-mono text-xs text-muted-foreground/70 mr-2">{qd.signalTarget}</span>}
+                      {qd.inferredSignalState && <span className="text-xs text-muted-foreground">→ {qd.inferredSignalState}</span>}
+                    </p>
+                    {qd.investorResponse && (
+                      <p className="text-xs text-muted-foreground italic mt-0.5">"{qd.investorResponse}"</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Collapsible>
+
+        <Collapsible title="Gates" count={0}>
+          {output?.gateStatus && (
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span>C4 compliance</span>
+                <Badge variant="outline" className={output.gateStatus.c4Compliance === "open"
+                  ? "bg-green-500/15 text-green-600 border-green-500/30"
+                  : "bg-red-500/15 text-red-600 border-red-500/30"}>
+                  {output.gateStatus.c4Compliance}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Pack 1</span>
+                <Badge variant="outline" className={output.gateStatus.pack1 === "eligible"
+                  ? "bg-green-500/15 text-green-600 border-green-500/30"
+                  : "bg-amber-500/15 text-amber-600 border-amber-500/30"}>
+                  {output.gateStatus.pack1}
+                </Badge>
+              </div>
+              {output.gateStatus.pack1 === "blocked" && output.gateStatus.pack1BlockedReasons && (
+                <p className="text-xs text-muted-foreground pl-2">
+                  {output.gateStatus.pack1BlockedReasons.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+        </Collapsible>
+      </div>
+
+      {/* ======================================================================
+          HISTORY — decision log. Collapsed.
+      ====================================================================== */}
+      <div className="space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-4 border-t">
+          History
+        </h2>
+
+        <Collapsible title="Decision timeline" count={bundle.decisions.length}>
+          {bundle.decisions.length > 0 && (
             <div className="space-y-1.5">
               {bundle.decisions
                 .slice()
@@ -692,16 +760,14 @@ export default function OutcomeDetailPage() {
                       : d.decision === "rejected" ? "bg-red-500/10 text-red-700 border-red-500/30"
                       : d.decision === "edited" ? "bg-amber-500/10 text-amber-700 border-amber-500/30"
                       : "bg-muted text-muted-foreground border-border"
-                    )}>
-                      {d.decision}
-                    </Badge>
-                    <span className="text-muted-foreground">{d.action_type}:{d.action_key.slice(0, 50)}</span>
+                    )}>{d.decision}</Badge>
+                    <span className="text-muted-foreground">{d.action_type}:{d.action_key.slice(0, 60)}</span>
                   </div>
                 ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </Collapsible>
+      </div>
     </div>
   );
 }
@@ -709,6 +775,31 @@ export default function OutcomeDetailPage() {
 // ============================================================================
 // Sub-components
 // ============================================================================
+
+function Collapsible({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <button
+          className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-muted/40 rounded"
+          onClick={() => setOpen(o => !o)}
+        >
+          <span className="text-sm font-medium flex items-center gap-2">
+            <span className={cn("inline-block transition-transform", open ? "rotate-90" : "")}>▸</span>
+            {title}
+            {count !== undefined && (
+              <Badge variant="outline" className="text-[10px] ml-1">{count}</Badge>
+            )}
+          </span>
+        </button>
+        {open && (
+          <div className="px-5 py-3 pt-2 border-t">{children}</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function FactFindField({ label, value, fullWidth }: { label: string; value: string | null | undefined; fullWidth?: boolean }) {
   return (
@@ -726,10 +817,8 @@ function FactFindField({ label, value, fullWidth }: { label: string; value: stri
 function DecisionBar({
   actionType, actionKey, decision, busy, onSubmit,
 }: {
-  actionType: ActionType;
-  actionKey: string;
-  decision: OutcomeActionDecisionRow | undefined;
-  busy: boolean;
+  actionType: ActionType; actionKey: string;
+  decision: DecisionRow | undefined; busy: boolean;
   onSubmit: (t: ActionType, k: string, d: ActionDecision, payload?: any) => void;
 }) {
   if (decision) {
@@ -741,8 +830,7 @@ function DecisionBar({
     const label =
       decision.decision === "approved" ? "Approved"
       : decision.decision === "edited" ? "Edited"
-      : decision.decision === "rejected" ? "Rejected"
-      : "Deferred";
+      : decision.decision === "rejected" ? "Rejected" : "Deferred";
     return (
       <div className={cn("flex items-center justify-between gap-2 rounded border px-3 py-1.5 text-xs", color)}>
         <span className="flex items-center gap-1.5">
@@ -754,23 +842,17 @@ function DecisionBar({
         </span>
         <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1" disabled={busy}
                 onClick={() => onSubmit(actionType, actionKey, "deferred")}>
-          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
-          Undo
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />} Undo
         </Button>
       </div>
     );
   }
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 flex-wrap">
       <Button size="sm" variant="outline" disabled={busy}
               className="h-7 px-3 text-xs gap-1 border-green-500/40 text-green-700 hover:bg-green-500/10"
               onClick={() => onSubmit(actionType, actionKey, "approved")}>
         {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Approve
-      </Button>
-      <Button size="sm" variant="outline" disabled={busy}
-              className="h-7 px-3 text-xs gap-1 border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
-              onClick={() => onSubmit(actionType, actionKey, "edited")}>
-        <Edit3 className="w-3 h-3" /> Mark edited
       </Button>
       <Button size="sm" variant="outline" disabled={busy}
               className="h-7 px-3 text-xs gap-1 border-red-500/40 text-red-700 hover:bg-red-500/10"
@@ -782,35 +864,85 @@ function DecisionBar({
 }
 
 // ============================================================================
-// EMAIL EDITOR — Phase 4.8 session 2 centerpiece.
-// Inline subject/body editing with token replacement for [DAY]/[TIME].
-// "Save edits" persists the modified subject/body as the edited_payload on
-// a decision row (decision="edited"). "Approve" marks approved without
-// edits. "Reject" drops the email entirely for this review.
+// NBA-only workspace (when there's no email draft — e.g. schedule_call NBAs)
 // ============================================================================
-function EmailEditor({
-  email, review, decision, busy, onSubmitDecision,
+function NBAWorkspace({
+  nba, decision, busy, onSubmitDecision,
 }: {
-  email: NonNullable<EngineOutput["emailDraft"]>;
-  review: ReviewRow;
-  decision: OutcomeActionDecisionRow | undefined;
+  nba: NonNullable<EngineOutput["nextBestAction"]>;
+  decision: DecisionRow | undefined;
   busy: boolean;
   onSubmitDecision: (t: ActionType, k: string, d: ActionDecision, payload?: any) => void;
 }) {
-  // Initial values — if the review has a prior edited decision, start from
-  // that payload so the editor retains operator changes. Otherwise start
-  // from the engine's original.
-  const initialSubject = (decision?.decision === "edited" && decision.edited_payload?.subject) || email.subject;
-  const initialBody = (decision?.decision === "edited" && decision.edited_payload?.body) || email.body;
+  return (
+    <Card className="border-primary/40 bg-primary/[0.02]">
+      <CardContent className="py-4 px-5 space-y-3">
+        <p className="text-sm font-semibold uppercase tracking-wider text-primary">Next best action</p>
+        <p className="font-semibold text-base">{nba.detail || nba.actionType}</p>
+        <p className="text-sm text-muted-foreground">{nba.owner} · {nba.timing}</p>
+        {nba.contentToSend && (
+          <>
+            <Separator />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <FileText className="w-4 h-4" />
+              <span>Send: <span className="font-medium">{nba.contentToSend.docName}</span> (doc {nba.contentToSend.docId})</span>
+            </div>
+          </>
+        )}
+        <DecisionBar
+          actionType="nba" actionKey="primary"
+          decision={decision} busy={busy}
+          onSubmit={onSubmitDecision}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
+// EMAIL WORKSPACE — the centerpiece.
+// Editable subject + body + token replacer + ATTACHMENTS picker.
+// Attachments default to the NBA-recommended doc; operator can add more
+// or remove entirely. Selection saved as edited_payload on the decision.
+// ============================================================================
+function EmailWorkspace({
+  email, decision, busy, availableDocs, nbaDoc, onSubmitDecision,
+}: {
+  email: NonNullable<EngineOutput["emailDraft"]>;
+  decision: DecisionRow | undefined;
+  busy: boolean;
+  availableDocs: DocOption[];
+  nbaDoc: { docId: number; docName: string } | null;
+  onSubmitDecision: (t: ActionType, k: string, d: ActionDecision, payload?: any) => void;
+}) {
+  const initialFromDecision = decision?.decision === "edited" ? decision.edited_payload : null;
+
+  const initialSubject: string = initialFromDecision?.subject ?? email.subject;
+  const initialBody: string = initialFromDecision?.body ?? email.body;
+  // Default attachment list = whatever the engine's email draft carried
+  // plus the NBA's recommended doc if different. Operator can prune /add.
+  const initialAttachments: DocOption[] = useMemo(() => {
+    if (Array.isArray(initialFromDecision?.attachments) && initialFromDecision.attachments.length > 0) {
+      return initialFromDecision.attachments;
+    }
+    const out: DocOption[] = [];
+    if (email.attachmentDocId != null) {
+      out.push({ docId: email.attachmentDocId, docName: email.attachmentDocName ?? `Doc ${email.attachmentDocId}` });
+    }
+    if (nbaDoc && !out.find(d => d.docId === nbaDoc.docId)) {
+      out.push({ docId: nbaDoc.docId, docName: nbaDoc.docName });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
+  const [attachments, setAttachments] = useState<DocOption[]>(initialAttachments);
+  const [addDocId, setAddDocId] = useState<string>("");
   const [editMode, setEditMode] = useState(false);
-  void review;
 
-  // Detect unresolved tokens in subject + body. These are the placeholders
-  // the agent is expected to fill before sending. Render a form of
-  // per-token inputs; clicking "Apply tokens" does a simple global replace.
+  // Tokens
   const tokens = useMemo(() => {
     const all = `${subject}\n${body}`.match(/\[[A-Z_0-9]+\]/g) || [];
     return Array.from(new Set(all));
@@ -818,33 +950,38 @@ function EmailEditor({
   const [tokenValues, setTokenValues] = useState<Record<string, string>>({});
 
   const applyTokens = () => {
-    let newSubject = subject;
-    let newBody = body;
+    let ns = subject, nb = body;
     for (const [t, v] of Object.entries(tokenValues)) {
       if (!v) continue;
-      // Global replace — tokens are simple brackets, safe to regex-escape
-      const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const re = new RegExp(escaped, "g");
-      newSubject = newSubject.replace(re, v);
-      newBody = newBody.replace(re, v);
+      const esc = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(esc, "g");
+      ns = ns.replace(re, v); nb = nb.replace(re, v);
     }
-    setSubject(newSubject);
-    setBody(newBody);
-    setTokenValues({});
+    setSubject(ns); setBody(nb); setTokenValues({});
   };
-
   const reset = () => {
-    setSubject(email.subject);
-    setBody(email.body);
-    setTokenValues({});
+    setSubject(email.subject); setBody(email.body);
+    setAttachments(initialAttachments); setTokenValues({});
   };
-
+  const addAttachment = () => {
+    if (!addDocId) return;
+    const found = availableDocs.find(d => String(d.docId) === addDocId);
+    if (!found) return;
+    if (attachments.find(a => a.docId === found.docId)) return; // already attached
+    setAttachments(prev => [...prev, { docId: found.docId, docName: found.docName }]);
+    setAddDocId("");
+  };
+  const removeAttachment = (docId: number) => {
+    setAttachments(prev => prev.filter(a => a.docId !== docId));
+  };
   const saveEdits = () => {
-    onSubmitDecision("email", "primary", "edited", { subject, body });
+    onSubmitDecision("email", "primary", "edited", { subject, body, attachments });
     setEditMode(false);
   };
-
-  const isDirty = subject !== initialSubject || body !== initialBody;
+  const isDirty = subject !== initialSubject
+    || body !== initialBody
+    || JSON.stringify(attachments) !== JSON.stringify(initialAttachments);
+  const attachmentCandidates = availableDocs.filter(d => !attachments.find(a => a.docId === d.docId));
 
   return (
     <Card className="border-blue-500/30 bg-blue-500/[0.02]">
@@ -852,7 +989,7 @@ function EmailEditor({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Mail className="w-4 h-4 text-blue-600" />
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Email draft</p>
+            <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Email to send</p>
             <Badge variant="outline" className="text-[10px] font-mono">{email.templateId}</Badge>
             <Badge variant="outline" className="text-[10px]">{email.timing}</Badge>
           </div>
@@ -864,12 +1001,10 @@ function EmailEditor({
           )}
         </div>
 
-        {/* Token replacer — shown whenever tokens are detected, editable or view */}
         {tokens.length > 0 && (
           <div className="rounded bg-amber-500/10 border border-amber-500/30 px-3 py-2 space-y-2">
             <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3" />
-              Replace placeholders before sending
+              <AlertTriangle className="w-3 h-3" /> Replace placeholders before sending
             </p>
             <div className="space-y-1.5">
               {tokens.map(t => (
@@ -914,17 +1049,50 @@ function EmailEditor({
           </div>
         )}
 
-        {/* Attachment */}
-        {(email.attachmentDocName || email.attachmentDocId != null) && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FileText className="w-4 h-4" />
-            <span>📎 {email.attachmentDocName ?? `doc ${email.attachmentDocId}`}
-              {email.attachmentDocId != null && (
-                <span className="ml-1">(doc {email.attachmentDocId})</span>
-              )}
-            </span>
+        {/* ATTACHMENTS — pickable, multi-doc */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Attachments ({attachments.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {attachments.map(a => (
+              <Badge key={a.docId} variant="outline" className="gap-1.5 pr-1 text-xs">
+                <FileText className="w-3 h-3" />
+                {a.docName} <span className="text-muted-foreground">(doc {a.docId})</span>
+                {nbaDoc?.docId === a.docId && (
+                  <span className="text-[9px] uppercase text-blue-700 bg-blue-500/10 border border-blue-500/30 rounded px-1 py-px ml-0.5">NBA</span>
+                )}
+                <button onClick={() => removeAttachment(a.docId)}
+                        className="ml-0.5 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive">
+                  <XIcon className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+            {attachments.length === 0 && (
+              <p className="text-xs text-muted-foreground italic">No attachments selected.</p>
+            )}
           </div>
-        )}
+          {attachmentCandidates.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Select value={addDocId} onValueChange={setAddDocId}>
+                <SelectTrigger className="h-8 w-[280px] text-xs">
+                  <SelectValue placeholder="+ Add document…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attachmentCandidates.map(d => (
+                    <SelectItem key={d.docId} value={String(d.docId)}>
+                      <span className="font-medium">{d.docName}</span>
+                      <span className="text-muted-foreground ml-2">(doc {d.docId})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" disabled={!addDocId} onClick={addAttachment} className="gap-1 h-8">
+                <Plus className="w-3 h-3" /> Add
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Compliance */}
         <div>
@@ -959,13 +1127,70 @@ function EmailEditor({
           </div>
         ) : (
           <DecisionBar
-            actionType="email"
-            actionKey="primary"
-            decision={decision}
-            busy={busy}
+            actionType="email" actionKey="primary"
+            decision={decision} busy={busy}
             onSubmit={onSubmitDecision}
           />
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
+// FOLLOW-UP WORKSPACE — explicit scheduling surface.
+// Parses NBA.timing into a default date ("24_48_hours" = +2 days) but lets
+// the operator override. Persists as decision edited_payload on nba:primary
+// — that's the engine's timing that the scheduler will consume when
+// Phase 7.5 wires actual calendar/CRM updates.
+// ============================================================================
+function FollowUpWorkspace({ nba }: { nba: EngineOutput["nextBestAction"] | undefined }) {
+  // Default from NBA.timing — simple heuristic. Phase 7.5 replaces this.
+  const defaultDate = useMemo(() => {
+    const d = new Date();
+    const t = nba?.timing ?? "";
+    if (t === "24_48_hours") d.setDate(d.getDate() + 2);
+    else if (t === "immediate") { /* today */ }
+    else d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, [nba?.timing]);
+
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState("");
+  const [reason, setReason] = useState("");
+  // NOTE: this UI persists nothing yet — Phase 7.5 wires actual calendar
+  // / contact.callback_date updates. For now this is a visible workspace
+  // to set intent; saved state comes when the scheduler backend lands.
+
+  return (
+    <Card>
+      <CardContent className="py-4 px-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+          <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Follow-up</p>
+          {nba?.timing && (
+            <Badge variant="outline" className="text-[10px]">Engine: {nba.timing}</Badge>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Date</label>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Time (optional)</label>
+            <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Reason</label>
+            <Input value={reason} onChange={e => setReason(e.target.value)}
+                   placeholder="Callback per investor preference" />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground italic">
+          Schedule persistence lands with Phase 7.5 (website/calendar integration). For now this
+          surface captures your intent alongside the email.
+        </p>
       </CardContent>
     </Card>
   );

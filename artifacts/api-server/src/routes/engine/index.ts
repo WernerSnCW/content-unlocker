@@ -70,6 +70,47 @@ router.get("/engine/config/signals", async (_req, res): Promise<void> => {
   });
 });
 
+// GET /engine/config/documents — flat list of all documents the engine
+// knows about, extracted from ROUTING_MAP + attachmentRoutingTable +
+// email template attachments. Used by the outcome detail page's
+// attachments picker so operators can pick from the same doc universe
+// the engine routes from.
+//
+// Deduplicated by docId. docId is the canonical reference until Phase
+// 7.5 introduces the engine_document_mapping bridge table with slugs.
+router.get("/engine/config/documents", async (_req, res): Promise<void> => {
+  const { ROUTING_MAP: RM, EMAIL_TEMPLATES } = await import("../../engine/v2/config");
+  const map = new Map<number, { docId: number; docName: string; usedFor: string[] }>();
+  const note = (docId: number, docName: string, usedFor: string) => {
+    const existing = map.get(docId);
+    if (existing) {
+      if (!existing.usedFor.includes(usedFor)) existing.usedFor.push(usedFor);
+    } else {
+      map.set(docId, { docId, docName, usedFor: [usedFor] });
+    }
+  };
+  for (const r of RM as any[]) {
+    if (r.docId != null) note(r.docId, r.docName, `${r.signal} → ${r.triggerStates.join("/")}`);
+    if (r.altDoc?.docId != null) note(r.altDoc.docId, r.altDoc.docName, `${r.signal} alt`);
+    if (r.personaVariant) {
+      for (const [persona, variant] of Object.entries(r.personaVariant as Record<string, any>)) {
+        if (variant?.docId != null) note(variant.docId, variant.docName, `${r.signal} ${persona}`);
+      }
+    }
+  }
+  const at = (EMAIL_TEMPLATES as any).attachmentRoutingTable;
+  if (Array.isArray(at)) {
+    for (const row of at) {
+      if (row?.docId != null) {
+        // docName isn't on these rows — use the belief code as fallback label
+        note(row.docId, `Doc ${row.docId} (${row.belief || ""})`, `email routing`);
+      }
+    }
+  }
+  const docs = [...map.values()].sort((a, b) => a.docId - b.docId);
+  res.json({ documents: docs });
+});
+
 // GET /engine/contact/:id — full engine view of one contact
 router.get("/engine/contact/:id", async (req, res): Promise<void> => {
   const { id } = req.params;

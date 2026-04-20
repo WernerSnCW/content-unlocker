@@ -413,6 +413,28 @@ router.post("/outcome-reviews/:id/decisions", async (req, res): Promise<void> =>
   }
 });
 
+// POST /outcome-reviews/:id/notes — save operator notes without
+// actioning. Separate from /actioned so operators can save working
+// notes mid-review without prematurely flipping state to "actioned".
+// Body: { notes: string | null }
+router.post("/outcome-reviews/:id/notes", async (req, res): Promise<void> => {
+  try {
+    const authedUser = req.auth!.user;
+    const check = await checkReviewAccess(req.params.id, authedUser.id, authedUser.role as any);
+    if (!check.ok) {
+      res.status(check.reason === "review_not_found" ? 404 : 403).json({ error: check.reason });
+      return;
+    }
+    const notes = typeof req.body?.notes === "string" ? req.body.notes : null;
+    await db.update(outcomeReviewsTable)
+      .set({ resolution_notes: notes, updated_at: new Date() })
+      .where(eq(outcomeReviewsTable.id, req.params.id));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "save_notes_failed" });
+  }
+});
+
 // POST /outcome-reviews/:id/actioned — owner marks the review complete
 // Body: { notes?: string }
 router.post("/outcome-reviews/:id/actioned", async (req, res): Promise<void> => {
