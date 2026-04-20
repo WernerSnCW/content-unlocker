@@ -217,7 +217,13 @@ export default function CallCommand() {
             {
               contactId: payload.contactId,
               contactName: payload.contactName || "Contact",
-              status: "ready" as const,
+              // call.tagged fires BEFORE transcription.created runs the
+              // engine, so the engine_run doesn't exist yet. Mark as
+              // awaiting_tag and let the 5s polling flip it to "ready"
+              // when the new run actually lands. Otherwise operators who
+              // click too early see "Awaiting engine output" in the drawer
+              // despite a "ready" pill — confusing.
+              status: "awaiting_tag" as const,
               startedAt: Date.now(),
             },
           ];
