@@ -408,6 +408,51 @@ export default function CallCommand() {
     } catch { /* quota / disabled — non-fatal */ }
   }, [pendingOutcomes, activeAgentId]);
 
+  // Server-side tray hydration.
+  // localStorage only catches SSE events that fired WHILE Call Command was
+  // mounted. If an outcome lands while the operator is on /outcomes or
+  // elsewhere, the tray would miss it until the next simulator fire.
+  // On mount (once the agent is known), pull today's active reviews and
+  // merge into pendingOutcomes. Skips contacts we already have an entry
+  // for — preserves locally tracked "viewed" / timing state.
+  useEffect(() => {
+    if (!activeAgentId) return;
+    // Wait until localStorage hydration has seeded existing entries so we
+    // don't race and duplicate.
+    if (!trayHydratedRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`${API_BASE}/outcome-reviews?scope=mine&status=active&limit=50`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const cutoff = todayStart.getTime();
+        setPendingOutcomes(prev => {
+          const haveByContact = new Set(prev.map(p => p.contactId));
+          const additions: PendingOutcome[] = [];
+          for (const r of data.reviews || []) {
+            if (haveByContact.has(r.contact_id)) continue;
+            // Only hydrate today's entries into the tray — older ones live
+            // on the /outcomes page (today-only tray scope).
+            const created = new Date(r.created_at).getTime();
+            if (created < cutoff) continue;
+            additions.push({
+              contactId: r.contact_id,
+              contactName: `${r.contact.first_name ?? ""} ${r.contact.last_name ?? ""}`.trim() || "Contact",
+              status: "ready" as const, // review already has engine output
+              startedAt: created,
+            });
+          }
+          return additions.length > 0 ? [...additions, ...prev] : prev;
+        });
+      } catch { /* non-fatal — SSE will cover the live case */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeAgentId, trayHydratedRef.current]);
+
   // The full agents list is still used by the "Create Call List" dialog so
   // a list can be assigned to any agent (admin-style setup).
   const [agents, setAgents] = useState<Agent[]>([]);
