@@ -228,13 +228,19 @@ import {
   extractionToFactFindUpdates,
   extractionToDemoScore,
 } from "../llm/adaptExtraction";
+import { generateEmailWithLLM } from "../llm/generateEmailWithLLM";
 import { QUESTION_REGISTRY } from "../config";
 
 export async function processTranscriptWithLLM(
   transcript: string,
   callType: CallType,
   investor: Investor,
-): Promise<{ output: EngineOutputV3; audit: ExtractionAudit; rawExtraction: unknown }> {
+): Promise<{
+  output: EngineOutputV3;
+  audit: ExtractionAudit;
+  emailAudit: ExtractionAudit | null;
+  rawExtraction: unknown;
+}> {
   const flags: EngineFlag[] = [];
 
   // --- Layer 1 ---
@@ -297,9 +303,22 @@ export async function processTranscriptWithLLM(
     if (coverNoteText) (content as any).coverNoteDraft = coverNoteText;
   }
 
-  const emailResult = generateEmail(enrichedInvestor, callType, content, signalUpdates, gateResult);
-  if (emailResult.flag) flags.push(emailResult.flag);
-  const emailDraft = emailResult.email;
+  // Phase 4.9 session 2 — LLM email generation replaces the template path
+  // for demo-call follow-ups. Cold-call EMAIL_1 (confirmation) stays as a
+  // template — no personalisation beyond name makes an LLM call pointless.
+  // Opportunity calls produce no email. Email generation runs AFTER Layer 2
+  // routing/gates so attachment selection is already decided; the LLM only
+  // generates the subject + body.
+  const emailLLMResult = await generateEmailWithLLM({
+    investor: enrichedInvestor,
+    callType,
+    content,
+    signalUpdates,
+    gateResult,
+  });
+  if (emailLLMResult.flag) flags.push(emailLLMResult.flag);
+  const emailDraft = emailLLMResult.email;
+  const emailAudit = emailLLMResult.audit;
 
   const nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
 
@@ -351,5 +370,5 @@ export async function processTranscriptWithLLM(
     book2Routing,
   };
 
-  return { output, audit, rawExtraction: extraction };
+  return { output, audit, emailAudit, rawExtraction: extraction };
 }

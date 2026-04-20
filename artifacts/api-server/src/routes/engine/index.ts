@@ -10,6 +10,7 @@ import {
   getInvestorState,
   loadInvestor,
   processTranscript,
+  processTranscriptWithLLM,
   saveEngineRun,
   ENGINE_VERSION,
   ENGINE_SPEC,
@@ -177,5 +178,121 @@ router.post("/engine/reprocess", async (req, res): Promise<void> => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /engine/compare — Phase 4.9 validation tool.
+// Runs both the keyword path and the LLM path against the same
+// transcript + investor state. Returns both EngineOutputV3s plus a
+// simple diff summary so admins can eyeball where the two paths
+// disagree. Neither run is persisted — purely read-only evaluation.
+//
+// Body: { conversation_id?, call_id? }  — reuses a stored transcript.
+//
+// Use this to build confidence before deleting the keyword path.
+router.post("/engine/compare", async (req, res): Promise<void> => {
+  try {
+    const { conversation_id, call_id } = req.body || {};
+    if (!conversation_id && !call_id) {
+      res.status(400).json({ error: "conversation_id or call_id required" });
+      return;
+    }
+
+    const [conv] = conversation_id
+      ? await db.select().from(leadConversationsTable).where(eq(leadConversationsTable.id, conversation_id)).limit(1)
+      : await db.select().from(leadConversationsTable).where(eq(leadConversationsTable.external_id, String(call_id))).limit(1);
+
+    if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+    if (!conv.transcript_text) { res.status(400).json({ error: "Conversation has no transcript" }); return; }
+    if (!conv.contact_id) { res.status(400).json({ error: "Conversation has no contact_id" }); return; }
+
+    const callType = inferCallType(conv.duration_seconds);
+    const investor = await loadInvestor(conv.contact_id);
+
+    // Keyword path — instant, deterministic.
+    const keywordOut = processTranscript(conv.transcript_text, callType, investor);
+
+    // LLM path — 10-30s depending on transcript length.
+    let llmOut: any = null;
+    let llmError: string | null = null;
+    try {
+      const r = await processTranscriptWithLLM(conv.transcript_text, callType, investor);
+      llmOut = r.output;
+    } catch (err: any) {
+      llmError = err?.message || String(err);
+    }
+
+    // Build a compact diff summary highlighting the points that matter:
+    // persona / hot-button / signal state deltas / NBA / gate outcomes /
+    // email draft presence.
+    const diff = llmOut ? buildCompareDiff(keywordOut as any, llmOut) : null;
+
+    res.json({
+      conversationId: conv.id,
+      contactId: conv.contact_id,
+      callType,
+      keyword: keywordOut,
+      llm: llmOut,
+      llmError,
+      diff,
+    });
+  } catch (err: any) {
+    console.error("[engine/compare] failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function buildCompareDiff(keyword: any, llm: any): any {
+  const kSignals = new Map<string, string>();
+  for (const u of keyword.signalUpdates || []) kSignals.set(u.code, u.newState);
+  const lSignals = new Map<string, string>();
+  for (const u of llm.signalUpdates || []) lSignals.set(u.code, u.newState);
+  const allCodes = new Set<string>([...kSignals.keys(), ...lSignals.keys()]);
+  const signalDiffs: Array<{ code: string; keyword: string | null; llm: string | null; agreed: boolean }> = [];
+  for (const c of allCodes) {
+    const k = kSignals.get(c) ?? null;
+    const l = lSignals.get(c) ?? null;
+    signalDiffs.push({ code: c, keyword: k, llm: l, agreed: k === l });
+  }
+  return {
+    persona: {
+      keyword: keyword.personaAssessment?.persona ?? null,
+      llm: llm.personaAssessment?.persona ?? null,
+      agreed: (keyword.personaAssessment?.persona ?? null) === (llm.personaAssessment?.persona ?? null),
+    },
+    hotButton: {
+      keyword: keyword.hotButton?.primary ?? null,
+      llm: llm.hotButton?.primary ?? null,
+      agreed: (keyword.hotButton?.primary ?? null) === (llm.hotButton?.primary ?? null),
+    },
+    nextAction: {
+      keyword: keyword.nextBestAction?.actionType ?? null,
+      llm: llm.nextBestAction?.actionType ?? null,
+      agreed: (keyword.nextBestAction?.actionType ?? null) === (llm.nextBestAction?.actionType ?? null),
+    },
+    c4Compliance: {
+      keyword: keyword.gateStatus?.c4Compliance ?? null,
+      llm: llm.gateStatus?.c4Compliance ?? null,
+      agreed: (keyword.gateStatus?.c4Compliance ?? null) === (llm.gateStatus?.c4Compliance ?? null),
+    },
+    pack1: {
+      keyword: keyword.gateStatus?.pack1 ?? null,
+      llm: llm.gateStatus?.pack1 ?? null,
+      agreed: (keyword.gateStatus?.pack1 ?? null) === (llm.gateStatus?.pack1 ?? null),
+    },
+    signalCount: {
+      keyword: keyword.signalUpdates?.length ?? 0,
+      llm: llm.signalUpdates?.length ?? 0,
+    },
+    signalsPerCode: signalDiffs,
+    emailDraftAttachment: {
+      keyword: keyword.emailDraft?.attachmentDocName ?? null,
+      llm: llm.emailDraft?.attachmentDocName ?? null,
+      agreed: (keyword.emailDraft?.attachmentDocName ?? null) === (llm.emailDraft?.attachmentDocName ?? null),
+    },
+    factFindDelta: {
+      keyword: Object.keys(keyword.factFindUpdates ?? {}).length,
+      llm: Object.keys(llm.factFindUpdates ?? {}).length,
+    },
+  };
+}
 
 export default router;

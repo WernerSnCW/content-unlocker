@@ -684,6 +684,13 @@ export async function runEngineForConversation(
       try {
         const llmRun = await processTranscriptWithLLM(transcript, callType, investor);
         output = llmRun.output;
+        // Sum the two LLM calls (extraction + email) into a single audit
+        // record on engine_runs. Keeps the schema flat — reporting can
+        // treat one engine_run = one transcript cycle with its total
+        // token/time cost. Email audit is null for cold-call template
+        // path and opportunity calls (no LLM email), so we handle nulls.
+        const e = llmRun.audit;
+        const m = llmRun.emailAudit;
         runId = await saveEngineRun({
           contactId,
           conversationId,
@@ -691,12 +698,12 @@ export async function runEngineForConversation(
           output,
           llm: {
             status: "ok",
-            model: llmRun.audit.model,
-            latencyMs: llmRun.audit.latencyMs,
-            inputTokens: llmRun.audit.inputTokens,
-            outputTokens: llmRun.audit.outputTokens,
-            cacheReadTokens: llmRun.audit.cacheReadTokens,
-            cacheCreationTokens: llmRun.audit.cacheCreationTokens,
+            model: e.model,
+            latencyMs: e.latencyMs + (m?.latencyMs ?? 0),
+            inputTokens: e.inputTokens + (m?.inputTokens ?? 0),
+            outputTokens: e.outputTokens + (m?.outputTokens ?? 0),
+            cacheReadTokens: e.cacheReadTokens + (m?.cacheReadTokens ?? 0),
+            cacheCreationTokens: e.cacheCreationTokens + (m?.cacheCreationTokens ?? 0),
             extraction: llmRun.rawExtraction,
           },
         });
