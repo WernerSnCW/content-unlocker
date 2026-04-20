@@ -36,6 +36,7 @@ import ContactIngestion from "./pages/contact-ingestion";
 import CallList from "./pages/call-list";
 import CallCommand from "./pages/call-command";
 import WebhookLog from "./pages/webhook-log";
+import OutcomesPage from "./pages/outcomes";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +92,7 @@ function Router() {
               </Route>
               <Route path="/contacts/upload" component={ContactIngestion} />
               <Route path="/call-list" component={CallList} />
+              <Route path="/outcomes" component={OutcomesPage} />
               <Route path="/webhook-log" component={WebhookLog} />
               <Route component={NotFound} />
             </Switch>

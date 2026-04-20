@@ -26,6 +26,7 @@ import {
   FileSearch,
   Headphones,
   LogOut,
+  Inbox,
 } from "lucide-react";
 
 const API_BASE =
@@ -34,6 +35,10 @@ const API_BASE =
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [openReviewCount, setOpenReviewCount] = useState<number>(0);
+  // Phase 4.8 — inbox count for the Outcomes nav badge.
+  // Represents active outcome_reviews owned by the current user. Refreshed
+  // on mount and on every SSE call.tagged event.
+  const [outcomesInboxCount, setOutcomesInboxCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -51,6 +56,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       } catch { /* silent */ }
     };
     fetchCount();
+  }, []);
+
+  // Phase 4.8 — outcomes inbox count. Refresh on mount and on every
+  // SSE call.tagged so the sidebar badge ticks up the moment something
+  // lands in the operator's inbox (handoffs, new reviews, re-tags).
+  useEffect(() => {
+    const fetchOutcomesCount = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/outcome-reviews/count`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setOutcomesInboxCount(data.mine ?? 0);
+      } catch { /* silent */ }
+    };
+    fetchOutcomesCount();
+    // Live refresh via SSE
+    const es = new EventSource(`${API_BASE}/events/queue`);
+    const bump = () => fetchOutcomesCount();
+    es.addEventListener("call.tagged", bump);
+    es.addEventListener("untagged-sweep", bump);
+    es.onerror = () => { /* auto-reconnects */ };
+    return () => { es.close(); };
   }, []);
 
   const handleSearch = async (query: string) => {
@@ -96,6 +123,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         { href: "/leads", label: "Lead Management", icon: Users, adminOnly: true },
         { href: "/contacts/upload", label: "Contact Ingestion", icon: Upload },
         { href: "/call-list", label: "Call List", icon: Phone },
+        { href: "/outcomes", label: "Outcomes", icon: Inbox },
         { href: "/tasks", label: "Task Board", icon: CheckSquare, adminOnly: true },
         { href: "/work-queue", label: "Work Queue", icon: Zap, adminOnly: true },
       ],
@@ -173,6 +201,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         {item.href === "/work-queue" && openReviewCount > 0 && (
                           <Badge variant="destructive" className="ml-auto text-xs px-1.5 py-0">
                             {openReviewCount}
+                          </Badge>
+                        )}
+                        {item.href === "/outcomes" && outcomesInboxCount > 0 && (
+                          <Badge className="ml-auto text-xs px-1.5 py-0 bg-primary/15 text-primary border-primary/30 hover:bg-primary/15" variant="outline">
+                            {outcomesInboxCount}
                           </Badge>
                         )}
                     </Link>
