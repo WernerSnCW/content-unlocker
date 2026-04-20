@@ -25,11 +25,12 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Loader2, AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2,
   X as XIcon, Clock, FileText, Mail, UserPlus, CornerUpLeft,
   ListChecks, Users, Sparkles, Edit3, Save, RotateCcw, Undo2, Check, History,
-  ShieldAlert, Calendar as CalendarIcon, StickyNote, Plus,
+  ShieldAlert, Calendar as CalendarIcon, StickyNote, Plus, Target, Brain, HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -453,322 +454,406 @@ export default function OutcomeDetailPage() {
       )}
 
       {/* ======================================================================
-          WORKSPACE — actions the operator takes. The whole point of this page.
+          TABS — Action / Intelligence / History
+          Header (contact + outcome + badges + handoff + flags) stays above.
+          Most operator time is on Action. Intelligence is a click away when
+          they want the "why". History is audit — rarely visited.
       ====================================================================== */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-2 border-t">
-          Actions to take
-        </h2>
+      <Tabs defaultValue="action" className="w-full">
+        <TabsList>
+          <TabsTrigger value="action" className="gap-1.5">
+            <Target className="w-3.5 h-3.5" /> Action
+            <TabBadge count={openActionCount({ output, decisionByKey })} />
+          </TabsTrigger>
+          <TabsTrigger value="intelligence" className="gap-1.5">
+            <Brain className="w-3.5 h-3.5" /> Intelligence
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-1.5">
+            <History className="w-3.5 h-3.5" /> History
+            {bundle.decisions.length > 0 && <TabBadge count={bundle.decisions.length} muted />}
+          </TabsTrigger>
+        </TabsList>
 
-        {/* EMAIL + ATTACHMENTS */}
-        {output?.emailDraft && (
-          <EmailWorkspace
-            email={output.emailDraft}
-            decision={decisionByKey.get("email:primary")}
-            busy={decidingKey === "email:primary"}
-            availableDocs={availableDocs}
-            nbaDoc={output.nextBestAction?.contentToSend ?? null}
-            onSubmitDecision={submitDecision}
-          />
-        )}
+        {/* ============================================================
+            ACTION TAB — everything the operator DOES
+        ============================================================ */}
+        <TabsContent value="action" className="space-y-4 mt-4">
+          {output?.emailDraft && (
+            <EmailWorkspace
+              email={output.emailDraft}
+              decision={decisionByKey.get("email:primary")}
+              busy={decidingKey === "email:primary"}
+              availableDocs={availableDocs}
+              nbaDoc={output.nextBestAction?.contentToSend ?? null}
+              onSubmitDecision={submitDecision}
+            />
+          )}
 
-        {/* NEXT BEST ACTION (non-email actions — e.g. schedule_call, send_content without email path) */}
-        {output?.nextBestAction && !output.emailDraft && (
-          <NBAWorkspace
-            nba={output.nextBestAction}
-            decision={decisionByKey.get("nba:primary")}
-            busy={decidingKey === "nba:primary"}
-            onSubmitDecision={submitDecision}
-          />
-        )}
+          {output?.nextBestAction && !output.emailDraft && (
+            <NBAWorkspace
+              nba={output.nextBestAction}
+              decision={decisionByKey.get("nba:primary")}
+              busy={decidingKey === "nba:primary"}
+              onSubmitDecision={submitDecision}
+            />
+          )}
 
-        {/* FOLLOW-UP scheduling */}
-        <FollowUpWorkspace
-          nba={output?.nextBestAction}
-        />
+          <FollowUpWorkspace nba={output?.nextBestAction} />
 
-        {/* POST-CLOSE CHECKLIST */}
-        {output?.postCloseActions && output.postCloseActions.length > 0 && (
-          <Card className="border-green-500/30 bg-green-500/[0.02]">
-            <CardContent className="py-4 px-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <ListChecks className="w-4 h-4 text-green-700" />
-                <p className="text-sm font-semibold uppercase tracking-wider text-green-700">Post-close checklist</p>
-              </div>
-              {output.postCloseActions.map((a, i) => {
-                const key = `post_close:${i}:${a.action.slice(0, 40)}`;
-                return (
-                  <div key={i} className="space-y-2 border-b border-border/50 last:border-b-0 pb-3 last:pb-0">
-                    <div className="flex items-start gap-2 text-sm">
-                      <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 opacity-60 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium">{a.action}</p>
-                        <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
-                        {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+          {output?.postCloseActions && output.postCloseActions.length > 0 && (
+            <Card className="border-green-500/30 bg-green-500/[0.02]">
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-green-700" />
+                  <p className="text-sm font-semibold uppercase tracking-wider text-green-700">Post-close checklist</p>
+                </div>
+                {output.postCloseActions.map((a, i) => {
+                  const key = `post_close:${i}:${a.action.slice(0, 40)}`;
+                  return (
+                    <div key={i} className="space-y-2 border-b border-border/50 last:border-b-0 pb-3 last:pb-0">
+                      <div className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 opacity-60 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{a.action}</p>
+                          <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
+                          {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+                        </div>
                       </div>
+                      <DecisionBar
+                        actionType="post_close_item"
+                        actionKey={key}
+                        decision={decisionByKey.get(`post_close_item:${key}`)}
+                        busy={decidingKey === `post_close_item:${key}`}
+                        onSubmit={submitDecision}
+                      />
                     </div>
-                    <DecisionBar
-                      actionType="post_close_item"
-                      actionKey={key}
-                      decision={decisionByKey.get(`post_close_item:${key}`)}
-                      busy={decidingKey === `post_close_item:${key}`}
-                      onSubmit={submitDecision}
-                    />
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* ADVISER LOOP */}
-        {output?.adviserLoopActions && output.adviserLoopActions.length > 0 && (
-          <Card className="border-purple-500/30 bg-purple-500/[0.02]">
-            <CardContent className="py-4 px-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-purple-700" />
-                <p className="text-sm font-semibold uppercase tracking-wider text-purple-700">Adviser loop</p>
-              </div>
-              {(["pre_call", "during_call", "post_call"] as const).map(phase => {
-                const group = output.adviserLoopActions?.find(g => g.phase === phase);
-                if (!group || group.actions.length === 0) return null;
-                const phaseLabel = phase === "pre_call" ? "Pre-call" : phase === "during_call" ? "During call" : "Post-call";
-                return (
-                  <div key={phase} className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{phaseLabel}</p>
-                    {group.actions.map((a, i) => {
-                      const key = `adviser_loop:${phase}:${i}:${a.action.slice(0, 40)}`;
-                      return (
-                        <div key={i} className="pl-3 space-y-2">
-                          <div className="flex items-start gap-2 text-sm">
-                            <Sparkles className="w-3 h-3 text-purple-500 mt-1.5 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium">{a.action}</p>
-                              <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
-                              {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+          {output?.adviserLoopActions && output.adviserLoopActions.length > 0 && (
+            <Card className="border-purple-500/30 bg-purple-500/[0.02]">
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-purple-700" />
+                  <p className="text-sm font-semibold uppercase tracking-wider text-purple-700">Adviser loop</p>
+                </div>
+                {(["pre_call", "during_call", "post_call"] as const).map(phase => {
+                  const group = output.adviserLoopActions?.find(g => g.phase === phase);
+                  if (!group || group.actions.length === 0) return null;
+                  const phaseLabel = phase === "pre_call" ? "Pre-call" : phase === "during_call" ? "During call" : "Post-call";
+                  return (
+                    <div key={phase} className="space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{phaseLabel}</p>
+                      {group.actions.map((a, i) => {
+                        const key = `adviser_loop:${phase}:${i}:${a.action.slice(0, 40)}`;
+                        return (
+                          <div key={i} className="pl-3 space-y-2">
+                            <div className="flex items-start gap-2 text-sm">
+                              <Sparkles className="w-3 h-3 text-purple-500 mt-1.5 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium">{a.action}</p>
+                                <p className="text-xs text-muted-foreground">{a.owner} · {a.timing}</p>
+                                {a.detail && <p className="text-sm text-muted-foreground/90 mt-1">{a.detail}</p>}
+                              </div>
+                            </div>
+                            <div className="pl-5">
+                              <DecisionBar
+                                actionType="adviser_loop_item"
+                                actionKey={key}
+                                decision={decisionByKey.get(`adviser_loop_item:${key}`)}
+                                busy={decidingKey === `adviser_loop_item:${key}`}
+                                onSubmit={submitDecision}
+                              />
                             </div>
                           </div>
-                          <div className="pl-5">
-                            <DecisionBar
-                              actionType="adviser_loop_item"
-                              actionKey={key}
-                              decision={decisionByKey.get(`adviser_loop_item:${key}`)}
-                              busy={decidingKey === `adviser_loop_item:${key}`}
-                              onSubmit={submitDecision}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* BOOK 2 */}
-        {output?.book2Routing?.triggered && (
-          <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
+          {output?.book2Routing?.triggered && (
+            <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
+              <CardContent className="py-4 px-5 space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
+                {output.book2Routing.reason && <p className="text-sm">{output.book2Routing.reason}</p>}
+                {output.book2Routing.actions && output.book2Routing.actions.length > 0 && (
+                  <ul className="text-sm text-muted-foreground space-y-0.5 pl-5 list-disc">
+                    {output.book2Routing.actions.map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                )}
+                <DecisionBar
+                  actionType="book2"
+                  actionKey="primary"
+                  decision={decisionByKey.get("book2:primary")}
+                  busy={decidingKey === "book2:primary"}
+                  onSubmit={submitDecision}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* OPERATOR NOTES */}
+          <Card>
             <CardContent className="py-4 px-5 space-y-2">
-              <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
-              {output.book2Routing.reason && <p className="text-sm">{output.book2Routing.reason}</p>}
-              {output.book2Routing.actions && output.book2Routing.actions.length > 0 && (
-                <ul className="text-sm text-muted-foreground space-y-0.5 pl-5 list-disc">
-                  {output.book2Routing.actions.map((a, i) => <li key={i}>{a}</li>)}
-                </ul>
-              )}
-              <DecisionBar
-                actionType="book2"
-                actionKey="primary"
-                decision={decisionByKey.get("book2:primary")}
-                busy={decidingKey === "book2:primary"}
-                onSubmit={submitDecision}
+              <div className="flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-muted-foreground" />
+                <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Operator notes</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Free-form notes for yourself or whoever picks this up next. Not sent to the investor.
+              </p>
+              <Textarea
+                value={notes}
+                onChange={(e) => { setNotes(e.target.value); setNotesDirty(true); }}
+                rows={4}
+                placeholder="e.g. Adviser wants the IHT-5M-estate version; avoid portfolio language."
               />
+              <div className="flex justify-end">
+                <Button size="sm" onClick={saveNotes} disabled={!notesDirty || notesSaving} className="gap-1">
+                  {notesSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save notes
+                </Button>
+              </div>
             </CardContent>
           </Card>
-        )}
+        </TabsContent>
 
-        {/* OPERATOR NOTES */}
-        <Card>
-          <CardContent className="py-4 px-5 space-y-2">
-            <div className="flex items-center gap-2">
-              <StickyNote className="w-4 h-4 text-muted-foreground" />
-              <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Operator notes</p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Free-form notes for yourself or whoever picks this up next. Not sent to the investor.
-            </p>
-            <Textarea
-              value={notes}
-              onChange={(e) => { setNotes(e.target.value); setNotesDirty(true); }}
-              rows={4}
-              placeholder="e.g. Adviser wants the IHT-5M-estate version; avoid portfolio language."
-            />
-            <div className="flex justify-end">
-              <Button size="sm" onClick={saveNotes} disabled={!notesDirty || notesSaving} className="gap-1">
-                {notesSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save notes
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ======================================================================
-          REFERENCE — intelligence evidence. Collapsed by default.
-      ====================================================================== */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-4 border-t">
-          Intelligence reference
-        </h2>
-
-        <Collapsible title="Signal changes this call" count={(output?.signalUpdates ?? []).length}>
+        {/* ============================================================
+            INTELLIGENCE TAB — everything the engine saw (expanded, no
+            collapsibles — this is the FOCUS of this tab, not a footnote)
+        ============================================================ */}
+        <TabsContent value="intelligence" className="space-y-4 mt-4">
+          {/* Signal changes */}
           {output?.signalUpdates && output.signalUpdates.length > 0 && (
-            <div className="space-y-3">
-              {output.signalUpdates.map(u => (
-                <div key={u.code} className="grid grid-cols-[auto_auto_auto_auto_1fr] gap-3 items-start text-sm">
-                  <span className="font-mono text-xs w-10 shrink-0 pt-1">{u.code}</span>
-                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.previousState))} variant="outline">{u.previousState}</Badge>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground mt-1.5" />
-                  <Badge className={cn("text-xs mt-0.5", stateClasses(u.newState))} variant="outline">{u.newState}</Badge>
-                  {u.evidence && (
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">"{u.evidence}"</p>
+            <Card>
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Signal changes this call</p>
+                  <Badge variant="outline" className="text-[10px]">{output.signalUpdates.length}</Badge>
+                </div>
+                <div className="space-y-3">
+                  {output.signalUpdates.map(u => (
+                    <div key={u.code} className="grid grid-cols-[auto_auto_auto_auto_1fr] gap-3 items-start text-sm">
+                      <span className="font-mono text-xs w-10 shrink-0 pt-1">{u.code}</span>
+                      <Badge className={cn("text-xs mt-0.5", stateClasses(u.previousState))} variant="outline">{u.previousState}</Badge>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground mt-1.5" />
+                      <Badge className={cn("text-xs mt-0.5", stateClasses(u.newState))} variant="outline">{u.newState}</Badge>
+                      {u.evidence && (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">"{u.evidence}"</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fact find */}
+          {view?.investorState && (
+            <Card>
+              <CardContent className="py-4 px-5 space-y-3">
+                <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Fact find</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <FactFindField label="Practical problem" value={view.investorState.practical_problem} />
+                  <FactFindField label="Current pressure" value={view.investorState.current_pressure} />
+                  <FactFindField label="Personal angle" value={view.investorState.personal_angle} />
+                  <FactFindField label="Desired outcome" value={view.investorState.desired_outcome} />
+                  <FactFindField label="Decision stakeholders" value={view.investorState.decision_stakeholders} />
+                  <FactFindField label="Decision style" value={view.investorState.decision_style} />
+                  <FactFindField label="Portfolio shape" value={view.investorState.portfolio_shape} />
+                  <FactFindField label="Annual tax liability" value={view.investorState.annual_tax_liability ? `£${view.investorState.annual_tax_liability}` : null} />
+                  <FactFindField label="Questions for Call 3" value={view.investorState.questions_for_call3} fullWidth />
+                </div>
+                {view.investorState.exact_phrases && view.investorState.exact_phrases.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Verbatim phrases</p>
+                    <ul className="space-y-1">
+                      {view.investorState.exact_phrases.map((q, i) => (
+                        <li key={i} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30">"{q}"</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Questions */}
+          {output?.questionsDetected && output.questionsDetected.length > 0 && (
+            <Card>
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Questions asked</p>
+                  <Badge variant="outline" className="text-[10px]">
+                    {output.questionsDetected.filter(q => q.detected).length} of {output.questionsDetected.length}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  {output.questionsDetected.map((qd, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm py-1 border-b border-border/50 last:border-b-0">
+                      {qd.detected
+                        ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                        : <XIcon className="w-3.5 h-3.5 text-muted-foreground/40 mt-0.5 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p>
+                          <span className="font-mono text-muted-foreground/70 mr-1">Q{qd.questionNumber}</span>
+                          {qd.signalTarget && <span className="font-mono text-xs text-muted-foreground/70 mr-2">{qd.signalTarget}</span>}
+                          {qd.inferredSignalState && <span className="text-xs text-muted-foreground">→ {qd.inferredSignalState}</span>}
+                        </p>
+                        {qd.investorResponse && (
+                          <p className="text-xs text-muted-foreground italic mt-0.5">"{qd.investorResponse}"</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Gates */}
+          {output?.gateStatus && (
+            <Card>
+              <CardContent className="py-4 px-5 space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Gates</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>C4 compliance</span>
+                    <Badge variant="outline" className={output.gateStatus.c4Compliance === "open"
+                      ? "bg-green-500/15 text-green-600 border-green-500/30"
+                      : "bg-red-500/15 text-red-600 border-red-500/30"}>
+                      {output.gateStatus.c4Compliance}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Pack 1</span>
+                    <Badge variant="outline" className={output.gateStatus.pack1 === "eligible"
+                      ? "bg-green-500/15 text-green-600 border-green-500/30"
+                      : "bg-amber-500/15 text-amber-600 border-amber-500/30"}>
+                      {output.gateStatus.pack1}
+                    </Badge>
+                  </div>
+                  {output.gateStatus.pack1 === "blocked" && output.gateStatus.pack1BlockedReasons && (
+                    <p className="text-xs text-muted-foreground pl-2">
+                      {output.gateStatus.pack1BlockedReasons.join(", ")}
+                    </p>
                   )}
                 </div>
-              ))}
-            </div>
+              </CardContent>
+            </Card>
           )}
-        </Collapsible>
 
-        <Collapsible
-          title="Fact find"
-          count={view?.investorState
-            ? Object.values({
-                pp: view.investorState.practical_problem,
-                cp: view.investorState.current_pressure,
-                pa: view.investorState.personal_angle,
-                doo: view.investorState.desired_outcome,
-                ds: view.investorState.decision_stakeholders,
-                ps: view.investorState.portfolio_shape,
-                q3: view.investorState.questions_for_call3,
-              }).filter(Boolean).length
-            : 0}
-        >
-          {view?.investorState && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <FactFindField label="Practical problem" value={view.investorState.practical_problem} />
-                <FactFindField label="Current pressure" value={view.investorState.current_pressure} />
-                <FactFindField label="Personal angle" value={view.investorState.personal_angle} />
-                <FactFindField label="Desired outcome" value={view.investorState.desired_outcome} />
-                <FactFindField label="Decision stakeholders" value={view.investorState.decision_stakeholders} />
-                <FactFindField label="Decision style" value={view.investorState.decision_style} />
-                <FactFindField label="Portfolio shape" value={view.investorState.portfolio_shape} />
-                <FactFindField label="Annual tax liability" value={view.investorState.annual_tax_liability ? `£${view.investorState.annual_tax_liability}` : null} />
-                <FactFindField label="Questions for Call 3" value={view.investorState.questions_for_call3} fullWidth />
-              </div>
-              {view.investorState.exact_phrases && view.investorState.exact_phrases.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Verbatim phrases</p>
-                  <ul className="space-y-1">
-                    {view.investorState.exact_phrases.map((q, i) => (
-                      <li key={i} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30">"{q}"</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+          {/* Empty state */}
+          {!output?.signalUpdates?.length && !view?.investorState && !output?.questionsDetected?.length && (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <HelpCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No intelligence output available for this run.</p>
+              </CardContent>
+            </Card>
           )}
-        </Collapsible>
+        </TabsContent>
 
-        <Collapsible title="Questions asked" count={(output?.questionsDetected ?? []).filter(q => q.detected).length}>
-          {output?.questionsDetected && output.questionsDetected.length > 0 && (
-            <div className="space-y-1">
-              {output.questionsDetected.map((qd, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm py-1 border-b border-border/50 last:border-b-0">
-                  {qd.detected
-                    ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
-                    : <XIcon className="w-3.5 h-3.5 text-muted-foreground/40 mt-0.5 shrink-0" />}
-                  <div className="flex-1 min-w-0">
-                    <p>
-                      <span className="font-mono text-muted-foreground/70 mr-1">Q{qd.questionNumber}</span>
-                      {qd.signalTarget && <span className="font-mono text-xs text-muted-foreground/70 mr-2">{qd.signalTarget}</span>}
-                      {qd.inferredSignalState && <span className="text-xs text-muted-foreground">→ {qd.inferredSignalState}</span>}
-                    </p>
-                    {qd.investorResponse && (
-                      <p className="text-xs text-muted-foreground italic mt-0.5">"{qd.investorResponse}"</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Collapsible>
-
-        <Collapsible title="Gates" count={0}>
-          {output?.gateStatus && (
-            <div className="space-y-1.5 text-sm">
+        {/* ============================================================
+            HISTORY TAB — audit trail
+        ============================================================ */}
+        <TabsContent value="history" className="space-y-4 mt-4">
+          {/* Decision timeline */}
+          <Card>
+            <CardContent className="py-4 px-5 space-y-3">
               <div className="flex items-center justify-between">
-                <span>C4 compliance</span>
-                <Badge variant="outline" className={output.gateStatus.c4Compliance === "open"
-                  ? "bg-green-500/15 text-green-600 border-green-500/30"
-                  : "bg-red-500/15 text-red-600 border-red-500/30"}>
-                  {output.gateStatus.c4Compliance}
-                </Badge>
+                <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Decision timeline</p>
+                <Badge variant="outline" className="text-[10px]">{bundle.decisions.length}</Badge>
               </div>
-              <div className="flex items-center justify-between">
-                <span>Pack 1</span>
-                <Badge variant="outline" className={output.gateStatus.pack1 === "eligible"
-                  ? "bg-green-500/15 text-green-600 border-green-500/30"
-                  : "bg-amber-500/15 text-amber-600 border-amber-500/30"}>
-                  {output.gateStatus.pack1}
-                </Badge>
-              </div>
-              {output.gateStatus.pack1 === "blocked" && output.gateStatus.pack1BlockedReasons && (
-                <p className="text-xs text-muted-foreground pl-2">
-                  {output.gateStatus.pack1BlockedReasons.join(", ")}
+              {bundle.decisions.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic py-4 text-center">
+                  No decisions yet. Approve, edit, or reject actions on the Action tab to start the audit trail.
                 </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {bundle.decisions
+                    .slice()
+                    .sort((a, b) => new Date(b.decided_at).getTime() - new Date(a.decided_at).getTime())
+                    .map(d => (
+                      <div key={d.id} className="text-xs flex items-center gap-2 border-b border-border/50 last:border-b-0 pb-1.5 last:pb-0">
+                        <span className="w-36 font-mono text-muted-foreground shrink-0">
+                          {new Date(d.decided_at).toLocaleString()}
+                        </span>
+                        <Badge variant="outline" className={cn(
+                          "text-[10px]",
+                          d.decision === "approved" ? "bg-green-500/10 text-green-700 border-green-500/30"
+                          : d.decision === "rejected" ? "bg-red-500/10 text-red-700 border-red-500/30"
+                          : d.decision === "edited" ? "bg-amber-500/10 text-amber-700 border-amber-500/30"
+                          : "bg-muted text-muted-foreground border-border"
+                        )}>{d.decision}</Badge>
+                        <span className="text-muted-foreground">{d.action_type}:{d.action_key.slice(0, 60)}</span>
+                      </div>
+                    ))}
+                </div>
               )}
-            </div>
-          )}
-        </Collapsible>
-      </div>
+            </CardContent>
+          </Card>
 
-      {/* ======================================================================
-          HISTORY — decision log. Collapsed.
-      ====================================================================== */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground pt-4 border-t">
-          History
-        </h2>
-
-        <Collapsible title="Decision timeline" count={bundle.decisions.length}>
-          {bundle.decisions.length > 0 && (
-            <div className="space-y-1.5">
-              {bundle.decisions
-                .slice()
-                .sort((a, b) => new Date(b.decided_at).getTime() - new Date(a.decided_at).getTime())
-                .map(d => (
-                  <div key={d.id} className="text-xs flex items-center gap-2 border-b border-border/50 last:border-b-0 pb-1.5 last:pb-0">
-                    <span className="w-36 font-mono text-muted-foreground shrink-0">
-                      {new Date(d.decided_at).toLocaleString()}
-                    </span>
-                    <Badge variant="outline" className={cn(
-                      "text-[10px]",
-                      d.decision === "approved" ? "bg-green-500/10 text-green-700 border-green-500/30"
-                      : d.decision === "rejected" ? "bg-red-500/10 text-red-700 border-red-500/30"
-                      : d.decision === "edited" ? "bg-amber-500/10 text-amber-700 border-amber-500/30"
-                      : "bg-muted text-muted-foreground border-border"
-                    )}>{d.decision}</Badge>
-                    <span className="text-muted-foreground">{d.action_type}:{d.action_key.slice(0, 60)}</span>
-                  </div>
-                ))}
-            </div>
-          )}
-        </Collapsible>
-      </div>
+          {/* Review metadata */}
+          <Card>
+            <CardContent className="py-4 px-5 space-y-2 text-sm">
+              <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Review metadata</p>
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between"><dt className="text-muted-foreground">Review ID</dt><dd className="font-mono text-xs">{r.id}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Engine run</dt><dd className="font-mono text-xs">{r.engine_run_id}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Created</dt><dd>{new Date(r.created_at).toLocaleString()}</dd></div>
+                <div className="flex justify-between"><dt className="text-muted-foreground">Last updated</dt><dd>{new Date(r.updated_at).toLocaleString()}</dd></div>
+                {r.claimed_at && <div className="flex justify-between"><dt className="text-muted-foreground">Claimed</dt><dd>{new Date(r.claimed_at).toLocaleString()}</dd></div>}
+                {r.resolved_at && <div className="flex justify-between"><dt className="text-muted-foreground">Resolved</dt><dd>{new Date(r.resolved_at).toLocaleString()}</dd></div>}
+              </dl>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
+  );
+}
+
+// Count how many actionable items still await a decision — used for the
+// Action tab badge. Stays small on purpose (single digit is fine).
+function openActionCount({ output, decisionByKey }: {
+  output: EngineOutput | null;
+  decisionByKey: Map<string, DecisionRow>;
+}): number {
+  if (!output) return 0;
+  let count = 0;
+  if (output.emailDraft && !decisionByKey.has("email:primary")) count++;
+  if (output.nextBestAction && !output.emailDraft && !decisionByKey.has("nba:primary")) count++;
+  if (output.book2Routing?.triggered && !decisionByKey.has("book2:primary")) count++;
+  for (const [i, a] of (output.postCloseActions ?? []).entries()) {
+    const k = `post_close_item:post_close:${i}:${a.action.slice(0, 40)}`;
+    if (!decisionByKey.has(k)) count++;
+  }
+  for (const group of output.adviserLoopActions ?? []) {
+    for (const [i, a] of group.actions.entries()) {
+      const k = `adviser_loop_item:adviser_loop:${group.phase}:${i}:${a.action.slice(0, 40)}`;
+      if (!decisionByKey.has(k)) count++;
+    }
+  }
+  return count;
+}
+
+function TabBadge({ count, muted }: { count: number; muted?: boolean }) {
+  if (count === 0) return null;
+  return (
+    <Badge variant="outline" className={cn(
+      "ml-1 text-[10px] px-1.5 py-0",
+      muted ? "bg-muted text-muted-foreground" : "bg-primary/15 text-primary border-primary/30",
+    )}>
+      {count}
+    </Badge>
   );
 }
 
