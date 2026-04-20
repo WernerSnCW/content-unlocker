@@ -1097,14 +1097,15 @@ function EmailWorkspace({
         </div>
 
         {tokens.length > 0 && (
-          <div className="rounded bg-amber-500/10 border border-amber-500/30 px-3 py-2 space-y-2">
-            <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3" /> Replace placeholders before sending
+          <div className="rounded-md bg-muted/50 border border-border px-3 py-2.5 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3 text-amber-500" />
+              Fill in before sending
             </p>
             <div className="space-y-1.5">
               {tokens.map(t => (
                 <div key={t} className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-amber-900 w-20 shrink-0">{t}</span>
+                  <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{t}</span>
                   <Input
                     value={tokenValues[t] ?? ""}
                     onChange={e => setTokenValues(v => ({ ...v, [t]: e.target.value }))}
@@ -1261,10 +1262,10 @@ function FollowUpWorkspace({ nba }: { nba: EngineOutput["nextBestAction"] | unde
     <Card>
       <CardContent className="py-4 px-5 space-y-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
             <CalendarIcon className="w-4 h-4" />
           </div>
-          <p className="text-sm font-semibold uppercase tracking-wider text-amber-700">Follow-up</p>
+          <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Follow-up</p>
           {nba?.timing && (
             <Badge variant="outline" className="text-[10px]">Engine: {nba.timing}</Badge>
           )}
