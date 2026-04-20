@@ -89,6 +89,13 @@ interface UserRef { id: string; name: string | null; email: string; }
 interface ReviewBundle {
   review: ReviewRow; decisions: DecisionRow[];
   currentOwner: UserRef | null; handedFrom: UserRef | null;
+  // Added in Phase 4.8 session 4 — server pre-joins for the header
+  contact: {
+    id: string; first_name: string; last_name: string;
+    email: string | null; phone: string | null; company: string | null;
+    last_call_outcome: string | null;
+  } | null;
+  outcomeTag: string | null;
 }
 interface EngineOutput {
   engineVersion: string; processedAt: string; callType: string;
@@ -182,9 +189,7 @@ export default function OutcomeDetailPage() {
 
   const [bundle, setBundle] = useState<ReviewBundle | null>(null);
   const [view, setView] = useState<EngineContactView | null>(null);
-  const [contact, setContact] = useState<ContactRow | null>(null);
   const [output, setOutput] = useState<EngineOutput | null>(null);
-  const [conversationTags, setConversationTags] = useState<string[]>([]);
   const [availableDocs, setAvailableDocs] = useState<DocOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -200,11 +205,10 @@ export default function OutcomeDetailPage() {
       const b: ReviewBundle = await rRes.json();
       setBundle(b);
 
-      const [vRes, runRes, docsRes, contactRes] = await Promise.all([
+      const [vRes, runRes, docsRes] = await Promise.all([
         apiFetch(`${API_BASE}/engine/contact/${b.review.contact_id}`),
         apiFetch(`${API_BASE}/engine/runs/${b.review.engine_run_id}`),
         apiFetch(`${API_BASE}/engine/config/documents`),
-        apiFetch(`${API_BASE}/contacts?id=${b.review.contact_id}`),
       ]);
 
       if (vRes.ok) setView(await vRes.json());
@@ -215,14 +219,6 @@ export default function OutcomeDetailPage() {
       if (docsRes.ok) {
         const docData = await docsRes.json();
         setAvailableDocs(docData.documents || []);
-      }
-      if (contactRes.ok) {
-        const cd = await contactRes.json();
-        const first = cd.contacts?.[0] ?? null;
-        if (first) {
-          setContact(first);
-          if (first.last_call_outcome) setConversationTags([first.last_call_outcome]);
-        }
       }
     } catch (err: any) {
       setError(err?.message || "Failed to load outcome");
@@ -313,7 +309,8 @@ export default function OutcomeDetailPage() {
 
   const persona = view?.investorState?.persona || output?.personaAssessment?.persona || "undetermined";
   const hotButton = view?.investorState?.hot_button || output?.hotButton?.primary;
-  const outcomeTag = conversationTags[conversationTags.length - 1] ?? null;
+  const outcomeTag = bundle?.outcomeTag ?? null;
+  const contact = bundle?.contact ?? null;
 
   // ==========================================================================
   // RENDER
@@ -412,10 +409,10 @@ export default function OutcomeDetailPage() {
       {/* Handoff banner */}
       {bundle.handedFrom && r.handed_at && (
         <Card className={cn(
-          "border-l-4",
+          "border-l-4 bg-card",
           r.status === "handed_to_closer"
-            ? "border-l-purple-500 bg-purple-500/5 border-purple-500/30"
-            : "border-l-amber-500 bg-amber-500/5 border-amber-500/30",
+            ? "border-l-purple-500 border-purple-500/40"
+            : "border-l-amber-500 border-amber-500/40",
         )}>
           <CardContent className="py-4 px-5 space-y-1.5">
             <div className="flex items-center gap-2 text-xs">
@@ -501,7 +498,7 @@ export default function OutcomeDetailPage() {
           <FollowUpWorkspace nba={output?.nextBestAction} />
 
           {output?.postCloseActions && output.postCloseActions.length > 0 && (
-            <Card className="border-green-500/30 bg-green-500/[0.02]">
+            <Card className="border-l-4 border-l-green-500 bg-card">
               <CardContent className="py-4 px-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <ListChecks className="w-4 h-4 text-green-700" />
@@ -534,7 +531,7 @@ export default function OutcomeDetailPage() {
           )}
 
           {output?.adviserLoopActions && output.adviserLoopActions.length > 0 && (
-            <Card className="border-purple-500/30 bg-purple-500/[0.02]">
+            <Card className="border-l-4 border-l-purple-500 bg-card">
               <CardContent className="py-4 px-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-700" />
@@ -579,7 +576,7 @@ export default function OutcomeDetailPage() {
           )}
 
           {output?.book2Routing?.triggered && (
-            <Card className="border-indigo-500/30 bg-indigo-500/[0.02]">
+            <Card className="border-l-4 border-l-indigo-500 bg-card">
               <CardContent className="py-4 px-5 space-y-2">
                 <p className="text-sm font-semibold uppercase tracking-wider text-indigo-700">Book 2 routing</p>
                 {output.book2Routing.reason && <p className="text-sm">{output.book2Routing.reason}</p>}
@@ -960,7 +957,7 @@ function NBAWorkspace({
   onSubmitDecision: (t: ActionType, k: string, d: ActionDecision, payload?: any) => void;
 }) {
   return (
-    <Card className="border-primary/40 bg-primary/[0.02]">
+    <Card className="border-l-4 border-l-primary bg-card">
       <CardContent className="py-4 px-5 space-y-3">
         <p className="text-sm font-semibold uppercase tracking-wider text-primary">Next best action</p>
         <p className="font-semibold text-base">{nba.detail || nba.actionType}</p>
@@ -1069,7 +1066,7 @@ function EmailWorkspace({
   const attachmentCandidates = availableDocs.filter(d => !attachments.find(a => a.docId === d.docId));
 
   return (
-    <Card className="border-blue-500/30 bg-blue-500/[0.02]">
+    <Card className="border-l-4 border-l-blue-500 bg-card">
       <CardContent className="py-4 px-5 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">

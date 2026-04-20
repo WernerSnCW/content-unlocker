@@ -284,7 +284,9 @@ router.get("/outcome-reviews/by-run/:runId", async (req, res): Promise<void> => 
   }
 });
 
-// GET /outcome-reviews/:id — read one review + its decisions
+// GET /outcome-reviews/:id — read one review + its decisions + contact
+// + (latest) conversation tag for outcome classification. One-shot load
+// for the outcome detail page — avoids follow-on client fetches.
 router.get("/outcome-reviews/:id", async (req, res): Promise<void> => {
   try {
     const authedUser = req.auth!.user;
@@ -310,7 +312,34 @@ router.get("/outcome-reviews/:id", async (req, res): Promise<void> => {
       if (u) handedFrom = u;
     }
 
-    res.json({ review: check.review, decisions, currentOwner, handedFrom });
+    // Contact + last-call outcome for header display
+    const [contact] = await db.select({
+      id: contactsTable.id,
+      first_name: contactsTable.first_name,
+      last_name: contactsTable.last_name,
+      email: contactsTable.email,
+      phone: contactsTable.phone,
+      company: contactsTable.company,
+      last_call_outcome: contactsTable.last_call_outcome,
+    }).from(contactsTable).where(eq(contactsTable.id, check.review.contact_id)).limit(1);
+
+    // Latest conversation tag (for the outcome-taxonomy badge in the header)
+    let outcomeTag: string | null = null;
+    try {
+      const [conv] = await db.select({
+        tags: leadConversationsTable.tags,
+        call_outcome: leadConversationsTable.call_outcome,
+      }).from(leadConversationsTable)
+        .innerJoin(engineRunsTable, eq(engineRunsTable.conversation_id, leadConversationsTable.id))
+        .where(eq(engineRunsTable.id, check.review.engine_run_id))
+        .limit(1);
+      if (conv) {
+        const tags = Array.isArray(conv.tags) ? (conv.tags as string[]) : [];
+        outcomeTag = tags[tags.length - 1] ?? conv.call_outcome ?? null;
+      }
+    } catch { /* non-fatal */ }
+
+    res.json({ review: check.review, decisions, currentOwner, handedFrom, contact: contact ?? null, outcomeTag });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "failed_to_load_review" });
   }
