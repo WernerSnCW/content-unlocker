@@ -75,6 +75,14 @@ interface QuestionDef {
   signal: string | null;
   gateRole: string | null;
 }
+interface SignalDef {
+  code: string;
+  name: string;
+  category: string;
+  persona: string | null;
+  priority: number;
+  gateRole: string | null;
+}
 
 const PERSONA_LABELS: Record<string, string> = {
   preserver: "The Preserver",
@@ -111,25 +119,33 @@ export default function PreCallPanel({
 }: Props) {
   const [view, setView] = useState<EngineContactView | null>(null);
   const [questions, setQuestions] = useState<QuestionDef[]>([]);
+  const [signalDefs, setSignalDefs] = useState<Map<string, SignalDef>>(new Map());
   const [loading, setLoading] = useState(false);
 
-  // Fetch the engine view + question registry whenever the contact changes.
-  // Question registry is cached across contact switches — only fetched once.
+  // Fetch the engine view + question/signal registries on contact change.
+  // Registries are cached across contact switches — only fetched once.
   useEffect(() => {
     if (!contactId) { setView(null); return; }
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
-        const [vRes, qRes] = await Promise.all([
+        const [vRes, qRes, sRes] = await Promise.all([
           apiFetch(`${API_BASE}/engine/contact/${contactId}`),
           questions.length === 0 ? apiFetch(`${API_BASE}/engine/config/questions`) : null,
+          signalDefs.size === 0 ? apiFetch(`${API_BASE}/engine/config/signals`) : null,
         ]);
         if (cancelled) return;
         if (vRes.ok) setView(await vRes.json());
         if (qRes && qRes.ok) {
           const qData = await qRes.json();
           setQuestions(qData.questions || []);
+        }
+        if (sRes && sRes.ok) {
+          const sData = await sRes.json();
+          const map = new Map<string, SignalDef>();
+          for (const s of sData.signals || []) map.set(s.code, s);
+          setSignalDefs(map);
         }
       } catch { /* silent — panel falls back to empty state */ }
       finally { if (!cancelled) setLoading(false); }
@@ -235,13 +251,7 @@ export default function PreCallPanel({
   const hotButton = state?.hot_button;
   const lastRun = runs[0];
   const priorCallCount = runs.length;
-
-  // Signal state summary counts for the compact signal overview
-  const stateCounts = signals.reduce((acc, s) => {
-    const key = s.state as keyof typeof acc;
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, { green: 0, amber: 0, red: 0, grey: 0, confirmed: 0, not_confirmed: 0, unknown: 0 } as Record<string, number>);
+  void signals; // signals surface per-question; no summary row (see footer)
 
   const callLabel = nextCallNumber === 1 ? "Call 1 · Cold call"
                  : nextCallNumber === 2 ? "Call 2 · Demo"
@@ -286,27 +296,36 @@ export default function PreCallPanel({
             </p>
           </div>
           <ul className="space-y-1.5">
-            {questionsToAsk.map(({ q, state: sigState, priority }) => (
-              <li key={q.qNum} className="flex items-start gap-2 text-sm leading-tight">
-                <span className={cn(
-                  "mt-1.5 inline-block w-1.5 h-1.5 rounded-full shrink-0",
-                  priority === 1 ? "bg-red-500"
-                  : priority === 2 ? "bg-amber-500"
-                  : priority === 3 ? "bg-blue-500"
-                  : "bg-muted-foreground/50",
-                )} />
-                <div className="flex-1 min-w-0">
-                  <p>{q.text ?? <span className="italic text-muted-foreground">(narrative prompt)</span>}</p>
-                  {q.signal && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Q{q.qNum} → <span className="font-mono">{q.signal}</span>
-                      {sigState && <span className="ml-1 opacity-70">({sigState})</span>}
-                      {q.gateRole && <span className="ml-1 font-semibold text-red-700">· GATE</span>}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
+            {questionsToAsk.map(({ q, state: sigState, priority }) => {
+              const signalName = q.signal ? (signalDefs.get(q.signal)?.name ?? null) : null;
+              return (
+                <li key={q.qNum} className="flex items-start gap-2 text-sm leading-tight">
+                  <span className={cn(
+                    "mt-1.5 inline-block w-1.5 h-1.5 rounded-full shrink-0",
+                    priority === 1 ? "bg-red-500"
+                    : priority === 2 ? "bg-amber-500"
+                    : priority === 3 ? "bg-blue-500"
+                    : "bg-muted-foreground/50",
+                  )} />
+                  <div className="flex-1 min-w-0">
+                    <p>{q.text ?? <span className="italic text-muted-foreground">(narrative prompt)</span>}</p>
+                    {q.signal && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {signalName ? (
+                          <span>
+                            Moves <span className="font-medium">{signalName}</span>
+                            {sigState && <span className="ml-1 opacity-70">({sigState})</span>}
+                          </span>
+                        ) : (
+                          <span>Q{q.qNum}</span>
+                        )}
+                        {q.gateRole && <span className="ml-1.5 font-semibold text-red-700">· GATE</span>}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -351,26 +370,15 @@ export default function PreCallPanel({
         </div>
       )}
 
-      {/* Signal overview — compact counts */}
-      {signals.length > 0 && (
-        <div className="px-4 py-3 flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Signals</span>
-          <div className="flex items-center gap-1.5">
-            {(["green", "amber", "red", "grey"] as const).map(s => {
-              const count = (stateCounts[s] ?? 0) + (s === "green" ? (stateCounts.confirmed ?? 0) : s === "red" ? (stateCounts.not_confirmed ?? 0) : 0);
-              if (count === 0) return null;
-              return (
-                <Badge key={s} variant="outline" className={cn("text-[10px]", STATE_COLORS[s])}>
-                  {count} {s}
-                </Badge>
-              );
-            })}
-            {lastRun && (
-              <Link href={`/outcomes`} className="ml-1 text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5">
-                view outcome <ArrowRight className="w-3 h-3" />
-              </Link>
-            )}
-          </div>
+      {/* Signal state is already surfaced per-question in "Questions to
+          ask" — each question shows the signal it moves + current state.
+          A summary count row added nothing actionable, so it's dropped.
+          Deeper signal detail is a click away on the outcome page. */}
+      {lastRun && (
+        <div className="px-4 py-2 border-t border-border/50 flex items-center justify-end text-xs">
+          <Link href={`/outcomes`} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5">
+            Full engine output <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
       )}
     </div>
