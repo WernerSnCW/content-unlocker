@@ -12,9 +12,11 @@
 //   DELETE FROM lead_conversations WHERE id LIKE 'sim_nba_%';
 //   DELETE FROM contacts WHERE id = 'sim_nba_contact';
 
-import { db, contactsTable, leadConversationsTable } from "@workspace/db";
+import { db, contactsTable, leadConversationsTable, engineRunsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { logger } from "../lib/logger";
+import { loadInvestor, processTranscript, saveEngineRun } from "../engine/v2";
+import type { CallType } from "../engine/v2";
+import { logger } from "./../lib/logger";
 
 const SIM_CONTACT_ID = "sim_nba_contact";
 
@@ -75,12 +77,15 @@ Duncan: Yes, that would be useful.
 ];
 
 /**
- * Idempotent. Creates the sim contact if missing, then inserts any
- * missing sim conversations. Returns counts for logging.
+ * Idempotent. Creates the sim contact if missing, seeds the three
+ * conversations, then runs the engine (keyword path) against each so
+ * there are `engine_runs` rows for the Outcome Rules admin page's
+ * trace view to pick up. Returns counts for logging.
  */
 export async function seedSimConversations(): Promise<{
   contactCreated: boolean;
   conversationsCreated: number;
+  runsCreated: number;
 }> {
   // Ensure sim contact exists
   const [existingContact] = await db
@@ -126,7 +131,38 @@ export async function seedSimConversations(): Promise<{
     conversationsCreated++;
   }
 
-  return { contactCreated, conversationsCreated };
+  // Run the engine against each sim conversation so the trace-view
+  // picker has runs to select. Idempotent: skip if an engine_run
+  // already exists for this conversation. Uses the keyword path (no
+  // LLM) so it runs fast and deterministically on server startup.
+  let runsCreated = 0;
+  for (const c of SIM_CONVERSATIONS) {
+    const [existingRun] = await db
+      .select({ id: engineRunsTable.id })
+      .from(engineRunsTable)
+      .where(eq(engineRunsTable.conversation_id, c.id))
+      .limit(1);
+    if (existingRun) continue;
+
+    try {
+      const investor = await loadInvestor(SIM_CONTACT_ID);
+      const output = processTranscript(c.transcript, c.callTypeHint as CallType, investor);
+      await saveEngineRun({
+        contactId: SIM_CONTACT_ID,
+        conversationId: c.id,
+        callType: c.callTypeHint as CallType,
+        output,
+      });
+      runsCreated++;
+    } catch (err: any) {
+      logger.warn(
+        { convId: c.id, err: err.message },
+        "Sim engine run failed — skipping",
+      );
+    }
+  }
+
+  return { contactCreated, conversationsCreated, runsCreated };
 }
 
 // Allow calling via tsx for ad-hoc re-runs. No CLI guard needed — the
