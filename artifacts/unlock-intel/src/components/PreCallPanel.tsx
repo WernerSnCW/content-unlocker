@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import {
   Loader2, Target, Brain, Sparkles, Quote, ArrowRight, Headphones,
   MessageCircle, Users, FileText, ListChecks, AlertTriangle,
+  Monitor, Clock, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/apiClient";
@@ -86,6 +87,20 @@ interface SignalDef {
   priority: number;
   gateRole: string | null;
 }
+interface DemoSegmentDef {
+  segment: number;
+  name: string;
+  durationMins: number;
+  screenShare: boolean;
+  signalsSurfaced: string[];
+  alsoCaptures?: string[];
+  captures?: string[];
+  personaBeliefsSurfaced?: Record<string, string[]> | null;
+  expectedOutcome: string | null;
+  criticalGate: string | null;
+  note: string | null;
+  questionsUsed: number[];
+}
 
 const PERSONA_LABELS: Record<string, string> = {
   preserver: "The Preserver",
@@ -123,23 +138,36 @@ export default function PreCallPanel({
   const [view, setView] = useState<EngineContactView | null>(null);
   const [questions, setQuestions] = useState<QuestionDef[]>([]);
   const [signalDefs, setSignalDefs] = useState<Map<string, SignalDef>>(new Map());
+  const [demoSegments, setDemoSegments] = useState<DemoSegmentDef[]>([]);
+  // Latest engine_run's full output — used to extract the engine's
+  // previous recommendation (contentToSend) for the sub-header context.
+  const [lastRunRecommendation, setLastRunRecommendation] = useState<{
+    docName: string | null;
+    actionType: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch the engine view + question/signal registries on contact change.
-  // Registries are cached across contact switches — only fetched once.
+  // Fetch the engine view + registries on contact change.
+  // Registries (questions, signals, demo segments) are cached across
+  // contact switches — only fetched once.
   useEffect(() => {
-    if (!contactId) { setView(null); return; }
+    if (!contactId) { setView(null); setLastRunRecommendation(null); return; }
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
-        const [vRes, qRes, sRes] = await Promise.all([
+        const [vRes, qRes, sRes, dRes] = await Promise.all([
           apiFetch(`${API_BASE}/engine/contact/${contactId}`),
           questions.length === 0 ? apiFetch(`${API_BASE}/engine/config/questions`) : null,
           signalDefs.size === 0 ? apiFetch(`${API_BASE}/engine/config/signals`) : null,
+          demoSegments.length === 0 ? apiFetch(`${API_BASE}/engine/config/demo-segments`) : null,
         ]);
         if (cancelled) return;
-        if (vRes.ok) setView(await vRes.json());
+        let viewData: EngineContactView | null = null;
+        if (vRes.ok) {
+          viewData = await vRes.json();
+          setView(viewData);
+        }
         if (qRes && qRes.ok) {
           const qData = await qRes.json();
           setQuestions(qData.questions || []);
@@ -149,6 +177,27 @@ export default function PreCallPanel({
           const map = new Map<string, SignalDef>();
           for (const s of sData.signals || []) map.set(s.code, s);
           setSignalDefs(map);
+        }
+        if (dRes && dRes.ok) {
+          const dData = await dRes.json();
+          setDemoSegments(dData.segments || []);
+        }
+
+        // Second-pass: if we got a view with runs, pull the latest
+        // engine_run's FULL output for the last-recommendation context.
+        const latestRunId = viewData?.runs?.[0]?.id;
+        if (latestRunId) {
+          const runRes = await apiFetch(`${API_BASE}/engine/runs/${latestRunId}`);
+          if (!cancelled && runRes.ok) {
+            const fullRun = await runRes.json();
+            const nba = fullRun?.output?.nextBestAction;
+            setLastRunRecommendation({
+              docName: nba?.contentToSend?.docName ?? null,
+              actionType: nba?.actionType ?? null,
+            });
+          }
+        } else {
+          setLastRunRecommendation(null);
         }
       } catch { /* silent — panel falls back to empty state */ }
       finally { if (!cancelled) setLoading(false); }
@@ -275,6 +324,19 @@ export default function PreCallPanel({
                  : nextCallNumber === 2 ? "Call 2 · Demo"
                  : "Call 3 · Opportunity";
 
+  // Time-since-last-call — human-friendly duration. Shown in the sub-
+  // header so operators have callback-timing context at a glance.
+  const lastCallAgoLabel = (() => {
+    if (!lastRun?.created_at) return null;
+    const diffMs = Date.now() - new Date(lastRun.created_at).getTime();
+    const mins = Math.round(diffMs / 60_000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    return `${days}d ago`;
+  })();
+
   return (
     <div className="rounded-lg border border-border bg-card">
       {/* Header — call number + intelligence summary */}
@@ -285,7 +347,11 @@ export default function PreCallPanel({
           </div>
           <div>
             <p className="font-medium text-sm">Call Prep</p>
-            <p className="text-xs text-muted-foreground">{callLabel}{priorCallCount > 0 && ` · ${priorCallCount} prior call${priorCallCount !== 1 ? "s" : ""}`}</p>
+            <p className="text-xs text-muted-foreground">
+              {callLabel}
+              {priorCallCount > 0 && ` · ${priorCallCount} prior call${priorCallCount !== 1 ? "s" : ""}`}
+              {lastCallAgoLabel && <> · last {lastCallAgoLabel}</>}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -303,6 +369,105 @@ export default function PreCallPanel({
           )}
         </div>
       </div>
+
+      {/* Last-call recommendation reminder — when there's something the
+          engine previously suggested sending, surface it here so the
+          operator opens the new call with that context in mind. */}
+      {lastRunRecommendation?.docName && (
+        <div className="px-4 py-2 border-b border-border/50 text-xs flex items-center gap-1.5 text-muted-foreground">
+          <FileText className="w-3.5 h-3.5" />
+          <span>
+            Engine previously recommended:{" "}
+            <span className="font-medium text-foreground">{lastRunRecommendation.docName}</span>
+          </span>
+        </div>
+      )}
+
+      {/* Demo agenda — shown when the NEXT call is a demo. The 6-segment
+          DEMO_SEGMENTS config is the structure; duration sums to ~47
+          minutes. Critical gate annotations (e.g. "C4 must be green before
+          segment 3") surface inline. */}
+      {nextCallNumber === 2 && demoSegments.length > 0 && (
+        <div className="px-4 py-3 border-b border-border/50 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Monitor className="w-3.5 h-3.5 text-primary" />
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                Demo agenda
+              </p>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {demoSegments.reduce((sum, s) => sum + s.durationMins, 0)} min total
+            </span>
+          </div>
+          <ol className="space-y-1.5">
+            {demoSegments.map(seg => {
+              // Which signals from this segment are still grey/amber —
+              // so the operator sees where this segment is ESSENTIAL.
+              const signalByCode = new Map((view?.signals ?? []).map(s => [s.code, s]));
+              const personaCluster = persona !== "undetermined"
+                ? (seg.personaBeliefsSurfaced?.[persona] ?? [])
+                : [];
+              const allSignals = [...seg.signalsSurfaced, ...personaCluster];
+              const unresolved = allSignals.filter(code => {
+                const st = signalByCode.get(code)?.state;
+                return !st || st === "grey" || st === "amber" || st === "unknown";
+              });
+              return (
+                <li key={seg.segment} className="flex items-start gap-2 text-xs leading-tight">
+                  <span className="font-mono text-muted-foreground shrink-0 w-6 text-right">
+                    {seg.segment}.
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-sm">{seg.name}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        <Clock className="w-2.5 h-2.5 mr-0.5" /> {seg.durationMins}m
+                      </Badge>
+                      {seg.screenShare && (
+                        <Badge variant="outline" className="text-[10px]">
+                          <Monitor className="w-2.5 h-2.5 mr-0.5" /> share
+                        </Badge>
+                      )}
+                      {seg.criticalGate && (
+                        <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
+                          <Shield className="w-2.5 h-2.5 mr-0.5" /> gate
+                        </Badge>
+                      )}
+                    </div>
+                    {allSignals.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Surfaces: {allSignals.map(code => {
+                          const name = signalDefs.get(code)?.name ?? code;
+                          const st = signalByCode.get(code)?.state;
+                          const isUnresolved = unresolved.includes(code);
+                          return (
+                            <span
+                              key={code}
+                              className={cn(
+                                "mr-1.5",
+                                isUnresolved ? "font-medium text-foreground" : "opacity-60"
+                              )}
+                            >
+                              {name}{st && st !== "grey" ? ` (${st})` : ""}
+                            </span>
+                          );
+                        })}
+                      </p>
+                    )}
+                    {seg.criticalGate && (
+                      <p className="text-[10px] text-red-700 mt-0.5">
+                        <AlertTriangle className="w-2.5 h-2.5 inline mr-0.5" />
+                        {seg.criticalGate}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
 
       {/* Questions to ask on THIS call — headline section */}
       {questionsToAsk.length > 0 && (

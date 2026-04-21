@@ -76,6 +76,31 @@ router.get("/engine/config/signals", async (_req, res): Promise<void> => {
   });
 });
 
+// GET /engine/config/demo-segments — the 6-segment demo agenda from
+// DEMO_SEGMENTS config. Used by the pre-call panel (Phase 5) when the
+// next call is a demo: show the operator the structure, durations,
+// signals each segment surfaces, and any critical gates before they
+// go in.
+router.get("/engine/config/demo-segments", async (_req, res): Promise<void> => {
+  const { DEMO_SEGMENTS } = await import("../../engine/v2/config");
+  res.json({
+    segments: (DEMO_SEGMENTS as any[]).map(s => ({
+      segment: s.segment,
+      name: s.name,
+      durationMins: s.durationMins,
+      screenShare: s.screenShare,
+      signalsSurfaced: s.signalsSurfaced ?? [],
+      alsoCaptures: s.alsoCaptures ?? [],
+      captures: s.captures ?? [],
+      personaBeliefsSurfaced: s.personaBeliefsSurfaced ?? null,
+      expectedOutcome: s.expectedOutcome ?? null,
+      criticalGate: s.criticalGate ?? null,
+      note: s.note ?? null,
+      questionsUsed: s.questionsUsed ?? [],
+    })),
+  });
+});
+
 // GET /engine/config/documents — flat list of all documents the engine
 // knows about, extracted from ROUTING_MAP + attachmentRoutingTable +
 // email template attachments. Used by the outcome detail page's
