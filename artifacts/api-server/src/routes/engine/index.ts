@@ -61,6 +61,19 @@ router.get("/engine/version", async (_req, res): Promise<void> => {
 // per-surface endpoints (questions/signals/demo-segments/documents) are
 // already unauthenticated.
 router.get("/engine/config/all", async (_req, res): Promise<void> => {
+  // Gates carry their `condition` as a JavaScript function, which
+  // JSON.stringify silently drops. Serialize each function's source so
+  // the viewer can render the rule as text instead of leaving gates
+  // looking empty.
+  const gatesSerialized = (GATES as any[]).map(g => ({
+    id: g.id,
+    evaluationOrder: g.evaluationOrder,
+    condition: typeof g.condition === "function" ? g.condition.toString() : null,
+    blockedAction: g.blockedAction ?? null,
+    routeMap: g.routeMap ?? null,
+    override: g.override ?? null,
+  }));
+
   res.json({
     meta: {
       engineVersion: ENGINE_VERSION,
@@ -69,7 +82,7 @@ router.get("/engine/config/all", async (_req, res): Promise<void> => {
     },
     signals: SIGNAL_REGISTRY,
     questions: QUESTION_REGISTRY,
-    gates: GATES,
+    gates: gatesSerialized,
     routingMap: ROUTING_MAP,
     personaConfig: PERSONA_CONFIG,
     callTypes: CALL_TYPES,

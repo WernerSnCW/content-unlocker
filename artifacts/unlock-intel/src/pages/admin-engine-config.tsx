@@ -3,7 +3,7 @@
 // inspect what the engine is running against without a code read.
 // Edit capability comes in Phase 7.1+; until then this is pure visibility.
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -207,22 +207,696 @@ function GatesTable({ rows }: { rows: any[] }) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Code</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Description</TableHead>
-          <TableHead>Blocking signals</TableHead>
+          <TableHead>Order</TableHead>
+          <TableHead>Gate</TableHead>
+          <TableHead>Condition / route</TableHead>
+          <TableHead>When blocked</TableHead>
+          <TableHead>Override</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((g) => (
-          <TableRow key={g.code}>
-            <TableCell className="font-mono text-xs">{g.code}</TableCell>
-            <TableCell>{g.name}</TableCell>
-            <TableCell className="text-sm text-muted-foreground max-w-xl">
-              {g.description ?? "—"}
+          <TableRow key={g.id}>
+            <TableCell className="font-mono text-xs">
+              {g.evaluationOrder}
             </TableCell>
-            <TableCell className="text-xs font-mono">
-              {(g.blockingSignals || g.requiresSignals || []).join(", ") || "—"}
+            <TableCell className="font-mono text-xs">{g.id}</TableCell>
+            <TableCell className="text-xs font-mono max-w-md">
+              {g.condition ? (
+                <code className="whitespace-pre-wrap break-words">
+                  {g.condition}
+                </code>
+              ) : g.routeMap ? (
+                <div className="space-y-0.5">
+                  {Object.entries(g.routeMap).map(([state, route]) => (
+                    <div key={state}>
+                      <span className="text-muted-foreground">{state}</span>{" "}
+                      → {String(route)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                "—"
+              )}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground max-w-md">
+              {g.blockedAction?.reason ?? "—"}
+              {g.blockedAction?.send != null && (
+                <div className="text-xs mt-0.5">
+                  Sends doc {g.blockedAction.send}
+                  {g.blockedAction.sendOnly ? " (only)" : ""}
+                </div>
+              )}
+              {g.blockedAction?.blockDocument != null && (
+                <div className="text-xs mt-0.5">
+                  Blocks doc {g.blockedAction.blockDocument}
+                </div>
+              )}
+              {g.blockedAction?.skipSignals && (
+                <div className="text-xs mt-0.5">
+                  Skips {g.blockedAction.skipSignals.join(", ")}
+                </div>
+              )}
+              {g.blockedAction?.skipCategories && (
+                <div className="text-xs mt-0.5">
+                  Skips category {g.blockedAction.skipCategories.join(", ")}
+                </div>
+              )}
+            </TableCell>
+            <TableCell className="text-xs">{g.override ?? "—"}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function KeyValueGrid({
+  rows,
+}: {
+  rows: Array<{ label: string; value: React.ReactNode }>;
+}) {
+  return (
+    <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2 text-sm">
+      {rows.map((r, i) => (
+        <Fragment key={i}>
+          <div className="text-muted-foreground">{r.label}</div>
+          <div>{r.value}</div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function TimingRulesView({ data }: { data: any }) {
+  const entries = Object.entries(data);
+  return (
+    <div className="space-y-6">
+      {entries.map(([key, value]) => {
+        const obj = value as Record<string, any>;
+        return (
+          <Section key={key} title={key}>
+            <KeyValueGrid
+              rows={Object.entries(obj).map(([k, v]) => ({
+                label: k,
+                value:
+                  typeof v === "string" || typeof v === "number" ? (
+                    <span className="font-mono text-xs">{String(v)}</span>
+                  ) : (
+                    <code className="text-xs">{JSON.stringify(v)}</code>
+                  ),
+              }))}
+            />
+          </Section>
+        );
+      })}
+    </div>
+  );
+}
+
+function CallTypesView({ data }: { data: any }) {
+  return (
+    <div className="space-y-8">
+      {Object.entries(data).map(([key, raw]) => {
+        const ct = raw as any;
+        return (
+          <Section key={key} title={`${ct.name ?? key} — Call ${ct.callNumber ?? "?"}`}>
+            <KeyValueGrid
+              rows={[
+                { label: "Owner", value: ct.owner ?? "—" },
+                {
+                  label: "Duration",
+                  value: ct.durationMins
+                    ? `${ct.durationMins.min}–${ct.durationMins.max} min`
+                    : "—",
+                },
+                {
+                  label: "Signal responsibility",
+                  value: (
+                    <span className="font-mono text-xs">
+                      {(ct.signalResponsibility || []).join(", ") || "—"}
+                    </span>
+                  ),
+                },
+                {
+                  label: "Also surfaces",
+                  value: (
+                    <span className="font-mono text-xs">
+                      {(ct.alsoSurfaces || []).join(", ") || "—"}
+                    </span>
+                  ),
+                },
+                {
+                  label: "Success outcome",
+                  value: ct.successOutcome ?? "—",
+                },
+                { label: "Produces", value: ct.produces ?? "—" },
+                { label: "Close script", value: ct.closeScript ?? "—" },
+              ]}
+            />
+
+            {ct.dispositionCodes && (
+              <div className="mt-4">
+                <div className="text-xs font-semibold text-muted-foreground mb-1">
+                  Disposition codes
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Label</TableHead>
+                      <TableHead>Pipeline action</TableHead>
+                      <TableHead>Fires</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(ct.dispositionCodes).map(
+                      ([code, def]: [string, any]) => (
+                        <TableRow key={code}>
+                          <TableCell className="font-mono text-xs">
+                            {code}
+                          </TableCell>
+                          <TableCell>{def.label}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {def.pipelineAction ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {def.firesWorkflow ?? def.createsTask ?? "—"}
+                          </TableCell>
+                        </TableRow>
+                      ),
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {ct.outcomes && (
+              <div className="mt-4">
+                <div className="text-xs font-semibold text-muted-foreground mb-1">
+                  Outcomes
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Outcome</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(ct.outcomes).map(
+                      ([outcome, def]: [string, any]) => (
+                        <TableRow key={outcome}>
+                          <TableCell className="font-mono text-xs">
+                            {outcome}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {(def.actions || []).join(", ")}
+                          </TableCell>
+                        </TableRow>
+                      ),
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </Section>
+        );
+      })}
+    </div>
+  );
+}
+
+function PersonasView({ data }: { data: any }) {
+  return (
+    <div className="space-y-6">
+      <KeyValueGrid
+        rows={[
+          {
+            label: "Detection threshold",
+            value: <span className="font-mono text-xs">{data.threshold}</span>,
+          },
+        ]}
+      />
+
+      <Section title="Personas">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>Label</TableHead>
+              <TableHead>Problem cluster</TableHead>
+              <TableHead>Demo emphasis</TableHead>
+              <TableHead>Patterns</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(data.personas || []).map((p: any) => (
+              <TableRow key={p.id}>
+                <TableCell className="font-mono text-xs">{p.id}</TableCell>
+                <TableCell>{p.label}</TableCell>
+                <TableCell className="text-xs font-mono">
+                  {(p.problemCluster || []).join(", ")}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-xs">
+                  {p.demoEmphasis}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {(p.patterns || []).length} patterns
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Section>
+
+      <Section title="Hot buttons">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>Trigger phrases</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(data.hotButtons || []).map((h: any) => (
+              <TableRow key={h.id}>
+                <TableCell className="font-mono text-xs">{h.id}</TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-xl">
+                  {(h.patterns || []).join(" · ")}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Section>
+    </div>
+  );
+}
+
+function EmailTemplatesView({ data }: { data: any }) {
+  const renderTemplate = (label: string, tpl: any) => (
+    <Section key={label} title={label}>
+      <KeyValueGrid
+        rows={[
+          { label: "ID", value: <code className="text-xs">{tpl.id}</code> },
+          { label: "Trigger", value: <code className="text-xs">{tpl.trigger}</code> },
+          { label: "Timing", value: tpl.timing ?? "—" },
+          { label: "Subject", value: tpl.subject ?? "—" },
+          {
+            label: "Attachment",
+            value: tpl.attachment
+              ? `${tpl.attachment.docId} — ${tpl.attachment.docName}`
+              : "—",
+          },
+          {
+            label: "Personalisation",
+            value: tpl.personalisationRequired ? "required" : "not required",
+          },
+        ]}
+      />
+      {tpl.structure && (
+        <div className="mt-2">
+          <div className="text-xs font-semibold text-muted-foreground mb-1">
+            Structure
+          </div>
+          <ol className="list-decimal pl-5 space-y-1 text-xs">
+            {tpl.structure.map((s: string, i: number) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {tpl.note && (
+        <div className="mt-2 text-xs text-muted-foreground italic">
+          {tpl.note}
+        </div>
+      )}
+    </Section>
+  );
+
+  return (
+    <div className="space-y-6">
+      {data.demoConfirmation &&
+        renderTemplate("Demo confirmation (EMAIL_1)", data.demoConfirmation)}
+      {data.postDemo && renderTemplate("Post-demo (EMAIL_2)", data.postDemo)}
+
+      {data.attachmentRoutingTable && (
+        <Section title="Attachment routing table">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Belief / trigger</TableHead>
+                <TableHead>Doc</TableHead>
+                <TableHead>Notes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(data.attachmentRoutingTable as any[]).map((row, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">
+                    {row.belief ?? row.trigger ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {row.docId != null
+                      ? `${row.docId}${row.docName ? ` — ${row.docName}` : ""}`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {row.note ?? row.state ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Section>
+      )}
+
+      {data.personaSupplementWithPack1 && (
+        <Section title="Persona supplement with Pack 1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Persona</TableHead>
+                <TableHead>Supplement</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Object.entries(data.personaSupplementWithPack1).map(
+                ([persona, v]: [string, any]) => (
+                  <TableRow key={persona}>
+                    <TableCell className="font-mono text-xs">
+                      {persona}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {v.docId != null
+                        ? `${v.docId} — ${v.docName}`
+                        : Array.isArray(v.docIds)
+                        ? v.docIds
+                            .map(
+                              (id: number, i: number) =>
+                                `${id} — ${v.docNames?.[i] ?? ""}`,
+                            )
+                            .join(", ")
+                        : JSON.stringify(v)}
+                    </TableCell>
+                  </TableRow>
+                ),
+              )}
+            </TableBody>
+          </Table>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function PostCloseWorkflowView({ data }: { data: any }) {
+  return (
+    <div className="space-y-6">
+      {(data.stages || []).map((s: any) => (
+        <Section key={s.stage} title={`Stage ${s.stage} — ${s.name}`}>
+          <div className="text-xs text-muted-foreground mb-2">
+            Trigger: <code>{s.trigger}</code>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Action</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Timing</TableHead>
+                <TableHead>Detail</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...(s.actions || []), ...(s.recurringActions || [])].map(
+                (a: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono text-xs">
+                      {a.action}
+                    </TableCell>
+                    <TableCell className="text-xs">{a.owner}</TableCell>
+                    <TableCell className="text-xs">{a.timing}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-md">
+                      {a.detail ?? "—"}
+                    </TableCell>
+                  </TableRow>
+                ),
+              )}
+            </TableBody>
+          </Table>
+        </Section>
+      ))}
+    </div>
+  );
+}
+
+function AdviserLoopView({ data }: { data: any }) {
+  const phase = (label: string, p: any) => {
+    if (!p) return null;
+    return (
+      <Section key={label} title={label}>
+        {p.tomRole && (
+          <KeyValueGrid rows={[{ label: "Tom's role", value: p.tomRole }]} />
+        )}
+        {p.openingFrame && (
+          <div className="mt-2 text-xs italic border-l-2 border-muted pl-3">
+            "{p.openingFrame}"
+          </div>
+        )}
+        {p.agenda && (
+          <div className="mt-2">
+            <div className="text-xs font-semibold text-muted-foreground mb-1">
+              Agenda
+            </div>
+            <ul className="list-disc pl-5 text-xs space-y-0.5">
+              {p.agenda.map((a: string, i: number) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {p.fcaConcerns && (
+          <div className="mt-2 text-xs text-muted-foreground">
+            <span className="font-semibold">FCA concerns:</span> {p.fcaConcerns}
+          </div>
+        )}
+        {p.actions && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Action</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Timing</TableHead>
+                <TableHead>Detail</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {p.actions.map((a: any, i: number) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">
+                    {a.action}
+                  </TableCell>
+                  <TableCell className="text-xs">{a.owner ?? "—"}</TableCell>
+                  <TableCell className="text-xs">
+                    {a.timing ?? a.nextStep ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-md">
+                    {a.detail ?? (a.fields ? a.fields.join(", ") : "—")}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <KeyValueGrid
+        rows={[
+          {
+            label: "Trigger",
+            value: <code className="text-xs">{data.trigger}</code>,
+          },
+        ]}
+      />
+      {phase("Pre-call", data.preCall)}
+      {phase("During call", data.duringCall)}
+      {phase("Post-call", data.postCall)}
+    </div>
+  );
+}
+
+function Book2RoutingView({ data }: { data: any }) {
+  return (
+    <div className="space-y-6">
+      <KeyValueGrid
+        rows={[
+          {
+            label: "Trigger",
+            value: <code className="text-xs">{data.trigger}</code>,
+          },
+        ]}
+      />
+
+      {data.entryActions && (
+        <Section title="Entry actions">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Action</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Timing</TableHead>
+                <TableHead>Detail</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.entryActions.map((a: any, i: number) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">{a.action}</TableCell>
+                  <TableCell className="text-xs">{a.owner ?? "—"}</TableCell>
+                  <TableCell className="text-xs">{a.timing ?? "—"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-md">
+                    {a.detail ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Section>
+      )}
+
+      {data.subscriberPipeline && (
+        <Section title="Subscriber pipeline">
+          {data.subscriberPipeline.map((stage: any, i: number) => (
+            <div key={i} className="mb-4 last:mb-0">
+              <div className="text-sm font-semibold">{stage.stage}</div>
+              <div className="text-xs text-muted-foreground mb-1">
+                Trigger: <code>{stage.trigger}</code>
+              </div>
+              {stage.action && (
+                <div className="text-xs mb-1">
+                  <span className="text-muted-foreground">Action:</span>{" "}
+                  {stage.action}
+                </div>
+              )}
+              {stage.autoEmails && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Timing</TableHead>
+                      <TableHead>Length</TableHead>
+                      <TableHead>Content</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stage.autoEmails.map((e: any, j: number) => (
+                      <TableRow key={j}>
+                        <TableCell className="text-xs">{e.name}</TableCell>
+                        <TableCell className="text-xs font-mono">
+                          {e.timing}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {e.wordCount ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-md">
+                          {e.content}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          ))}
+        </Section>
+      )}
+
+      {data.crossoverRule && (
+        <Section title="Crossover rule">
+          <p className="text-xs text-muted-foreground">{data.crossoverRule}</p>
+        </Section>
+      )}
+
+      {data.exclusionRules && (
+        <Section title="Exclusion rules">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tag</TableHead>
+                <TableHead>Rule</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.exclusionRules.map((r: any, i: number) => (
+                <TableRow key={i}>
+                  <TableCell className="font-mono text-xs">{r.tag}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {r.rule}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function ProblemBeliefPatternsTable({
+  rows,
+}: {
+  rows: Record<string, any>;
+}) {
+  const entries = Object.entries(rows);
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Code</TableHead>
+          <TableHead>Belief</TableHead>
+          <TableHead>Pattern count</TableHead>
+          <TableHead>Sample patterns</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {entries.map(([code, def]) => (
+          <TableRow key={code}>
+            <TableCell className="font-mono text-xs">{code}</TableCell>
+            <TableCell className="text-sm">
+              {def.belief ?? def.name ?? "—"}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              {(def.patterns || []).length}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground max-w-xl">
+              {(def.patterns || [])
+                .slice(0, 4)
+                .map((p: any) => p.pattern ?? p)
+                .join(" · ")}
+              {(def.patterns || []).length > 4 && " …"}
             </TableCell>
           </TableRow>
         ))}
@@ -498,6 +1172,32 @@ export default function AdminEngineConfigPage() {
         break;
       case "redSignalActions":
         body = <RedSignalActionsTable rows={data.redSignalActions} />;
+        break;
+      case "timingRules":
+        body = <TimingRulesView data={data.timingRules} />;
+        break;
+      case "callTypes":
+        body = <CallTypesView data={data.callTypes} />;
+        break;
+      case "personaConfig":
+        body = <PersonasView data={data.personaConfig} />;
+        break;
+      case "emailTemplates":
+        body = <EmailTemplatesView data={data.emailTemplates} />;
+        break;
+      case "postCloseWorkflow":
+        body = <PostCloseWorkflowView data={data.postCloseWorkflow} />;
+        break;
+      case "adviserLoopWorkflow":
+        body = <AdviserLoopView data={data.adviserLoopWorkflow} />;
+        break;
+      case "book2Routing":
+        body = <Book2RoutingView data={data.book2Routing} />;
+        break;
+      case "problemBeliefPatterns":
+        body = (
+          <ProblemBeliefPatternsTable rows={data.problemBeliefPatterns} />
+        );
         break;
       default:
         body = <JsonBlock value={rawValue} />;
