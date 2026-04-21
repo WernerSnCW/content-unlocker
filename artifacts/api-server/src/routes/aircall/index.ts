@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
 import { eq, or, sql, and, isNull, lte } from "drizzle-orm";
-import { loadInvestor, processTranscript, processTranscriptWithLLM, saveEngineRun, ExtractionError } from "../../engine/v2";
-import type { CallType } from "../../engine/v2";
+import { loadInvestor, processTranscript, processTranscriptWithLLM, saveEngineRun, ExtractionError, loadOutcomeRules, outcomeRulesFlagEnabled } from "../../engine/v2";
+import type { CallType, LoadedOutcomeRule } from "../../engine/v2";
 import {
   DEFAULT_TAG_MAPPING,
   DEFAULT_COOL_OFF_DAYS,
@@ -678,11 +678,25 @@ export async function runEngineForConversation(
     // failure. Record the failure and let an admin reprocess.
     const useLLM = process.env.ENGINE_LAYER_1_LLM === "true";
 
+    // Phase 7.1a — Outcome rules selection. Flag off = legacy cascade
+    // (undefined rules → processTranscript falls back to determineNextAction).
+    // Flag on = walk the DB-backed engine_outcome_rules, error loudly if
+    // no rule matches (caught upstream, engine_run still persists).
+    let outcomeRules: LoadedOutcomeRule[] | undefined;
+    if (outcomeRulesFlagEnabled()) {
+      try {
+        outcomeRules = await loadOutcomeRules();
+      } catch (err: any) {
+        console.error("[Engine 7.1a] loadOutcomeRules failed:", err.message);
+        // Fall through with rules undefined — legacy path runs.
+      }
+    }
+
     let output;
     let runId;
     if (useLLM) {
       try {
-        const llmRun = await processTranscriptWithLLM(transcript, callType, investor);
+        const llmRun = await processTranscriptWithLLM(transcript, callType, investor, { outcomeRules });
         output = llmRun.output;
         // Sum the two LLM calls (extraction + email) into a single audit
         // record on engine_runs. Keeps the schema flat — reporting can
@@ -752,7 +766,7 @@ export async function runEngineForConversation(
     } else {
       // Pre-4.9 keyword path. Stays runnable until we delete it after
       // LLM path is validated.
-      output = processTranscript(transcript, callType, investor);
+      output = processTranscript(transcript, callType, investor, { outcomeRules });
       runId = await saveEngineRun({
         contactId,
         conversationId,

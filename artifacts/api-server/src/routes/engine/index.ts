@@ -11,7 +11,10 @@ import {
   loadInvestor,
   processTranscript,
   processTranscriptWithLLM,
+  processTranscriptDetailed,
   saveEngineRun,
+  loadOutcomeRules,
+  outcomeRulesFlagEnabled,
   ENGINE_VERSION,
   ENGINE_SPEC,
   ENGINE_UPDATED,
@@ -278,7 +281,13 @@ router.post("/engine/reprocess", async (req, res): Promise<void> => {
 
     const callType = (call_type as CallType) || inferCallType(conv.duration_seconds);
     const investor = await loadInvestor(conv.contact_id);
-    const output = processTranscript(conv.transcript_text, callType, investor);
+    // Phase 7.1a — respect the outcome-rules flag on reprocess. If the
+    // flag is on we load rules and use the evaluator; off = legacy
+    // cascade. Keeps reprocess consistent with the webhook pipeline.
+    const outcomeRules = outcomeRulesFlagEnabled()
+      ? await loadOutcomeRules().catch(() => undefined)
+      : undefined;
+    const output = processTranscript(conv.transcript_text, callType, investor, { outcomeRules });
     const runId = await saveEngineRun({
       contactId: conv.contact_id,
       conversationId: conv.id,
@@ -427,5 +436,101 @@ function buildCompareDiff(keyword: any, llm: any): any {
     },
   };
 }
+
+// POST /engine/compare-nba — Phase 7.1a validation tool.
+// Runs the SAME transcript through both NBA paths (legacy
+// determineNextAction vs. the rule evaluator) and returns both
+// NextAction objects plus the rule trace. Neither run is persisted.
+//
+// Use this to confirm the rule seed reproduces the legacy cascade
+// byte-for-byte before flipping ENGINE_OUTCOME_RULES on in production.
+//
+// Body: { conversation_id?, call_id? } — reuses a stored transcript.
+// Layer 1 runs once (keyword path, deterministic) and both NBA paths
+// share the same signals/investor/gates/content context so any
+// NextAction diff is 100% attributable to the rule engine.
+router.post("/engine/compare-nba", async (req, res): Promise<void> => {
+  try {
+    const { conversation_id, call_id } = req.body || {};
+    if (!conversation_id && !call_id) {
+      res.status(400).json({ error: "conversation_id or call_id required" });
+      return;
+    }
+
+    const [conv] = conversation_id
+      ? await db.select().from(leadConversationsTable).where(eq(leadConversationsTable.id, conversation_id)).limit(1)
+      : await db.select().from(leadConversationsTable).where(eq(leadConversationsTable.external_id, String(call_id))).limit(1);
+
+    if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+    if (!conv.transcript_text) { res.status(400).json({ error: "Conversation has no transcript" }); return; }
+    if (!conv.contact_id) { res.status(400).json({ error: "Conversation has no contact_id" }); return; }
+
+    const callType = inferCallType(conv.duration_seconds);
+    const investor = await loadInvestor(conv.contact_id);
+    const rules = await loadOutcomeRules();
+
+    // Legacy NBA path — no rules passed, determineNextAction runs.
+    const legacy = processTranscriptDetailed(conv.transcript_text, callType, investor);
+    // Rule-engine NBA — same context, rules walked instead.
+    let rulesRun: ReturnType<typeof processTranscriptDetailed> | null = null;
+    let rulesError: string | null = null;
+    try {
+      rulesRun = processTranscriptDetailed(conv.transcript_text, callType, investor, { outcomeRules: rules });
+    } catch (err: any) {
+      rulesError = err?.message || String(err);
+    }
+
+    const legacyNBA = legacy.output.nextBestAction;
+    const rulesNBA = rulesRun?.output.nextBestAction ?? null;
+    const agreed =
+      rulesNBA != null &&
+      legacyNBA.actionType === rulesNBA.actionType &&
+      legacyNBA.owner === rulesNBA.owner &&
+      legacyNBA.timing === rulesNBA.timing &&
+      legacyNBA.detail === rulesNBA.detail &&
+      (legacyNBA.contentToSend?.docId ?? null) === (rulesNBA.contentToSend?.docId ?? null);
+
+    res.json({
+      conversationId: conv.id,
+      contactId: conv.contact_id,
+      callType,
+      rulesCount: rules.length,
+      legacy: {
+        nextAction: legacyNBA,
+      },
+      rules: {
+        nextAction: rulesNBA,
+        trace: rulesRun?.detail.nbaTrace ?? null,
+        error: rulesError,
+      },
+      agreed,
+      diffSummary: agreed
+        ? "Identical NextAction from both paths."
+        : !rulesNBA
+        ? `Rule engine errored: ${rulesError}`
+        : [
+            legacyNBA.actionType !== rulesNBA.actionType
+              ? `actionType: legacy=${legacyNBA.actionType}, rules=${rulesNBA.actionType}`
+              : null,
+            legacyNBA.owner !== rulesNBA.owner
+              ? `owner: legacy=${legacyNBA.owner}, rules=${rulesNBA.owner}`
+              : null,
+            legacyNBA.timing !== rulesNBA.timing
+              ? `timing: legacy=${legacyNBA.timing}, rules=${rulesNBA.timing}`
+              : null,
+            legacyNBA.detail !== rulesNBA.detail
+              ? `detail: legacy="${legacyNBA.detail}", rules="${rulesNBA.detail}"`
+              : null,
+            (legacyNBA.contentToSend?.docId ?? null) !==
+            (rulesNBA.contentToSend?.docId ?? null)
+              ? `contentToSend.docId: legacy=${legacyNBA.contentToSend?.docId ?? null}, rules=${rulesNBA.contentToSend?.docId ?? null}`
+              : null,
+          ].filter(Boolean),
+    });
+  } catch (err: any) {
+    console.error("[engine/compare-nba] failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;

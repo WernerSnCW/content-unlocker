@@ -416,6 +416,132 @@ test("Full cold call scenario", () => {
   expect(output.emailDraft?.attachmentDocId).toBe(100);
 });
 
+// ============ D6. Outcome rule evaluator (Phase 7.1a) ============
+// Minimal unit tests for the rule evaluator. The evaluator is exercised
+// end-to-end via processTranscript when opts.outcomeRules is passed,
+// but a couple of direct tests catch clause-evaluation regressions that
+// the fixture transcripts might mask.
+
+import { evaluateOutcomeRules, RuleCoverageError } from "../outcomeRules/evaluator";
+import { OUTCOME_RULES_SEED } from "../../../data/seed-outcome-rules";
+
+function mockRules() {
+  // Use the seed translated into LoadedOutcomeRule shape. The seed is
+  // the canonical rule set, so testing against it doubles as a fixture
+  // check.
+  return OUTCOME_RULES_SEED.map((r) => ({
+    ...r,
+    when_clauses: r.when_clauses as any,
+    created_at: new Date(),
+    updated_at: new Date(),
+  }));
+}
+
+test("Outcome rules — opportunity + all S green picks opp_all_s_green", () => {
+  const rules = mockRules();
+  const signals: any = {
+    S2: { state: "green" }, S3: { state: "green" }, S4: { state: "green" },
+    S5: { state: "green" }, S6: { state: "green" },
+  };
+  const { action, trace } = evaluateOutcomeRules(rules, {
+    callType: "opportunity",
+    signals,
+    investor: blankInvestor({ investorId: "t" }),
+    content: null,
+    gateResult: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+  });
+  expect(trace.matchedRuleId).toBe("opp_all_s_green");
+  expect(action.actionType).toBe("reserve_stock");
+  expect(action.owner).toBe("tom");
+  expect(action.timing).toBe("immediate");
+});
+
+test("Outcome rules — demo + pack1 eligible picks demo_pack1_eligible", () => {
+  const rules = mockRules();
+  const { action, trace } = evaluateOutcomeRules(rules, {
+    callType: "demo",
+    signals: {} as any,
+    investor: blankInvestor({ investorId: "t" }),
+    content: { docId: 120, docName: "Pack 1" } as any,
+    gateResult: { c4Compliance: "open", pack1: "eligible", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+  });
+  expect(trace.matchedRuleId).toBe("demo_pack1_eligible");
+  expect(action.actionType).toBe("send_content");
+  expect(action.contentToSend?.docId).toBe(120);
+});
+
+test("Outcome rules — cold call with no content → cold_fallback", () => {
+  const rules = mockRules();
+  const { action, trace } = evaluateOutcomeRules(rules, {
+    callType: "cold_call",
+    signals: {} as any,
+    investor: blankInvestor({ investorId: "t" }),
+    content: null,
+    gateResult: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+  });
+  expect(trace.matchedRuleId).toBe("cold_fallback");
+  expect(action.actionType).toBe("move_to_nurture");
+});
+
+test("Outcome rules — demo_low_score triggers before demo_fallback", () => {
+  const rules = mockRules();
+  const { action, trace } = evaluateOutcomeRules(rules, {
+    callType: "demo",
+    signals: {} as any,
+    investor: blankInvestor({ investorId: "t", demoScore: 40 }),
+    content: null,
+    gateResult: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+  });
+  expect(trace.matchedRuleId).toBe("demo_low_score");
+  expect(action.actionType).toBe("escalate_to_tom");
+});
+
+test("Outcome rules — no fallback throws RuleCoverageError", () => {
+  // Only one rule, specific to opportunity — cold call falls through.
+  const rules = [{
+    id: "t1", priority: 10, enabled: true,
+    when_clauses: [{ lvalue: "callType", op: "===" as const, rvalue: "opportunity" }],
+    action_type: "close_deal", owner: "system", timing: "immediate",
+    detail: "x", uses_content: false,
+    created_at: new Date(), updated_at: new Date(),
+  }];
+  let threw: unknown = null;
+  try {
+    evaluateOutcomeRules(rules, {
+      callType: "cold_call",
+      signals: {} as any,
+      investor: blankInvestor({ investorId: "t" }),
+      content: null,
+      gateResult: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+    });
+  } catch (e) { threw = e; }
+  expect(threw instanceof RuleCoverageError).toBe(true);
+});
+
+// ============ D7. Parity: rule-engine NBA matches legacy cascade ============
+// Runs a fixture scenario through BOTH NBA paths and asserts byte-identical
+// NextAction. This is the acceptance bar for flipping ENGINE_OUTCOME_RULES on.
+
+test("Parity — James cold call: legacy NBA === rule NBA", () => {
+  const transcript = `
+    Agent: Hi James, it's Sarah calling from Unlock.
+    Agent: Are you familiar with EIS?
+    James: I've done EIS before through a Crowdcube fund but the fees are ridiculous.
+    Agent: Are you paying additional rate?
+    James: Yes, additional rate. £180K income a year — I pay 45%.
+    Agent: Do you have capital available?
+    James: Just sold a rental property. Got about £640K sitting in cash.
+  `;
+  const james = blankInvestor({ investorId: "james" });
+  const legacy = processTranscript(transcript, "cold_call", james);
+  const rules = mockRules();
+  const byRules = processTranscript(transcript, "cold_call", james, { outcomeRules: rules });
+  expect(legacy.nextBestAction.actionType).toBe(byRules.nextBestAction.actionType);
+  expect(legacy.nextBestAction.owner).toBe(byRules.nextBestAction.owner);
+  expect(legacy.nextBestAction.timing).toBe(byRules.nextBestAction.timing);
+  expect(legacy.nextBestAction.detail).toBe(byRules.nextBestAction.detail);
+});
+
 // ============ Summary ============
 
 console.log(`\n${passed} passed, ${failed} failed`);

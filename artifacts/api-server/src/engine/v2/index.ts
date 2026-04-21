@@ -12,7 +12,14 @@ export { generateCoverNote } from "./functions/generateCoverNote";
 export { determineNextAction } from "./functions/determineNextAction";
 export { buildCrmNote } from "./functions/buildCrmNote";
 export { validateCompliance } from "./functions/validateCompliance";
-export { processTranscript, processTranscriptWithLLM } from "./functions/processTranscript";
+export { processTranscript, processTranscriptWithLLM, processTranscriptDetailed } from "./functions/processTranscript";
+export type { ProcessOptions, ProcessDetail } from "./functions/processTranscript";
+
+// Phase 7.1a — Outcome rules
+export { loadOutcomeRules, invalidateOutcomeRulesCache, isOutcomeRulesCacheWarm } from "./outcomeRules/loader";
+export type { LoadedOutcomeRule } from "./outcomeRules/loader";
+export { evaluateOutcomeRules, outcomeRulesFlagEnabled, RuleCoverageError, UnknownLvalueError } from "./outcomeRules/evaluator";
+export type { EvaluationContext, EvaluationTrace } from "./outcomeRules/evaluator";
 // Phase 4.9 — LLM extraction sub-layer
 export { extractViaLLM, ExtractionError } from "./llm/extractViaLLM";
 export type { ExtractionAudit, ExtractionSuccess } from "./llm/extractViaLLM";

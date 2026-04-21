@@ -26,6 +26,34 @@ import { analyseDemoSegments } from "./analyseDemoSegments";
 import { generateEmail } from "./generateEmail";
 import { determinePostCloseActions } from "./determinePostCloseActions";
 import { routeToBook2 } from "./routeToBook2";
+import { evaluateOutcomeRules, type EvaluationTrace } from "../outcomeRules/evaluator";
+import type { LoadedOutcomeRule } from "../outcomeRules/loader";
+
+/**
+ * Optional behaviour toggles for processTranscript / processTranscriptWithLLM.
+ * Keeping these opt-in rather than global env reads so tests + the
+ * compare endpoint can exercise both NBA paths deterministically.
+ */
+export interface ProcessOptions {
+  /**
+   * Phase 7.1a — if provided, the rule evaluator walks these rules to
+   * produce the NextAction instead of calling determineNextAction.
+   * Rules must be pre-sorted by priority ascending (loadOutcomeRules
+   * does this). When omitted, the legacy cascade runs.
+   */
+  outcomeRules?: LoadedOutcomeRule[];
+}
+
+/**
+ * Diagnostic sidecar returned from the detailed orchestrator variants
+ * (used by /api/engine/compare-nba). The main processTranscript return
+ * type is unchanged; detailed callers use processTranscriptDetailed
+ * below.
+ */
+export interface ProcessDetail {
+  nbaTrace: EvaluationTrace | null;    // null when legacy cascade ran
+  nbaSource: "legacy" | "rules";
+}
 
 function applySignalUpdates(
   current: SignalMap,
@@ -95,7 +123,24 @@ export function processTranscript(
   transcript: string,
   callType: CallType,
   investor: Investor,
+  opts: ProcessOptions = {},
 ): EngineOutputV3 {
+  return processTranscriptDetailed(transcript, callType, investor, opts).output;
+}
+
+/**
+ * Orchestrator with diagnostic sidecar. Same computation as
+ * processTranscript but returns `detail` describing which NBA path
+ * ran and (if rules path) the trace of clause evaluation. The
+ * /api/engine/compare-nba endpoint uses this to surface trace info
+ * alongside the diff.
+ */
+export function processTranscriptDetailed(
+  transcript: string,
+  callType: CallType,
+  investor: Investor,
+  opts: ProcessOptions = {},
+): { output: EngineOutputV3; detail: ProcessDetail } {
   const flags: EngineFlag[] = [];
 
   // 1. Persona
@@ -146,8 +191,26 @@ export function processTranscript(
   if (emailResult.flag) flags.push(emailResult.flag);
   const emailDraft = emailResult.email;
 
-  // 10. Next action
-  const nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+  // 10. Next action — Phase 7.1a. When rules are supplied, walk them;
+  // otherwise fall back to the legacy determineNextAction cascade.
+  let nextAction;
+  let nbaTrace: EvaluationTrace | null = null;
+  let nbaSource: "legacy" | "rules";
+  if (opts.outcomeRules && opts.outcomeRules.length > 0) {
+    const r = evaluateOutcomeRules(opts.outcomeRules, {
+      callType,
+      signals: updatedSignals,
+      investor: enrichedInvestor,
+      content,
+      gateResult,
+    });
+    nextAction = r.action;
+    nbaTrace = r.trace;
+    nbaSource = "rules";
+  } else {
+    nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+    nbaSource = "legacy";
+  }
 
   // 11. CRM note
   const factFindUpdates: Partial<FactFind> = {};
@@ -181,27 +244,30 @@ export function processTranscript(
   );
 
   return {
-    engineVersion: ENGINE_VERSION,
-    processedAt: nowIso(),
-    callType,
-    investorId: investor.investorId,
-    signalUpdates,
-    factFindUpdates,
-    personaAssessment,
-    hotButton,
-    demoScore: investor.demoScore,
-    gateStatus: gateResult,
-    nextBestAction: nextAction,
-    pipelineTransition,
-    crmNote,
-    flags,
-    // V3 additions
-    questionsDetected,
-    demoSegmentAnalysis: callType === "demo" ? demoSegResult.segments : null,
-    emailDraft,
-    postCloseActions,
-    adviserLoopActions,
-    book2Routing,
+    output: {
+      engineVersion: ENGINE_VERSION,
+      processedAt: nowIso(),
+      callType,
+      investorId: investor.investorId,
+      signalUpdates,
+      factFindUpdates,
+      personaAssessment,
+      hotButton,
+      demoScore: investor.demoScore,
+      gateStatus: gateResult,
+      nextBestAction: nextAction,
+      pipelineTransition,
+      crmNote,
+      flags,
+      // V3 additions
+      questionsDetected,
+      demoSegmentAnalysis: callType === "demo" ? demoSegResult.segments : null,
+      emailDraft,
+      postCloseActions,
+      adviserLoopActions,
+      book2Routing,
+    },
+    detail: { nbaTrace, nbaSource },
   };
 }
 
@@ -235,11 +301,13 @@ export async function processTranscriptWithLLM(
   transcript: string,
   callType: CallType,
   investor: Investor,
+  opts: ProcessOptions = {},
 ): Promise<{
   output: EngineOutputV3;
   audit: ExtractionAudit;
   emailAudit: ExtractionAudit | null;
   rawExtraction: unknown;
+  detail: ProcessDetail;
 }> {
   const flags: EngineFlag[] = [];
 
@@ -320,7 +388,26 @@ export async function processTranscriptWithLLM(
   const emailDraft = emailLLMResult.email;
   const emailAudit = emailLLMResult.audit;
 
-  const nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+  // NBA — Phase 7.1a. Rule engine when opts.outcomeRules provided,
+  // otherwise legacy cascade (unchanged from Phase 4.9 behaviour).
+  let nextAction;
+  let nbaTrace: EvaluationTrace | null = null;
+  let nbaSource: "legacy" | "rules";
+  if (opts.outcomeRules && opts.outcomeRules.length > 0) {
+    const r = evaluateOutcomeRules(opts.outcomeRules, {
+      callType,
+      signals: updatedSignals,
+      investor: enrichedInvestor,
+      content,
+      gateResult,
+    });
+    nextAction = r.action;
+    nbaTrace = r.trace;
+    nbaSource = "rules";
+  } else {
+    nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+    nbaSource = "legacy";
+  }
 
   const crmNote = buildCrmNote(callType, signalUpdates, factFindUpdates, enrichedInvestor, content, nextAction, gateResult);
 
@@ -370,5 +457,11 @@ export async function processTranscriptWithLLM(
     book2Routing,
   };
 
-  return { output, audit, emailAudit, rawExtraction: extraction };
+  return {
+    output,
+    audit,
+    emailAudit,
+    rawExtraction: extraction,
+    detail: { nbaTrace, nbaSource },
+  };
 }
