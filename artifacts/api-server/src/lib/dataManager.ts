@@ -11,6 +11,7 @@ import channelSeedData from "../data/channels.json" with { type: "json" };
 import { seedACURefactor } from "../data/seed-acu-refactor";
 import { seedTemplates } from "../data/seed-templates";
 import { seedPrompts } from "../data/seed-prompts";
+import { seedOutcomeRules } from "../data/seed-outcome-rules";
 import { logger } from "./logger";
 
 export async function seedDatabase() {
@@ -28,6 +29,8 @@ export async function seedDatabase() {
       logger.info({ ...ccResult }, "Compliance constants seed complete");
       const brResult = await seedBeliefRegistry();
       logger.info({ ...brResult }, "Belief registry seed complete");
+      const orResult = await seedOutcomeRules();
+      logger.info({ ...orResult }, "Outcome rules seed complete");
     } catch (err) {
       logger.error({ err }, "Incremental seed error (non-fatal)");
     }

@@ -10,7 +10,6 @@
 // the table is safe regardless of flag state.
 
 import { db, engineOutcomeRulesTable } from "@workspace/db";
-import { sql } from "drizzle-orm";
 import type { InsertEngineOutcomeRule } from "@workspace/db";
 
 export const OUTCOME_RULES_SEED: InsertEngineOutcomeRule[] = [
@@ -195,16 +194,9 @@ export async function seedOutcomeRules(): Promise<{ written: number; ids: string
   return { written: ids.length, ids };
 }
 
-// CLI entrypoint: `tsx src/data/seed-outcome-rules.ts`
-if (import.meta.url === `file://${process.argv[1]}`) {
-  seedOutcomeRules()
-    .then((r) => {
-      console.log(`Seeded ${r.written} outcome rules: ${r.ids.join(", ")}`);
-      // drizzle pg pool keeps node alive; force exit.
-      setTimeout(() => process.exit(0), 100).unref();
-    })
-    .catch((err) => {
-      console.error("Seed failed:", err);
-      process.exit(1);
-    });
-}
+// NOTE: This module intentionally has no CLI entrypoint. The
+// `import.meta.url === file://${process.argv[1]}` pattern matches
+// when esbuild bundles everything into a single dist/index.mjs and
+// kills the server at startup (process.exit(0) fires after the seed
+// runs, before express binds). Invoke seedOutcomeRules() from
+// dataManager.seedDatabase() and from the admin endpoint instead.
