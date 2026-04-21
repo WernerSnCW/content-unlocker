@@ -17,6 +17,21 @@ import {
   ENGINE_UPDATED,
   SIGNAL_REGISTRY,
   QUESTION_REGISTRY,
+  GATES,
+  ROUTING_MAP,
+  PERSONA_CONFIG,
+  CALL_TYPES,
+  TIMING_RULES,
+  COMPLIANCE,
+  RED_SIGNAL_ACTIONS,
+  PIPELINE_STAGES,
+  DEMO_SEGMENTS,
+  COLD_CALL_STEPS,
+  EMAIL_TEMPLATES,
+  PROBLEM_BELIEF_PATTERNS,
+  POST_CLOSE_WORKFLOW,
+  ADVISER_LOOP_WORKFLOW,
+  BOOK2_ROUTING,
   type CallType,
 } from "../../engine/v2";
 
@@ -36,6 +51,39 @@ router.get("/engine/version", async (_req, res): Promise<void> => {
     spec: ENGINE_SPEC,
     updated: ENGINE_UPDATED,
     signalCount: SIGNAL_REGISTRY.length,
+  });
+});
+
+// GET /engine/config/all — Phase 7.0 read-only admin viewer.
+// Bundles every config surface in one response so the admin page can
+// render tabs without orchestrating N requests. Public read because the
+// page itself is admin-gated via AdminOnlyRoute and the existing
+// per-surface endpoints (questions/signals/demo-segments/documents) are
+// already unauthenticated.
+router.get("/engine/config/all", async (_req, res): Promise<void> => {
+  res.json({
+    meta: {
+      engineVersion: ENGINE_VERSION,
+      spec: ENGINE_SPEC,
+      updated: ENGINE_UPDATED,
+    },
+    signals: SIGNAL_REGISTRY,
+    questions: QUESTION_REGISTRY,
+    gates: GATES,
+    routingMap: ROUTING_MAP,
+    personaConfig: PERSONA_CONFIG,
+    callTypes: CALL_TYPES,
+    timingRules: TIMING_RULES,
+    compliance: COMPLIANCE,
+    redSignalActions: RED_SIGNAL_ACTIONS,
+    pipelineStages: PIPELINE_STAGES,
+    demoSegments: DEMO_SEGMENTS,
+    coldCallSteps: COLD_CALL_STEPS,
+    emailTemplates: EMAIL_TEMPLATES,
+    problemBeliefPatterns: PROBLEM_BELIEF_PATTERNS,
+    postCloseWorkflow: POST_CLOSE_WORKFLOW,
+    adviserLoopWorkflow: ADVISER_LOOP_WORKFLOW,
+    book2Routing: BOOK2_ROUTING,
   });
 });
 

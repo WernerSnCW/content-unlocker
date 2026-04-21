@@ -27,6 +27,7 @@ import {
   Headphones,
   LogOut,
   Inbox,
+  Cog,
 } from "lucide-react";
 
 const API_BASE =
@@ -156,6 +157,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       items: [
         { href: "/admin/agents", label: "Agents", icon: Users },
         { href: "/admin/simulate-call", label: "Simulate Call", icon: Zap },
+        { href: "/admin/engine-config", label: "Engine Config", icon: Cog },
         { href: "/settings", label: "Settings", icon: Settings },
         { href: "/changelog", label: "Changelog", icon: History },
         { href: "/compliance-constants", label: "Compliance Constants", icon: ShieldCheck },
