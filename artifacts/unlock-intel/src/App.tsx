@@ -10,6 +10,7 @@ import LoginPage from "@/pages/login";
 import AdminAgentsPage from "@/pages/admin-agents";
 import AdminSimulateCallPage from "@/pages/admin-simulate-call";
 import AdminEngineConfigPage from "@/pages/admin-engine-config";
+import AdminOutcomeRulesPage from "@/pages/admin-outcome-rules";
 
 import Dashboard from "./pages/dashboard";
 import Recommend from "./pages/recommend";
@@ -94,6 +95,9 @@ function Router() {
               </Route>
               <Route path="/admin/engine-config">
                 <AdminOnlyRoute><AdminEngineConfigPage /></AdminOnlyRoute>
+              </Route>
+              <Route path="/admin/outcome-rules">
+                <AdminOnlyRoute><AdminOutcomeRulesPage /></AdminOnlyRoute>
               </Route>
               <Route path="/contacts/upload" component={ContactIngestion} />
               <Route path="/call-list" component={CallList} />

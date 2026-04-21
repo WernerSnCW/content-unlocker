@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, agentsTable, usersTable, integrationConfigsTable, contactsTable, callListConfigsTable, callListMembershipsTable, leadConversationsTable, engineOutcomeRulesTable } from "@workspace/db";
+import { db, agentsTable, usersTable, integrationConfigsTable, contactsTable, callListConfigsTable, callListMembershipsTable, leadConversationsTable, engineOutcomeRulesTable, engineRunsTable } from "@workspace/db";
 import { asc, eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { logger } from "../../lib/logger";
@@ -15,7 +15,9 @@ import {
 } from "../aircall";
 import { clearQueue as clearPowerDialerQueue, getQueue as getPowerDialerQueue } from "../../lib/aircallPowerDialer";
 import { seedOutcomeRules } from "../../data/seed-outcome-rules";
-import { invalidateOutcomeRulesCache } from "../../engine/v2/outcomeRules/loader";
+import { invalidateOutcomeRulesCache, loadOutcomeRules } from "../../engine/v2/outcomeRules/loader";
+import { evaluateOutcomeRules, RuleCoverageError } from "../../engine/v2/outcomeRules/evaluator";
+import { loadInvestor } from "../../engine/v2";
 
 const router: IRouter = Router();
 
@@ -634,6 +636,139 @@ router.post("/admin/engine-outcome-rules/seed", async (_req, res) => {
   } catch (err: any) {
     logger.error({ err: err.message }, "admin/engine-outcome-rules seed failed");
     res.status(500).json({ error: "seed_failed", message: err.message });
+  }
+});
+
+// GET /api/admin/engine-runs/recent — recent engine runs for the trace-view
+// picker on the Outcome Rules admin page. Returns enough context for the
+// picker to display meaningful labels (contact name, call type, NBA action,
+// created_at) without the full output blob.
+router.get("/admin/engine-runs/recent", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const rows = await db
+      .select({
+        id: engineRunsTable.id,
+        contact_id: engineRunsTable.contact_id,
+        conversation_id: engineRunsTable.conversation_id,
+        call_type: engineRunsTable.call_type,
+        engine_version: engineRunsTable.engine_version,
+        created_at: engineRunsTable.created_at,
+        output: engineRunsTable.output,
+        contact_first_name: contactsTable.first_name,
+        contact_last_name: contactsTable.last_name,
+      })
+      .from(engineRunsTable)
+      .leftJoin(contactsTable, eq(contactsTable.id, engineRunsTable.contact_id))
+      .orderBy(desc(engineRunsTable.created_at))
+      .limit(limit);
+
+    // Only surface the bits of the output that matter for the picker.
+    const runs = rows.map((r: typeof rows[number]) => ({
+      id: r.id,
+      contactId: r.contact_id,
+      contactName: [r.contact_first_name, r.contact_last_name].filter(Boolean).join(" ") || r.contact_id,
+      conversationId: r.conversation_id,
+      callType: r.call_type,
+      engineVersion: r.engine_version,
+      createdAt: r.created_at,
+      nbaActionType: (r.output as any)?.nextBestAction?.actionType ?? null,
+      nbaDetail: (r.output as any)?.nextBestAction?.detail ?? null,
+    }));
+
+    res.json({ runs });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-runs/recent failed");
+    res.status(500).json({ error: "list_failed", message: err.message });
+  }
+});
+
+// POST /api/admin/engine-outcome-rules/trace — re-evaluate the rules
+// against the stored context of a specific engine run. Returns the full
+// step-by-step trace (which rule matched, which failed and on which
+// clause). The evaluator is pure, so this replay is deterministic.
+//
+// Body: { runId: string }
+//
+// CAVEAT: signals used for replay are the CURRENT engine_signals for the
+// contact (via loadInvestor), NOT a snapshot from the run time. For most
+// debugging use this is fine — the contact's state rarely churns between
+// runs. If you need strict at-time replay, we'll add a snapshot column
+// in Phase 7.1b.
+router.post("/admin/engine-outcome-rules/trace", async (req, res) => {
+  try {
+    const runId = typeof req.body?.runId === "string" ? req.body.runId : null;
+    if (!runId) {
+      res.status(400).json({ error: "runId_required" });
+      return;
+    }
+
+    const [run] = await db
+      .select()
+      .from(engineRunsTable)
+      .where(eq(engineRunsTable.id, runId))
+      .limit(1);
+    if (!run) {
+      res.status(404).json({ error: "run_not_found" });
+      return;
+    }
+
+    const output = run.output as any;
+    const callType = run.call_type as "cold_call" | "demo" | "opportunity";
+    const investor = await loadInvestor(run.contact_id);
+    const rules = await loadOutcomeRules();
+
+    // Reconstruct evaluation context. Signals come from the investor's
+    // CURRENT state (caveat noted above). gateResult and content come
+    // straight from the stored run output — those are what the engine
+    // used at run time.
+    const ctx = {
+      callType,
+      signals: investor.signals,
+      investor,
+      content: output?.nextBestAction?.contentToSend ?? null,
+      gateResult: output?.gateStatus ?? {
+        c4Compliance: "open",
+        pack1: "blocked",
+        pack1BlockedReasons: [],
+        activeRoute: "pending",
+        blockedSignals: [],
+      },
+    };
+
+    let action: any = null;
+    let trace: any = null;
+    let evaluatorError: string | null = null;
+    try {
+      const r = evaluateOutcomeRules(rules, ctx);
+      action = r.action;
+      trace = r.trace;
+    } catch (err: any) {
+      evaluatorError = err instanceof RuleCoverageError ? err.message : (err?.message || String(err));
+    }
+
+    res.json({
+      runId: run.id,
+      contactId: run.contact_id,
+      contactName: [run.contact_id].filter(Boolean).join(" "),
+      callType,
+      runCreatedAt: run.created_at,
+      replay: {
+        action,
+        trace,
+        evaluatorError,
+      },
+      // Include the stored NBA for side-by-side comparison in the UI
+      stored: {
+        nextBestAction: output?.nextBestAction ?? null,
+      },
+      caveat:
+        "Replay uses CURRENT engine_signals for the contact, not a snapshot from run time. " +
+        "Gate status and routed content come from the stored run output.",
+    });
+  } catch (err: any) {
+    logger.error({ err: err.message, stack: err.stack }, "admin/engine-outcome-rules/trace failed");
+    res.status(500).json({ error: "trace_failed", message: err.message });
   }
 });
 
