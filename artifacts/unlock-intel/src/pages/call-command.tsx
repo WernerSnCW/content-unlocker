@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAircallPhone } from "@/hooks/use-aircall-phone";
 import OutcomeDrawer from "@/components/OutcomeDrawer";
+import PreCallPanel from "@/components/PreCallPanel";
 import { useCurrentUser, isAdmin } from "@/hooks/useCurrentUser";
 import { apiFetch, apiPost } from "@/lib/apiClient";
 
@@ -1445,14 +1446,18 @@ export default function CallCommand() {
                   )}
                 </div>
 
-                {/* SECTION 3: Call Prep */}
+                {/* SECTION 3: Call Prep — pre-call intelligence panel (Phase 5).
+                    Replaces the static placeholder with engine-backed intel
+                    (persona, hot button, fact-find, "questions to ask on
+                    this call" from QUESTION_REGISTRY filtered by next-call
+                    number + signal states). */}
                 <div className="px-5 pb-4">
-                  <div className="rounded-lg border border-border/50 bg-muted/30 p-4 text-sm">
-                    <p className="font-medium text-foreground mb-1 flex items-center gap-1.5">
-                      <Headphones className="w-4 h-4" /> Call Prep
-                    </p>
-                    <p className="text-muted-foreground">Belief map and conversation history will appear here once intelligence is available for this contact.</p>
-                  </div>
+                  <PreCallPanel
+                    contactId={currentContact?.id ?? null}
+                    contactName={currentContact ? `${currentContact.first_name} ${currentContact.last_name}`.trim() : undefined}
+                    callAttempts={currentContact?.call_attempts}
+                    lastCallOutcome={currentContact?.last_call_outcome ?? null}
+                  />
                 </div>
 
                 {/* SECTION 4: Navigation */}
