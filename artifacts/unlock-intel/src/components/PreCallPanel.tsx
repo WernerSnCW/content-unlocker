@@ -145,6 +145,20 @@ export default function PreCallPanel({
     docName: string | null;
     actionType: string | null;
   } | null>(null);
+  // Previous outcome review (if one exists for the latest run). Lets us:
+  //   (1) link "Full engine output →" to the specific review page
+  //   (2) warn if the previous review is still unfinalised
+  //   (3) summarise what the operator approved / edited / rejected last time
+  const [previousReview, setPreviousReview] = useState<{
+    id: string;
+    status: string;
+    decisions: Array<{
+      action_type: string;
+      action_key: string;
+      decision: string;
+      edited_payload: any;
+    }>;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Fetch the engine view + registries on contact change.
@@ -184,10 +198,15 @@ export default function PreCallPanel({
         }
 
         // Second-pass: if we got a view with runs, pull the latest
-        // engine_run's FULL output for the last-recommendation context.
+        // engine_run's FULL output for the last-recommendation context,
+        // and the associated outcome review (if one was created) for the
+        // "what was done" summary + link-to-finalise banner.
         const latestRunId = viewData?.runs?.[0]?.id;
         if (latestRunId) {
-          const runRes = await apiFetch(`${API_BASE}/engine/runs/${latestRunId}`);
+          const [runRes, revRes] = await Promise.all([
+            apiFetch(`${API_BASE}/engine/runs/${latestRunId}`),
+            apiFetch(`${API_BASE}/outcome-reviews/by-run/${latestRunId}`),
+          ]);
           if (!cancelled && runRes.ok) {
             const fullRun = await runRes.json();
             const nba = fullRun?.output?.nextBestAction;
@@ -196,8 +215,19 @@ export default function PreCallPanel({
               actionType: nba?.actionType ?? null,
             });
           }
+          if (!cancelled && revRes.ok && revRes.status !== 204) {
+            const bundle = await revRes.json();
+            setPreviousReview({
+              id: bundle.review.id,
+              status: bundle.review.status,
+              decisions: bundle.decisions ?? [],
+            });
+          } else if (!cancelled) {
+            setPreviousReview(null);
+          }
         } else {
           setLastRunRecommendation(null);
+          setPreviousReview(null);
         }
       } catch { /* silent — panel falls back to empty state */ }
       finally { if (!cancelled) setLoading(false); }
@@ -370,6 +400,32 @@ export default function PreCallPanel({
         </div>
       </div>
 
+      {/* Unfinalised-review banner — when the previous call produced a
+          review that the operator hasn't worked through yet (or is still
+          in progress). Prompts them to close the loop before the next
+          call so outcomes don't stack up unresolved. */}
+      {previousReview && (previousReview.status === "awaiting_review"
+        || previousReview.status === "under_review"
+        || previousReview.status === "handed_to_closer"
+        || previousReview.status === "handed_to_agent") && (
+        <div className="px-4 py-2 border-b border-amber-500/40 bg-amber-500/5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-amber-700">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Previous outcome not finalised
+              {previousReview.status === "handed_to_closer" && <> (handed to closer)</>}
+              {previousReview.status === "handed_to_agent" && <> (bounced back)</>}
+            </span>
+          </div>
+          <Link
+            href={`/outcomes/${previousReview.id}`}
+            className="text-xs text-amber-700 hover:text-foreground inline-flex items-center gap-0.5 font-medium"
+          >
+            Finalise <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+      )}
+
       {/* Last-call recommendation reminder — when there's something the
           engine previously suggested sending, surface it here so the
           operator opens the new call with that context in mind. */}
@@ -380,6 +436,48 @@ export default function PreCallPanel({
             Engine previously recommended:{" "}
             <span className="font-medium text-foreground">{lastRunRecommendation.docName}</span>
           </span>
+        </div>
+      )}
+
+      {/* "What was done last call" — summary of decisions from the
+          previous outcome review. Gives the operator context on WHAT
+          the prior outcome actually ended in (email approved? action
+          rejected? Intelligence they still need to chase up?).
+          Only rendered when decisions exist. */}
+      {previousReview && previousReview.decisions.length > 0 && (
+        <div className="px-4 py-2.5 border-b border-border/50 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <ListChecks className="w-3.5 h-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Previously actioned
+            </p>
+          </div>
+          <ul className="space-y-0.5">
+            {previousReview.decisions
+              .filter(d => d.decision !== "deferred")
+              .map((d, i) => {
+                const label = decisionLabel(d.action_type, d.action_key, d.edited_payload);
+                const verb = d.decision === "approved" ? "Approved"
+                           : d.decision === "edited" ? "Edited"
+                           : d.decision === "rejected" ? "Rejected"
+                           : d.decision;
+                const color = d.decision === "approved" ? "text-green-700"
+                            : d.decision === "edited" ? "text-amber-700"
+                            : d.decision === "rejected" ? "text-red-700"
+                            : "text-muted-foreground";
+                return (
+                  <li key={i} className="text-xs flex items-start gap-1.5">
+                    <span className={cn("font-medium shrink-0", color)}>{verb}:</span>
+                    <span className="text-muted-foreground">{label}</span>
+                  </li>
+                );
+              })}
+          </ul>
+          {/* Footnote: decisions are currently intent, not execution.
+              Phase 7.5 wires actual sends. */}
+          <p className="text-[10px] text-muted-foreground/70 italic pt-0.5">
+            Decisions are recorded intent. Real send/schedule lands with Phase 7.5.
+          </p>
         </div>
       )}
 
@@ -559,7 +657,10 @@ export default function PreCallPanel({
           Deeper signal detail is a click away on the outcome page. */}
       {lastRun && (
         <div className="px-4 py-2 border-t border-border/50 flex items-center justify-end text-xs">
-          <Link href={`/outcomes`} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5">
+          <Link
+            href={previousReview?.id ? `/outcomes/${previousReview.id}` : "/outcomes"}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+          >
             Full engine output <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -571,6 +672,34 @@ export default function PreCallPanel({
 // ============================================================================
 // Sub-components
 // ============================================================================
+
+// Humanise a decision row for the "Previously actioned" summary.
+// The engine tags decisions by action_type + action_key; we translate
+// those into plain-language labels the operator recognises.
+function decisionLabel(actionType: string, actionKey: string, editedPayload: any): string {
+  switch (actionType) {
+    case "nba":
+      return "Next best action";
+    case "email":
+      if (editedPayload?.subject) {
+        return `Email: "${String(editedPayload.subject).slice(0, 60)}"`;
+      }
+      return "Email draft";
+    case "book2":
+      return "Book 2 routing";
+    case "post_close_item":
+      // action_key shape: "post_close:0:action text snippet"
+      return `Post-close: ${actionKey.split(":").slice(2).join(":").slice(0, 60)}`;
+    case "adviser_loop_item":
+      // action_key shape: "adviser_loop:pre_call:0:action text snippet"
+      const parts = actionKey.split(":");
+      const phase = parts[1];
+      const phaseLabel = phase === "pre_call" ? "Pre-call" : phase === "during_call" ? "During call" : "Post-call";
+      return `Adviser ${phaseLabel}: ${parts.slice(3).join(":").slice(0, 60)}`;
+    default:
+      return `${actionType}: ${actionKey.slice(0, 60)}`;
+  }
+}
 
 function FactLine({ label, value }: { label: string; value: string }) {
   return (
