@@ -163,6 +163,27 @@ function evaluateClause(
   return { passed, actual };
 }
 
+/**
+ * Render a rule's detail string, substituting `{docName}` with the
+ * resolved content's docName. Empty detail falls back to docName (when
+ * uses_content and content is present) or the action_type so the NBA
+ * reason field is never empty.
+ */
+function renderDetail(
+  detail: string,
+  docName: string | null,
+  usesContent: boolean,
+  actionType: string,
+): string {
+  if (!detail || detail.length === 0) {
+    return usesContent && docName ? docName : actionType;
+  }
+  if (detail.includes("{docName}")) {
+    return detail.replace(/\{docName\}/g, docName ?? "");
+  }
+  return detail;
+}
+
 function toNumber(v: unknown): number {
   if (v == null) return NaN;
   if (typeof v === "number") return v;
@@ -221,17 +242,13 @@ export function evaluateOutcomeRules(
     if (matched) {
       trace.matchedRuleId = rule.id;
 
-      // Build NextAction. If uses_content is true, pass the routed
-      // content through; otherwise null. If detail is empty, fall back
-      // to content.docName so the legacy behaviour for "send_content"
-      // rules without explicit detail (demo_has_content, cold_has_content)
-      // still produces a meaningful operator-facing message.
-      const detail =
-        rule.detail && rule.detail.length > 0
-          ? rule.detail
-          : rule.uses_content && ctx.content
-          ? ctx.content.docName
-          : rule.action_type;
+      // Build NextAction. The detail string supports one token —
+      // {docName} — substituted from the resolved content at eval
+      // time. This lets rules keep a static storage form while still
+      // producing operator-facing strings that vary per call.
+      // If detail is empty, fall back to docName (when uses_content)
+      // or actionType so we never hand back an empty reason.
+      const detail = renderDetail(rule.detail, ctx.content?.docName ?? null, rule.uses_content, rule.action_type);
 
       const action: NextAction = {
         actionType: rule.action_type as NextAction["actionType"],

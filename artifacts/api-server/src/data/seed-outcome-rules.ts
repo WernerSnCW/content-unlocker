@@ -100,7 +100,9 @@ export const OUTCOME_RULES_SEED: InsertEngineOutcomeRule[] = [
     action_type: "send_content",
     owner: "tom",
     timing: "24_48_hours",
-    detail: "", // filled at eval time with content.docName (handled by evaluator)
+    // Legacy cascade uses just the docName here (no "Send " prefix).
+    // {docName} is substituted by the evaluator at eval time.
+    detail: "{docName}",
     uses_content: true,
   },
   {
@@ -143,7 +145,9 @@ export const OUTCOME_RULES_SEED: InsertEngineOutcomeRule[] = [
     action_type: "send_content",
     owner: "agent",
     timing: "24_48_hours",
-    detail: "", // filled at eval time with content.docName
+    // Legacy cascade prepends "Send " here (parity with the cold-call
+    // branch of determineNextAction). {docName} substitutes at eval time.
+    detail: "Send {docName}",
     uses_content: true,
   },
   {
