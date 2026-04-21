@@ -107,14 +107,6 @@ interface Agent {
 
 export default function CallCommand() {
   const [, setLocation] = useLocation();
-  // Navigate from tray → dedicated outcome page. Falls back to /outcomes
-  // list if we don't yet have a reviewId for this pending entry (the
-  // review lookup is done lazily on SSE polling — for a brief window
-  // after call.tagged the reviewId may still be unknown).
-  const openOutcome = (p: { contactId: string; reviewId?: string }) => {
-    if (p.reviewId) setLocation(`/outcomes/${p.reviewId}`);
-    else setLocation("/outcomes");
-  };
   const [poolAvailable, setPoolAvailable] = useState(0);
   const [callList, setCallList] = useState<CallContact[]>([]);
   const [todayOutcomes, setTodayOutcomes] = useState<{ total: number; uniqueContacts: number; outcomes: Record<string, number> }>({ total: 0, uniqueContacts: 0, outcomes: {} });
@@ -936,7 +928,7 @@ export default function CallCommand() {
                       className={`group px-4 py-3 border-b last:border-b-0 cursor-pointer transition-colors ${
                         p.status === "ready" ? "hover:bg-primary/5" : "hover:bg-muted/50"
                       }`}
-                      onClick={() => openOutcome(p)}
+                      onClick={() => setDetailContactId(p.contactId)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
