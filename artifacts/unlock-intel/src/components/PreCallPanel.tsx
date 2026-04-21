@@ -74,6 +74,9 @@ interface QuestionDef {
   category: string;
   signal: string | null;
   gateRole: string | null;
+  // Persona-specific variants — Q13 has different text per persona.
+  // Resolver below picks the right one based on investor state.
+  variants?: Record<string, { text: string; signal: string }> | null;
 }
 interface SignalDef {
   code: string;
@@ -178,11 +181,25 @@ export default function PreCallPanel({
   const questionsToAsk = useMemo(() => {
     if (questions.length === 0) return [];
     const signalByCode = new Map((view?.signals ?? []).map(s => [s.code, s]));
+    const persona = view?.investorState?.persona ?? "undetermined";
     const scored = questions
       .filter(q => q.call === nextCallNumber)
       .map(q => {
-        const signal = q.signal ? signalByCode.get(q.signal) : null;
-        const state = signal?.state ?? (q.signal ? "grey" : "n_a");
+        // Q13 + any future variant question: pick the persona-specific text
+        // + signal. If persona isn't known yet, skip the variant (show the
+        // question as narrative/generic).
+        let text = q.text;
+        let targetSignal = q.signal;
+        if (q.variants && persona !== "undetermined" && q.variants[persona]) {
+          text = q.variants[persona].text;
+          targetSignal = q.variants[persona].signal;
+        } else if (q.variants) {
+          // Persona undetermined — we can't pick a variant. Skip the
+          // question rather than showing a raw placeholder.
+          return null;
+        }
+        const signal = targetSignal ? signalByCode.get(targetSignal) : null;
+        const state = signal?.state ?? (targetSignal ? "grey" : "n_a");
         // priority 0 = highest
         let priority = 5;
         if (q.gateRole) priority = 1;
@@ -190,8 +207,9 @@ export default function PreCallPanel({
         else if (state === "amber") priority = 3;
         else if (state === "green" || state === "confirmed") priority = 10; // deprioritise — already established
         else if (state === "red") priority = 4;
-        return { q, state, priority };
+        return { q, resolvedText: text, resolvedSignal: targetSignal, state, priority };
       })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
       .filter(x => x.priority < 10) // drop already-green/confirmed
       .sort((a, b) => a.priority - b.priority || a.q.qNum - b.q.qNum)
       .slice(0, 8);
@@ -296,8 +314,8 @@ export default function PreCallPanel({
             </p>
           </div>
           <ul className="space-y-1.5">
-            {questionsToAsk.map(({ q, state: sigState, priority }) => {
-              const signalName = q.signal ? (signalDefs.get(q.signal)?.name ?? null) : null;
+            {questionsToAsk.map(({ q, resolvedText, resolvedSignal, state: sigState, priority }) => {
+              const signalName = resolvedSignal ? (signalDefs.get(resolvedSignal)?.name ?? null) : null;
               return (
                 <li key={q.qNum} className="flex items-start gap-2 text-sm leading-tight">
                   <span className={cn(
@@ -308,8 +326,8 @@ export default function PreCallPanel({
                     : "bg-muted-foreground/50",
                   )} />
                   <div className="flex-1 min-w-0">
-                    <p>{q.text ?? <span className="italic text-muted-foreground">(narrative prompt)</span>}</p>
-                    {q.signal && (
+                    <p>{resolvedText ?? <span className="italic text-muted-foreground">(narrative prompt)</span>}</p>
+                    {resolvedSignal && (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         {signalName ? (
                           <span>

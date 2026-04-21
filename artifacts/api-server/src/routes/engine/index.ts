@@ -40,9 +40,14 @@ router.get("/engine/version", async (_req, res): Promise<void> => {
 });
 
 // GET /engine/config/questions — the QUESTION_REGISTRY, used by Outcome Drawer
-// (Phase 4.6) to render question text against QuestionDetection rows. Public
-// read-only config surface; no mutation. Kept separate from /engine/version
-// because the response is larger and cached client-side.
+// (Phase 4.6) and the PreCallPanel (Phase 5) to render question text against
+// QuestionDetection rows. Public read-only config surface; no mutation. Kept
+// separate from /engine/version because the response is larger and cached
+// client-side.
+//
+// Includes `variants` when a question's text depends on persona (Q13). The
+// PreCallPanel resolves the investor's persona-specific variant before
+// rendering — avoids the operator seeing the placeholder text literally.
 router.get("/engine/config/questions", async (_req, res): Promise<void> => {
   res.json({
     questions: QUESTION_REGISTRY.map(q => ({
@@ -52,6 +57,7 @@ router.get("/engine/config/questions", async (_req, res): Promise<void> => {
       category: q.category,
       signal: q.signal,
       gateRole: q.gateRole ?? null,
+      variants: q.variants ?? null,
     })),
   });
 });
