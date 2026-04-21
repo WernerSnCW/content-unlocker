@@ -520,9 +520,30 @@ test("Outcome rules — no fallback throws RuleCoverageError", () => {
 
 // ============ D7. Parity: rule-engine NBA matches legacy cascade ============
 // Runs a fixture scenario through BOTH NBA paths and asserts byte-identical
-// NextAction. This is the acceptance bar for flipping ENGINE_OUTCOME_RULES on.
+// NextAction across all fields. This is the acceptance bar for flipping
+// ENGINE_OUTCOME_RULES on. One parity test per callType so every branch of
+// the legacy cascade is exercised.
 
-test("Parity — James cold call: legacy NBA === rule NBA", () => {
+function assertParity(scenario: string, legacy: any, byRules: any) {
+  test(`Parity — ${scenario}: actionType`, () => {
+    expect(legacy.nextBestAction.actionType).toBe(byRules.nextBestAction.actionType);
+  });
+  test(`Parity — ${scenario}: owner`, () => {
+    expect(legacy.nextBestAction.owner).toBe(byRules.nextBestAction.owner);
+  });
+  test(`Parity — ${scenario}: timing`, () => {
+    expect(legacy.nextBestAction.timing).toBe(byRules.nextBestAction.timing);
+  });
+  test(`Parity — ${scenario}: detail`, () => {
+    expect(legacy.nextBestAction.detail).toBe(byRules.nextBestAction.detail);
+  });
+  test(`Parity — ${scenario}: contentToSend.docId`, () => {
+    expect(legacy.nextBestAction.contentToSend?.docId ?? null).toBe(byRules.nextBestAction.contentToSend?.docId ?? null);
+  });
+}
+
+(() => {
+  // Cold call — James
   const transcript = `
     Agent: Hi James, it's Sarah calling from Unlock.
     Agent: Are you familiar with EIS?
@@ -534,13 +555,54 @@ test("Parity — James cold call: legacy NBA === rule NBA", () => {
   `;
   const james = blankInvestor({ investorId: "james" });
   const legacy = processTranscript(transcript, "cold_call", james);
-  const rules = mockRules();
-  const byRules = processTranscript(transcript, "cold_call", james, { outcomeRules: rules });
-  expect(legacy.nextBestAction.actionType).toBe(byRules.nextBestAction.actionType);
-  expect(legacy.nextBestAction.owner).toBe(byRules.nextBestAction.owner);
-  expect(legacy.nextBestAction.timing).toBe(byRules.nextBestAction.timing);
-  expect(legacy.nextBestAction.detail).toBe(byRules.nextBestAction.detail);
-});
+  const byRules = processTranscript(transcript, "cold_call", james, { outcomeRules: mockRules() });
+  assertParity("James cold call", legacy, byRules);
+})();
+
+(() => {
+  // Demo — Margaret preserver. C4 is amber/grey → compliance gate blocks →
+  // content routes to doc 140. Expect rules + legacy to produce identical NBA.
+  const transcript = `
+    Tom: What's the main thing on your mind financially?
+    Margaret: I'm terrified of making a mistake I can't undo. I've got my SIPP at Aviva,
+    ISA at Hargreaves, some property, and a bit of cash. Nobody shows me the full picture.
+    I understand the EIS tax relief — 30% income tax, right? But I'm worried about
+    the risk. What happens if the company fails?
+    Margaret: OK so the downside is about 38p in the pound. That's better than I thought.
+    I'm interested in how the platform works for my situation specifically.
+  `;
+  const margaret = blankInvestor({ investorId: "margaret", persona: "preserver", demoScore: 78 });
+  const legacy = processTranscript(transcript, "demo", margaret);
+  const byRules = processTranscript(transcript, "demo", margaret, { outcomeRules: mockRules() });
+  assertParity("Margaret demo", legacy, byRules);
+})();
+
+(() => {
+  // Opportunity — Duncan, Call 3 close scenario. Adviser surfacing → S5 amber
+  // → expect adviser_loop rule path.
+  const transcript = `
+    Tom: Has anything changed since we spoke?
+    Duncan: I've been reading through the document you sent. It all makes sense.
+    Tom: Based on everything we've discussed, what do you think?
+    Duncan: I want to do this, but I'd like to run it past my accountant first before committing.
+    Tom: Absolutely. Would a three-way call help?
+    Duncan: Yes, that would be useful.
+  `;
+  const duncan = blankInvestor({
+    investorId: "duncan",
+    persona: "legacy_builder",
+    demoScore: 82,
+    // Pre-seed signals that the opportunity call acts on. In a real call the
+    // demo already surfaced these; for the test we stamp them in.
+    signals: {
+      S1: { code: "S1", state: "green", surfacedBy: "conversation", notes: "demo landed", updatedAt: new Date().toISOString(), confidence: "high" },
+      S2: { code: "S2", state: "green", surfacedBy: "conversation", notes: "interested in backing", updatedAt: new Date().toISOString(), confidence: "high" },
+    } as any,
+  });
+  const legacy = processTranscript(transcript, "opportunity", duncan);
+  const byRules = processTranscript(transcript, "opportunity", duncan, { outcomeRules: mockRules() });
+  assertParity("Duncan opportunity (adviser)", legacy, byRules);
+})();
 
 // ============ Summary ============
 

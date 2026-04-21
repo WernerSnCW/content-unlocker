@@ -12,6 +12,7 @@ import { seedACURefactor } from "../data/seed-acu-refactor";
 import { seedTemplates } from "../data/seed-templates";
 import { seedPrompts } from "../data/seed-prompts";
 import { seedOutcomeRules } from "../data/seed-outcome-rules";
+import { seedSimConversations } from "../data/seed-sim-conversations";
 import { logger } from "./logger";
 
 export async function seedDatabase() {
@@ -31,6 +32,8 @@ export async function seedDatabase() {
       logger.info({ ...brResult }, "Belief registry seed complete");
       const orResult = await seedOutcomeRules();
       logger.info({ ...orResult }, "Outcome rules seed complete");
+      const simResult = await seedSimConversations();
+      logger.info({ ...simResult }, "NBA sim conversations seed complete");
     } catch (err) {
       logger.error({ err }, "Incremental seed error (non-fatal)");
     }
