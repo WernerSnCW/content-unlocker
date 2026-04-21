@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, agentsTable, usersTable, integrationConfigsTable, contactsTable, callListConfigsTable, callListMembershipsTable, leadConversationsTable } from "@workspace/db";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { db, agentsTable, usersTable, integrationConfigsTable, contactsTable, callListConfigsTable, callListMembershipsTable, leadConversationsTable, engineOutcomeRulesTable } from "@workspace/db";
+import { asc, eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { logger } from "../../lib/logger";
 import { randomUUID } from "crypto";
@@ -14,6 +14,8 @@ import {
   getTagMapping,
 } from "../aircall";
 import { clearQueue as clearPowerDialerQueue, getQueue as getPowerDialerQueue } from "../../lib/aircallPowerDialer";
+import { seedOutcomeRules } from "../../data/seed-outcome-rules";
+import { invalidateOutcomeRulesCache } from "../../engine/v2/outcomeRules/loader";
 
 const router: IRouter = Router();
 
@@ -600,6 +602,38 @@ router.post("/admin/simulate-call", async (req, res) => {
   } catch (err: any) {
     logger.error({ err: err.message, stack: err.stack }, "simulate-call failed");
     res.status(500).json({ error: "simulate_failed", message: err.message });
+  }
+});
+
+// ==================== Phase 7.1a — NBA Outcome Rules ====================
+
+// GET /api/admin/engine-outcome-rules — list all rules, priority asc.
+// Read-only in session 1. Editing ships in 7.1b.
+router.get("/admin/engine-outcome-rules", async (_req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(engineOutcomeRulesTable)
+      .orderBy(asc(engineOutcomeRulesTable.priority));
+    res.json({ rules: rows });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-outcome-rules list failed");
+    res.status(500).json({ error: "list_failed", message: err.message });
+  }
+});
+
+// POST /api/admin/engine-outcome-rules/seed — idempotent seed/reset of
+// the 10 rules translated from determineNextAction. Safe to call
+// repeatedly; upserts by id. Werner runs this once after the schema
+// push to populate the table.
+router.post("/admin/engine-outcome-rules/seed", async (_req, res) => {
+  try {
+    const result = await seedOutcomeRules();
+    invalidateOutcomeRulesCache();
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-outcome-rules seed failed");
+    res.status(500).json({ error: "seed_failed", message: err.message });
   }
 });
 
