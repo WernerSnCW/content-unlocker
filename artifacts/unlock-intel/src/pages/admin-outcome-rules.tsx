@@ -750,7 +750,7 @@ function RuleEditor({
                       ))}
                       {routes.some((r) => r.personaFilter) && (
                         <div className="mt-1 text-[11px]">
-                          Other personas: no route. If this rule assumes a specific persona, add a persona clause.
+                          Other personas: no route. If this rule assumes a specific persona, add an investor.persona clause.
                         </div>
                       )}
                     </div>
