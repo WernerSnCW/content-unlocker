@@ -590,14 +590,20 @@ function RuleEditor({
           {/* Clauses */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">When (all AND-ed)</label>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium">When (all AND-ed)</label>
+                <span className="text-xs text-muted-foreground" title="For OR, split into two rules at different priorities. Keeps the trace unambiguous — each failed clause has one obvious cause.">
+                  (why no OR?)
+                </span>
+              </div>
               <Button size="sm" variant="outline" onClick={addClause}>
                 <Plus className="w-3 h-3 mr-1" /> Clause
               </Button>
             </div>
             <div className="space-y-2">
               {draft.when_clauses.map((c, i) => (
-                <div key={i} className="grid grid-cols-[1fr_90px_1fr_32px] gap-2 items-center">
+                <div key={i} className="space-y-1">
+                <div className="grid grid-cols-[1fr_90px_1fr_32px] gap-2 items-center">
                   <Select value={c.lvalue} onValueChange={(v) => setClause(i, { lvalue: v, rvalue: null })}>
                     <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent className="max-h-[50vh]">
@@ -666,6 +672,14 @@ function RuleEditor({
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
+                </div>
+                {c.lvalue === "content" && (
+                  <p className="text-xs text-muted-foreground pl-1">
+                    {c.op === "==="
+                      ? "'not routed' — the routing engine couldn't pick a document for this investor. Typically used for fallback / nurture rules."
+                      : "'routed (any document)' — routing picked a document. Use this on rules that send content."}
+                  </p>
+                )}
                 </div>
               ))}
             </div>
