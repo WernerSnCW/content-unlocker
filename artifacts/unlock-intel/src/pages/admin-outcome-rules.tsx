@@ -108,7 +108,11 @@ const LVALUE_SUGGESTIONS = [
   "investor.persona",
   "investor.hotButton",
 ];
-const OP_OPTIONS = ["===", "!==", "==", "!=", ">", ">=", "<", "<="] as const;
+// Loose equality (== / !=) removed from picker — it only differs from
+// strict when types get accidentally mismatched, which is what we want
+// to notice, not silently rescue. The backend evaluator still accepts
+// them in case any historical rule row has them.
+const OP_OPTIONS = ["===", "!==", ">", ">=", "<", "<="] as const;
 const OP_LABELS: Record<string, string> = {
   "===": "equals",
   "!==": "not equal",
