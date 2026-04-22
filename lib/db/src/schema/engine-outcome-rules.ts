@@ -48,12 +48,24 @@ export const engineOutcomeRulesTable = pgTable("engine_outcome_rules", {
   // in the file-level comment above.
   when_clauses: jsonb("when_clauses").notNull(),
 
-  // Outcome fields — one row per action.
-  action_type:  text("action_type").notNull(),
-  owner:        text("owner").notNull(),
-  timing:       text("timing").notNull(),
-  detail:       text("detail").notNull(),
-  uses_content: boolean("uses_content").notNull().default(false),
+  // Phase 7.1b — multi-action rules. `actions` is a non-empty array of
+  // OutcomeRuleAction objects. First element is the primary NBA; the
+  // rest flow to the engine output as "secondary actions" (what
+  // postCloseActions + adviserLoopActions are hardcoded today). When
+  // null (legacy rows seeded before 7.1b), the evaluator falls back to
+  // the single-action columns below. New rules MUST use actions; the
+  // legacy columns are kept nullable for backward-compat migration.
+  actions: jsonb("actions"),
+
+  // Legacy single-action fields — kept for backward-compat during the
+  // 7.1b migration window. Loader + evaluator prefer `actions` when
+  // present. Will be dropped in a later cleanup session once all rules
+  // are confirmed migrated.
+  action_type:  text("action_type"),
+  owner:        text("owner"),
+  timing:       text("timing"),
+  detail:       text("detail"),
+  uses_content: boolean("uses_content").default(false),
 
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -73,4 +85,33 @@ export interface OutcomeRuleClause {
   lvalue: string;                // e.g. "callType", "signal.S2.state", "gate.pack1"
   op: "===" | "!==" | "==" | "!=" | ">" | ">=" | "<" | "<=";
   rvalue: string | number | null;
+}
+
+/**
+ * Phase 7.1b — One action in a rule's `actions` list.
+ *
+ * The first action in the list is the primary NBA; subsequent actions
+ * flow to engine output.secondaryActions and render alongside the
+ * primary in the drawer + outcome page.
+ *
+ * `action_type` is an open-ended string to avoid a typed enum bound to
+ * TypeScript. The server-side action handlers map each type to a side
+ * effect (send_content attaches doc, set_next_call_type writes the
+ * contact hint, schedule_call creates a task, etc.). Unknown action
+ * types are rendered as informational only — no side effect.
+ *
+ * `next_call_type` is populated ONLY when action_type is
+ * "set_next_call_type". In all other cases it's null/undefined. The
+ * evaluator reads this field and writes it to contacts.next_call_type_hint
+ * after the run is persisted, so the next transcription webhook for
+ * this contact will classify as the hinted type regardless of
+ * duration.
+ */
+export interface OutcomeRuleAction {
+  action_type: string;                       // e.g. "send_content", "schedule_call", "set_next_call_type"
+  owner: string;                             // "agent" | "tom" | "system" | custom
+  timing: string;                            // "immediate" | "24_48_hours" | "scheduled" | custom
+  detail: string;                            // operator-facing reason. Supports {docName} token.
+  uses_content: boolean;                     // attach routed content to this action?
+  next_call_type?: "cold_call" | "demo" | "opportunity" | "none" | null;
 }

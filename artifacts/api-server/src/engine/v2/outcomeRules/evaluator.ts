@@ -193,16 +193,36 @@ function toNumber(v: unknown): number {
 }
 
 /**
+ * Phase 7.1b — One secondary action flowing out of a multi-action rule.
+ * Shaped similarly to NextAction but carries the action_type in its
+ * raw string form rather than the ActionType union, because the
+ * secondary-action layer handles arbitrary verbs (set_next_call_type,
+ * schedule_adviser_call as a side-effect, etc.) that don't have to
+ * parse against the NextAction.actionType enum.
+ */
+export interface SecondaryAction {
+  actionType: string;
+  detail: string;
+  owner: Owner;
+  timing: string;
+  contentToSend: ContentRecommendation | null;
+  nextCallType?: "cold_call" | "demo" | "opportunity" | "none" | null;
+}
+
+/**
  * Evaluate loaded rules against a context. First match wins.
  *
  * Rules are assumed to be pre-sorted by priority ascending (loader
  * does this). The evaluator does NOT re-sort — it trusts the caller.
  *
- * Returns both the resulting NextAction and a trace describing which
- * rule matched (and, for the rules that didn't, the first clause that
- * failed). The trace is compact — only the failing clause, not every
- * clause — because the admin UI's trace view only surfaces the reason
- * a rule skipped, not the full evaluation.
+ * Phase 7.1b — rules have `actions: OutcomeRuleAction[]` (non-empty).
+ * The first action becomes the primary NextAction; the rest are
+ * returned as `secondary` for engine output.secondaryActions.
+ *
+ * Returns trace describing which rule matched (and for the rules that
+ * didn't, the first clause that failed). The trace is compact — only
+ * the failing clause, not every clause — because the admin UI's
+ * trace view only surfaces the reason a rule skipped.
  *
  * Throws RuleCoverageError if no rule matches. A well-formed rule set
  * must always contain a fallback (priority 40/80/100 in the seed).
@@ -210,7 +230,7 @@ function toNumber(v: unknown): number {
 export function evaluateOutcomeRules(
   rules: LoadedOutcomeRule[],
   ctx: EvaluationContext,
-): { action: NextAction; trace: EvaluationTrace } {
+): { action: NextAction; secondary: SecondaryAction[]; trace: EvaluationTrace } {
   const trace: EvaluationTrace = { matchedRuleId: null, steps: [] };
 
   for (const rule of rules) {
@@ -242,23 +262,47 @@ export function evaluateOutcomeRules(
     if (matched) {
       trace.matchedRuleId = rule.id;
 
-      // Build NextAction. The detail string supports one token —
-      // {docName} — substituted from the resolved content at eval
-      // time. This lets rules keep a static storage form while still
-      // producing operator-facing strings that vary per call.
-      // If detail is empty, fall back to docName (when uses_content)
-      // or actionType so we never hand back an empty reason.
-      const detail = renderDetail(rule.detail, ctx.content?.docName ?? null, rule.uses_content, rule.action_type);
+      if (!rule.actions || rule.actions.length === 0) {
+        throw new Error(`Rule ${rule.id} matched but has no actions — loader should have synthesized one from legacy columns`);
+      }
+
+      // First action → primary NBA. Rest → secondary actions.
+      const [first, ...rest] = rule.actions;
+      const primary = first!;
+      const primaryDetail = renderDetail(primary.detail, ctx.content?.docName ?? null, primary.uses_content, primary.action_type);
 
       const action: NextAction = {
-        actionType: rule.action_type as NextAction["actionType"],
-        detail,
-        owner: rule.owner as Owner,
-        timing: rule.timing,
-        contentToSend: rule.uses_content ? ctx.content : null,
+        actionType: primary.action_type as NextAction["actionType"],
+        detail: primaryDetail,
+        owner: primary.owner as Owner,
+        timing: primary.timing,
+        contentToSend: primary.uses_content ? ctx.content : null,
       };
 
-      return { action, trace };
+      const secondary: SecondaryAction[] = rest.map((a) => ({
+        actionType: a.action_type,
+        detail: renderDetail(a.detail, ctx.content?.docName ?? null, a.uses_content, a.action_type),
+        owner: a.owner as Owner,
+        timing: a.timing,
+        contentToSend: a.uses_content ? ctx.content : null,
+        nextCallType: a.next_call_type ?? null,
+      }));
+
+      // If the PRIMARY action is set_next_call_type (unusual but allowed),
+      // surface its hint on a synthetic secondary entry so downstream
+      // consumers (webhook persistence) don't have to dig into both.
+      if (primary.action_type === "set_next_call_type" && primary.next_call_type) {
+        secondary.unshift({
+          actionType: "set_next_call_type",
+          detail: primary.detail,
+          owner: primary.owner as Owner,
+          timing: primary.timing,
+          contentToSend: null,
+          nextCallType: primary.next_call_type,
+        });
+      }
+
+      return { action, secondary, trace };
     }
   }
 

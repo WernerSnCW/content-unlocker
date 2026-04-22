@@ -27,7 +27,7 @@ import { analyseDemoSegments } from "./analyseDemoSegments";
 import { generateEmail } from "./generateEmail";
 import { determinePostCloseActions } from "./determinePostCloseActions";
 import { routeToBook2 } from "./routeToBook2";
-import { evaluateOutcomeRules, type EvaluationTrace } from "../outcomeRules/evaluator";
+import { evaluateOutcomeRules, type EvaluationTrace, type SecondaryAction } from "../outcomeRules/evaluator";
 import type { LoadedOutcomeRule } from "../outcomeRules/loader";
 
 /**
@@ -61,6 +61,16 @@ export interface ProcessDetail {
   // Null when nbaSource === "legacy" (nothing to compare).
   shadowLegacyAction: NextAction | null;
   shadowDiff: string[] | null; // list of "field: legacy=X, rules=Y"; null means agreed
+  // Phase 7.1b — secondary actions from multi-action rules. First
+  // matched rule's actions[0] becomes the primary NBA; everything from
+  // actions[1]… lands here. Empty array when the matched rule has only
+  // one action, or when the legacy cascade ran.
+  secondaryActions: SecondaryAction[];
+  // Phase 7.1b — any `next_call_type` hints emitted by the matched
+  // rule's actions. The webhook caller stamps `contacts.next_call_type_hint`
+  // from the last non-null value here so the next transcription
+  // webhook classifies the call correctly. Null when no hint emitted.
+  nextCallTypeHint: string | null;
 }
 
 function applySignalUpdates(
@@ -203,11 +213,14 @@ export function processTranscriptDetailed(
   // otherwise fall back to the legacy determineNextAction cascade.
   // Session 4 — shadow mode: when rules path runs, also compute the
   // legacy NBA for the same context so the webhook can log any diff.
+  // Phase 7.1b — collect secondary actions from multi-action rules.
   let nextAction;
   let nbaTrace: EvaluationTrace | null = null;
   let nbaSource: "legacy" | "rules";
   let shadowLegacyAction: NextAction | null = null;
   let shadowDiff: string[] | null = null;
+  let secondaryActions: SecondaryAction[] = [];
+  let nextCallTypeHint: string | null = null;
   if (opts.outcomeRules && opts.outcomeRules.length > 0) {
     const r = evaluateOutcomeRules(opts.outcomeRules, {
       callType,
@@ -219,6 +232,12 @@ export function processTranscriptDetailed(
     nextAction = r.action;
     nbaTrace = r.trace;
     nbaSource = "rules";
+    secondaryActions = r.secondary;
+
+    // Pick the latest non-null hint from secondary actions. If none, null.
+    for (const s of r.secondary) {
+      if (s.nextCallType && s.nextCallType !== "none") nextCallTypeHint = s.nextCallType;
+    }
 
     // Shadow-compute legacy for parity logging. Cheap — pure function.
     shadowLegacyAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
@@ -283,7 +302,7 @@ export function processTranscriptDetailed(
       adviserLoopActions,
       book2Routing,
     },
-    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff },
+    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff, secondaryActions, nextCallTypeHint },
   };
 }
 
@@ -433,13 +452,15 @@ export async function processTranscriptWithLLM(
   const emailDraft = emailLLMResult.email;
   const emailAudit = emailLLMResult.audit;
 
-  // NBA — Phase 7.1a + session-4 shadow mode. See keyword path above
-  // for the same pattern.
+  // NBA — Phase 7.1a + session-4 shadow mode + 7.1b multi-action.
+  // See keyword path above for the same pattern.
   let nextAction;
   let nbaTrace: EvaluationTrace | null = null;
   let nbaSource: "legacy" | "rules";
   let shadowLegacyAction: NextAction | null = null;
   let shadowDiff: string[] | null = null;
+  let secondaryActions: SecondaryAction[] = [];
+  let nextCallTypeHint: string | null = null;
   if (opts.outcomeRules && opts.outcomeRules.length > 0) {
     const r = evaluateOutcomeRules(opts.outcomeRules, {
       callType,
@@ -451,6 +472,10 @@ export async function processTranscriptWithLLM(
     nextAction = r.action;
     nbaTrace = r.trace;
     nbaSource = "rules";
+    secondaryActions = r.secondary;
+    for (const s of r.secondary) {
+      if (s.nextCallType && s.nextCallType !== "none") nextCallTypeHint = s.nextCallType;
+    }
     shadowLegacyAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
     shadowDiff = diffNextAction(shadowLegacyAction, nextAction);
   } else {
@@ -511,6 +536,6 @@ export async function processTranscriptWithLLM(
     audit,
     emailAudit,
     rawExtraction: extraction,
-    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff },
+    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff, secondaryActions, nextCallTypeHint },
   };
 }

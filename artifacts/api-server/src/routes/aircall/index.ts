@@ -625,8 +625,17 @@ async function handleCallCommented(data: any) {
   }
 }
 
-// Infer the spec's call type from call duration. Defaults to cold_call.
-function inferCallType(durationSeconds: number | null | undefined): CallType {
+// Infer the spec's call type. Phase 7.1b — prefers a persisted hint on
+// the contact (set by the previous run's `set_next_call_type` secondary
+// action) before falling back to duration. The hint is cleared after
+// use so a stale hint doesn't misclassify a later call.
+function inferCallType(
+  durationSeconds: number | null | undefined,
+  hint?: string | null,
+): CallType {
+  if (hint === "cold_call" || hint === "demo" || hint === "opportunity") {
+    return hint;
+  }
   const mins = Math.round((durationSeconds || 0) / 60);
   if (mins >= 40) return "demo";
   if (mins >= 20) return "opportunity";
@@ -668,7 +677,24 @@ export async function runEngineForConversation(
       }
     }
 
-    const callType = inferCallType(conv.duration_seconds);
+    // Phase 7.1b — read the contact's next-call-type hint (if any) to
+    // prefer it over duration-based inference. Cleared immediately so
+    // the hint only applies to this one call — a stale hint left behind
+    // would misclassify a later call.
+    const [contactRow] = await db
+      .select({ next_call_type_hint: contactsTable.next_call_type_hint })
+      .from(contactsTable)
+      .where(eq(contactsTable.id, contactId))
+      .limit(1);
+    const callTypeHint = contactRow?.next_call_type_hint ?? null;
+    if (callTypeHint) {
+      await db
+        .update(contactsTable)
+        .set({ next_call_type_hint: null })
+        .where(eq(contactsTable.id, contactId));
+    }
+
+    const callType = inferCallType(conv.duration_seconds, callTypeHint);
     const investor = await loadInvestor(contactId);
 
     // Phase 4.9 — Layer 1 selection.
@@ -695,11 +721,13 @@ export async function runEngineForConversation(
     let output;
     let runId;
     let shadowDetail: { shadowDiff: string[] | null; nbaSource: "legacy" | "rules" } | null = null;
+    let nextCallTypeHintToStamp: string | null = null;
     if (useLLM) {
       try {
         const llmRun = await processTranscriptWithLLM(transcript, callType, investor, { outcomeRules });
         output = llmRun.output;
         shadowDetail = { shadowDiff: llmRun.detail.shadowDiff, nbaSource: llmRun.detail.nbaSource };
+        nextCallTypeHintToStamp = llmRun.detail.nextCallTypeHint;
         // Sum the two LLM calls (extraction + email) into a single audit
         // record on engine_runs. Keeps the schema flat — reporting can
         // treat one engine_run = one transcript cycle with its total
@@ -771,6 +799,7 @@ export async function runEngineForConversation(
       const kw = processTranscriptDetailed(transcript, callType, investor, { outcomeRules });
       output = kw.output;
       shadowDetail = { shadowDiff: kw.detail.shadowDiff, nbaSource: kw.detail.nbaSource };
+      nextCallTypeHintToStamp = kw.detail.nextCallTypeHint;
       runId = await saveEngineRun({
         contactId,
         conversationId,
@@ -781,15 +810,22 @@ export async function runEngineForConversation(
     }
 
     // Session 4 shadow-mode: log any divergence between the rule
-    // engine and the legacy cascade. Only fires when nbaSource=="rules"
-    // AND the two paths disagree. Over the 2-week validation window
-    // these should be zero. A non-empty `shadowDiff` array means the
-    // rule seed and the legacy code disagreed for this call — worth
-    // investigating before we delete the legacy function.
+    // engine and the legacy cascade.
     if (shadowDetail && shadowDetail.nbaSource === "rules" && shadowDetail.shadowDiff) {
       console.warn(
         `[NBA shadow diff] runId=${runId} contactId=${contactId} callType=${callType} diffs=${JSON.stringify(shadowDetail.shadowDiff)}`,
       );
+    }
+
+    // Phase 7.1b — persist the next-call-type hint on the contact so
+    // the next transcription webhook classifies correctly. Only stamp
+    // when the rule actually produced one AND it's not "none" (none
+    // means terminal — don't pre-set, let duration take over).
+    if (nextCallTypeHintToStamp && nextCallTypeHintToStamp !== "none") {
+      await db
+        .update(contactsTable)
+        .set({ next_call_type_hint: nextCallTypeHintToStamp })
+        .where(eq(contactsTable.id, contactId));
     }
     // `processTranscript` (non-detailed) is still used elsewhere, keep
     // as a reference so it stays exported.

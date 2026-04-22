@@ -27,6 +27,14 @@ export const contactsTable = pgTable("contacts", {
   outreach_paused_until: timestamp("outreach_paused_until", { withTimezone: true }),
   cool_off_until: timestamp("cool_off_until", { withTimezone: true }),
 
+  // Phase 7.1b — next-call-type hint. Populated when a rule's action list
+  // includes `set_next_call_type`. Read by `inferCallType` on the next
+  // transcription webhook to classify the call correctly (e.g. "demo
+  // was cut short → next call is still demo, regardless of duration").
+  // Cleared after use. Falls through to duration-based heuristic when
+  // null. Values: "cold_call" | "demo" | "opportunity" | null.
+  next_call_type_hint: text("next_call_type_hint"),
+
   // Closer-handoff routing.
   //   NULL   — no handoff; contact is handled by outreach agents per normal tiers
   //   'any'  — any user with role='closer' can pick up

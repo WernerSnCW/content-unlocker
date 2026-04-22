@@ -432,6 +432,15 @@ function mockRules() {
   return OUTCOME_RULES_SEED.map((r) => ({
     ...r,
     when_clauses: r.when_clauses as any,
+    actions: r.actions as any,
+    // Legacy single-action fields — null in the new seed. Cast to any
+    // so mockRules shape matches LoadedOutcomeRule which expects these
+    // nullable, not absent.
+    action_type: null as any,
+    owner: null as any,
+    timing: null as any,
+    detail: null as any,
+    uses_content: false,
     created_at: new Date(),
     updated_at: new Date(),
   }));
@@ -501,10 +510,10 @@ test("Outcome rules — no fallback throws RuleCoverageError", () => {
   const rules = [{
     id: "t1", priority: 10, enabled: true,
     when_clauses: [{ lvalue: "callType", op: "===" as const, rvalue: "opportunity" }],
-    action_type: "close_deal", owner: "system", timing: "immediate",
-    detail: "x", uses_content: false,
+    actions: [{ action_type: "close_deal", owner: "system", timing: "immediate", detail: "x", uses_content: false }],
+    action_type: null, owner: null, timing: null, detail: null, uses_content: false,
     created_at: new Date(), updated_at: new Date(),
-  }];
+  }] as any;
   let threw: unknown = null;
   try {
     evaluateOutcomeRules(rules, {
@@ -516,6 +525,25 @@ test("Outcome rules — no fallback throws RuleCoverageError", () => {
     });
   } catch (e) { threw = e; }
   expect(threw instanceof RuleCoverageError).toBe(true);
+});
+
+test("Outcome rules — multi-action rule emits secondary actions + hint", () => {
+  // Every seed rule now has set_next_call_type as secondary. Pick one
+  // and assert both primary + secondary + hint come through.
+  const rules = mockRules();
+  const { action, secondary, trace } = evaluateOutcomeRules(rules, {
+    callType: "cold_call",
+    signals: {} as any,
+    investor: blankInvestor({ investorId: "t" }),
+    content: { docId: 100, docName: "One-Pager" } as any,
+    gateResult: { c4Compliance: "open", pack1: "blocked", pack1BlockedReasons: [], activeRoute: "pending", blockedSignals: [] } as any,
+  });
+  expect(trace.matchedRuleId).toBe("cold_has_content");
+  expect(action.actionType).toBe("send_content");
+  // Secondary: set_next_call_type → demo (cold call that booked content = demo next)
+  expect(secondary.length).toBe(1);
+  expect(secondary[0]!.actionType).toBe("set_next_call_type");
+  expect(secondary[0]!.nextCallType).toBe("demo");
 });
 
 // ============ D7. Parity: rule-engine NBA matches legacy cascade ============
