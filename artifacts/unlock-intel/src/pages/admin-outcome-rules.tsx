@@ -140,7 +140,23 @@ function rvalueOptionsFor(lvalue: string): RvalueKind {
   if (lvalue.startsWith("signal.") && lvalue.endsWith(".state")) return { kind: "enum", options: SIGNAL_STATES };
   return { kind: "text" };
 }
+const STATIC_LVALUE_LABELS: Record<string, string> = {
+  "callType": "Call type",
+  "content": "Routed content",
+  "gate.c4Compliance": "Risk Comfort gate — blocks investment content when C4 isn't green",
+  "gate.pack1": "Pack 1 Eligibility — S2 green + C4 green + demoScore >= 70",
+  "gate.activeRoute": "Content Track Route — book_1 / nurture / etc. driven by S2",
+  "investor.demoScore": "Demo score (0-100)",
+  "investor.persona": "Detected persona",
+  "investor.hotButton": "Detected hot button",
+};
+
 function humanLvalue(lvalue: string, signalNameMap?: Map<string, string>): string {
+  // Static labels cover call type, gates, investor, content — values
+  // that don't change often so they're inlined rather than fetched.
+  // Signal codes have names fetched from /api/engine/config/signals.
+  const staticLabel = STATIC_LVALUE_LABELS[lvalue];
+  if (staticLabel) return lvalue + ' (' + staticLabel + ')';
   if (!signalNameMap) return lvalue;
   const m = lvalue.match(/^signal\.([A-Z0-9]+)\.state$/);
   if (!m) return lvalue;
@@ -588,6 +604,8 @@ function RuleEditor({
                             <SelectItem key={l} value={l}>
                               <span className="font-mono">{l}</span>
                               {(() => {
+                                const staticLabel = STATIC_LVALUE_LABELS[l];
+                                if (staticLabel) return <span className="ml-2 text-muted-foreground text-xs">· {staticLabel}</span>;
                                 const m = l.match(/^signal\.([A-Z0-9]+)\.state$/);
                                 if (!m) return null;
                                 const name = signalNameMap.get(m[1]!);
