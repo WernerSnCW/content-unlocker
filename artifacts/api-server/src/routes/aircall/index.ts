@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, contactsTable, leadConversationsTable, integrationConfigsTable, agentsTable, callListMembershipsTable } from "@workspace/db";
 import { eq, or, sql, and, isNull, lte } from "drizzle-orm";
-import { loadInvestor, processTranscript, processTranscriptWithLLM, saveEngineRun, ExtractionError, loadOutcomeRules, outcomeRulesFlagEnabled } from "../../engine/v2";
+import { loadInvestor, processTranscript, processTranscriptDetailed, processTranscriptWithLLM, saveEngineRun, ExtractionError, loadOutcomeRules, outcomeRulesFlagEnabled } from "../../engine/v2";
 import type { CallType, LoadedOutcomeRule } from "../../engine/v2";
 import {
   DEFAULT_TAG_MAPPING,
@@ -694,10 +694,12 @@ export async function runEngineForConversation(
 
     let output;
     let runId;
+    let shadowDetail: { shadowDiff: string[] | null; nbaSource: "legacy" | "rules" } | null = null;
     if (useLLM) {
       try {
         const llmRun = await processTranscriptWithLLM(transcript, callType, investor, { outcomeRules });
         output = llmRun.output;
+        shadowDetail = { shadowDiff: llmRun.detail.shadowDiff, nbaSource: llmRun.detail.nbaSource };
         // Sum the two LLM calls (extraction + email) into a single audit
         // record on engine_runs. Keeps the schema flat — reporting can
         // treat one engine_run = one transcript cycle with its total
@@ -766,7 +768,9 @@ export async function runEngineForConversation(
     } else {
       // Pre-4.9 keyword path. Stays runnable until we delete it after
       // LLM path is validated.
-      output = processTranscript(transcript, callType, investor, { outcomeRules });
+      const kw = processTranscriptDetailed(transcript, callType, investor, { outcomeRules });
+      output = kw.output;
+      shadowDetail = { shadowDiff: kw.detail.shadowDiff, nbaSource: kw.detail.nbaSource };
       runId = await saveEngineRun({
         contactId,
         conversationId,
@@ -775,6 +779,21 @@ export async function runEngineForConversation(
         llm: { status: "keyword" },
       });
     }
+
+    // Session 4 shadow-mode: log any divergence between the rule
+    // engine and the legacy cascade. Only fires when nbaSource=="rules"
+    // AND the two paths disagree. Over the 2-week validation window
+    // these should be zero. A non-empty `shadowDiff` array means the
+    // rule seed and the legacy code disagreed for this call — worth
+    // investigating before we delete the legacy function.
+    if (shadowDetail && shadowDetail.nbaSource === "rules" && shadowDetail.shadowDiff) {
+      console.warn(
+        `[NBA shadow diff] runId=${runId} contactId=${contactId} callType=${callType} diffs=${JSON.stringify(shadowDetail.shadowDiff)}`,
+      );
+    }
+    // `processTranscript` (non-detailed) is still used elsewhere, keep
+    // as a reference so it stays exported.
+    void processTranscript;
 
     // Tag the conversation with the engine version that processed it
     await db.update(leadConversationsTable)

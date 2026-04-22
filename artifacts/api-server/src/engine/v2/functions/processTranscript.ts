@@ -8,6 +8,7 @@ import type {
   EngineOutputV3,
   FactFind,
   Investor,
+  NextAction,
   SignalMap,
   SignalState,
 } from "../types";
@@ -53,6 +54,13 @@ export interface ProcessOptions {
 export interface ProcessDetail {
   nbaTrace: EvaluationTrace | null;    // null when legacy cascade ran
   nbaSource: "legacy" | "rules";
+  // Session 4 — shadow-mode legacy comparison. When the rule engine
+  // produces the NBA (nbaSource === "rules") we ALSO run the legacy
+  // cascade against the same context and diff. If the two disagree,
+  // the diff is captured here so the webhook caller can log it.
+  // Null when nbaSource === "legacy" (nothing to compare).
+  shadowLegacyAction: NextAction | null;
+  shadowDiff: string[] | null; // list of "field: legacy=X, rules=Y"; null means agreed
 }
 
 function applySignalUpdates(
@@ -193,9 +201,13 @@ export function processTranscriptDetailed(
 
   // 10. Next action — Phase 7.1a. When rules are supplied, walk them;
   // otherwise fall back to the legacy determineNextAction cascade.
+  // Session 4 — shadow mode: when rules path runs, also compute the
+  // legacy NBA for the same context so the webhook can log any diff.
   let nextAction;
   let nbaTrace: EvaluationTrace | null = null;
   let nbaSource: "legacy" | "rules";
+  let shadowLegacyAction: NextAction | null = null;
+  let shadowDiff: string[] | null = null;
   if (opts.outcomeRules && opts.outcomeRules.length > 0) {
     const r = evaluateOutcomeRules(opts.outcomeRules, {
       callType,
@@ -207,6 +219,10 @@ export function processTranscriptDetailed(
     nextAction = r.action;
     nbaTrace = r.trace;
     nbaSource = "rules";
+
+    // Shadow-compute legacy for parity logging. Cheap — pure function.
+    shadowLegacyAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+    shadowDiff = diffNextAction(shadowLegacyAction, nextAction);
   } else {
     nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
     nbaSource = "legacy";
@@ -267,7 +283,7 @@ export function processTranscriptDetailed(
       adviserLoopActions,
       book2Routing,
     },
-    detail: { nbaTrace, nbaSource },
+    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff },
   };
 }
 
@@ -388,11 +404,13 @@ export async function processTranscriptWithLLM(
   const emailDraft = emailLLMResult.email;
   const emailAudit = emailLLMResult.audit;
 
-  // NBA — Phase 7.1a. Rule engine when opts.outcomeRules provided,
-  // otherwise legacy cascade (unchanged from Phase 4.9 behaviour).
+  // NBA — Phase 7.1a + session-4 shadow mode. See keyword path above
+  // for the same pattern.
   let nextAction;
   let nbaTrace: EvaluationTrace | null = null;
   let nbaSource: "legacy" | "rules";
+  let shadowLegacyAction: NextAction | null = null;
+  let shadowDiff: string[] | null = null;
   if (opts.outcomeRules && opts.outcomeRules.length > 0) {
     const r = evaluateOutcomeRules(opts.outcomeRules, {
       callType,
@@ -404,6 +422,8 @@ export async function processTranscriptWithLLM(
     nextAction = r.action;
     nbaTrace = r.trace;
     nbaSource = "rules";
+    shadowLegacyAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
+    shadowDiff = diffNextAction(shadowLegacyAction, nextAction);
   } else {
     nextAction = determineNextAction(callType, updatedSignals, enrichedInvestor, content, gateResult);
     nbaSource = "legacy";
@@ -462,6 +482,6 @@ export async function processTranscriptWithLLM(
     audit,
     emailAudit,
     rawExtraction: extraction,
-    detail: { nbaTrace, nbaSource },
+    detail: { nbaTrace, nbaSource, shadowLegacyAction, shadowDiff },
   };
 }
