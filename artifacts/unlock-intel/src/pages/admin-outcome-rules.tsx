@@ -259,10 +259,18 @@ function fetchTrace(runId: string): Promise<TraceResponse> {
 
 // ----- helpers -----
 
+function clauseText(c: OutcomeRule["when_clauses"][number], signalNameMap?: Map<string, string>): string {
+  // Special-case the content lvalue: rules only ever check routed-or-not,
+  // so rendering "content equals null" is noise. Render as "routed"
+  // or "not routed".
+  if (c.lvalue === "content" && c.rvalue === null) {
+    return c.op === "!==" ? "routed content (any document)" : "routed content (not routed)";
+  }
+  return `${humanLvalue(c.lvalue, signalNameMap)} ${labelOp(c.op)} ${JSON.stringify(c.rvalue)}`;
+}
+
 function conditionSummary(clauses: OutcomeRule["when_clauses"], signalNameMap?: Map<string, string>): string {
-  return clauses
-    .map((c) => `${humanLvalue(c.lvalue, signalNameMap)} ${labelOp(c.op)} ${JSON.stringify(c.rvalue)}`)
-    .join(" AND ");
+  return clauses.map((c) => clauseText(c, signalNameMap)).join(" AND ");
 }
 
 function formatValue(v: unknown): string {
@@ -392,11 +400,7 @@ function RulesTable({
                         <ul className="space-y-1">
                           {r.when_clauses.map((c, i) => (
                             <li key={i} className="font-mono">
-                              <span className="text-muted-foreground">
-                                {humanLvalue(c.lvalue, signalNameMap)}
-                              </span>{" "}
-                              <span className="text-primary">{labelOp(c.op)}</span>{" "}
-                              <span>{formatValue(c.rvalue)}</span>
+                              {clauseText(c, signalNameMap)}
                             </li>
                           ))}
                         </ul>
@@ -617,19 +621,42 @@ function RuleEditor({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select value={c.op} onValueChange={(v) => setClause(i, { op: v })}>
-                    <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {OP_OPTIONS.map((op) => (
-                        <SelectItem key={op} value={op}>{labelOp(op)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <ClauseRvalue
-                    lvalue={c.lvalue}
-                    rvalue={c.rvalue}
-                    onChange={(v) => setClause(i, { rvalue: v })}
-                  />
+                  {c.lvalue === "content" ? (
+                    // Content is always null or an object; collapse op + rvalue
+                    // into one friendly "routed / not routed" picker. Spans
+                    // the op + rvalue grid cells via col-span-2.
+                    <div className="col-span-2">
+                      <Select
+                        value={c.op === "!==" ? "routed" : "not_routed"}
+                        onValueChange={(v) => {
+                          if (v === "routed") setClause(i, { op: "!==", rvalue: null });
+                          else setClause(i, { op: "===", rvalue: null });
+                        }}
+                      >
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="routed">routed (any document)</SelectItem>
+                          <SelectItem value="not_routed">not routed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <>
+                      <Select value={c.op} onValueChange={(v) => setClause(i, { op: v })}>
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {OP_OPTIONS.map((op) => (
+                            <SelectItem key={op} value={op}>{labelOp(op)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <ClauseRvalue
+                        lvalue={c.lvalue}
+                        rvalue={c.rvalue}
+                        onChange={(v) => setClause(i, { rvalue: v })}
+                      />
+                    </>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -899,8 +926,7 @@ function TracePanel({
                     <div className="text-muted-foreground mt-0.5">
                       failed:{" "}
                       <span className="font-mono">
-                        {humanLvalue(s.failedClause.lvalue, signalNameMap)} {labelOp(s.failedClause.op)}{" "}
-                        {formatValue(s.failedClause.rvalue)}
+                        {clauseText({ lvalue: s.failedClause.lvalue, op: s.failedClause.op, rvalue: s.failedClause.rvalue as any }, signalNameMap)}
                       </span>{" "}
                       → actual was{" "}
                       <span className="font-mono">
