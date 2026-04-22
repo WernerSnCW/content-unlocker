@@ -781,21 +781,25 @@ function RuleEditor({
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">
-                      Detail (supports {"{docName}"} token)
+                      Message shown in the drawer / outcome page
                     </label>
                     <Input
                       value={a.detail}
                       onChange={(e) => setAction(i, { detail: e.target.value })}
-                      placeholder="Operator-facing reason"
+                      placeholder="e.g. Send {docName} or Pack 1 + schedule Call 3"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      What the operator reads when this action fires. Use {"{docName}"} to insert the routed document's name at runtime (e.g. “Send {"{docName}"}” becomes “Send Access Explainer”).
+                    </p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-4">
                     <label className="flex items-center gap-2 text-xs">
                       <Switch
                         checked={a.uses_content}
                         onCheckedChange={(v) => setAction(i, { uses_content: v })}
                       />
-                      Attach routed content
+                      Attach the routed document
                     </label>
                     {a.action_type === "set_next_call_type" && (
                       <div className="flex items-center gap-2 text-xs">
@@ -813,6 +817,12 @@ function RuleEditor({
                         </Select>
                       </div>
                     )}
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-[46px]">
+                      {a.uses_content
+                        ? "On — the routed document will be attached to this action (email attachment, drawer link)."
+                        : "Off — this action runs without a document (e.g. nurture, close, escalate)."}
+                    </p>
                   </div>
                 </div>
               ))}
