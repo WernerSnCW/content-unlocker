@@ -140,6 +140,14 @@ function rvalueOptionsFor(lvalue: string): RvalueKind {
   if (lvalue.startsWith("signal.") && lvalue.endsWith(".state")) return { kind: "enum", options: SIGNAL_STATES };
   return { kind: "text" };
 }
+function humanLvalue(lvalue: string, signalNameMap?: Map<string, string>): string {
+  if (!signalNameMap) return lvalue;
+  const m = lvalue.match(/^signal\.([A-Z0-9]+)\.state$/);
+  if (!m) return lvalue;
+  const name = signalNameMap.get(m[1]!);
+  return name ? lvalue + ' (' + name + ')' : lvalue;
+}
+
 const LVALUE_GROUPS: Array<{ group: string; items: string[] }> = [
   { group: "Call type", items: ["callType"] },
   { group: "Signals (state)", items: SIGNAL_CODES.map((c) => `signal.${c}.state`) },
@@ -201,6 +209,14 @@ interface TraceResponse {
 
 // ----- fetchers -----
 
+interface SignalInfo { code: string; name: string; category: string }
+function fetchSignalCatalog(): Promise<{ signals: SignalInfo[] }> {
+  return apiFetch("/api/engine/config/signals").then((r) => {
+    if (!r.ok) throw new Error("Signals fetch failed");
+    return r.json();
+  });
+}
+
 function fetchRules(): Promise<{ rules: OutcomeRule[] }> {
   return apiFetch("/api/admin/engine-outcome-rules").then((r) => {
     if (!r.ok) throw new Error(`Rules fetch failed (${r.status})`);
@@ -227,9 +243,9 @@ function fetchTrace(runId: string): Promise<TraceResponse> {
 
 // ----- helpers -----
 
-function conditionSummary(clauses: OutcomeRule["when_clauses"]): string {
+function conditionSummary(clauses: OutcomeRule["when_clauses"], signalNameMap?: Map<string, string>): string {
   return clauses
-    .map((c) => `${c.lvalue} ${labelOp(c.op)} ${JSON.stringify(c.rvalue)}`)
+    .map((c) => `${humanLvalue(c.lvalue, signalNameMap)} ${labelOp(c.op)} ${JSON.stringify(c.rvalue)}`)
     .join(" AND ");
 }
 
@@ -249,6 +265,7 @@ function RulesTable({
   onExpand,
   onEdit,
   onDelete,
+  signalNameMap,
 }: {
   rules: OutcomeRule[];
   highlightedRuleId: string | null;
@@ -256,6 +273,7 @@ function RulesTable({
   onExpand: (id: string | null) => void;
   onEdit: (rule: OutcomeRule) => void;
   onDelete: (rule: OutcomeRule) => void;
+  signalNameMap: Map<string, string>;
 }) {
   return (
     <Table>
@@ -302,7 +320,7 @@ function RulesTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-md truncate">
-                  {conditionSummary(r.when_clauses)}
+                  {conditionSummary(r.when_clauses, signalNameMap)}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
                   {primary.action_type} · {primary.owner} · {primary.timing}
@@ -359,7 +377,7 @@ function RulesTable({
                           {r.when_clauses.map((c, i) => (
                             <li key={i} className="font-mono">
                               <span className="text-muted-foreground">
-                                {c.lvalue}
+                                {humanLvalue(c.lvalue, signalNameMap)}
                               </span>{" "}
                               <span className="text-primary">{labelOp(c.op)}</span>{" "}
                               <span>{formatValue(c.rvalue)}</span>
@@ -451,6 +469,7 @@ function RuleEditor({
   onCancel,
   error,
   saving,
+  signalNameMap,
 }: {
   open: boolean;
   mode: "create" | "edit";
@@ -460,6 +479,7 @@ function RuleEditor({
   onCancel: () => void;
   error: string | null;
   saving: boolean;
+  signalNameMap: Map<string, string>;
 }) {
   const setClause = (i: number, patch: Partial<RuleDraft["when_clauses"][number]>) => {
     onDraftChange({
@@ -565,7 +585,15 @@ function RuleEditor({
                         <SelectGroup key={grp.group}>
                           <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wider">{grp.group}</SelectLabel>
                           {grp.items.map((l) => (
-                            <SelectItem key={l} value={l} className="font-mono">{l}</SelectItem>
+                            <SelectItem key={l} value={l}>
+                              <span className="font-mono">{l}</span>
+                              {(() => {
+                                const m = l.match(/^signal\.([A-Z0-9]+)\.state$/);
+                                if (!m) return null;
+                                const name = signalNameMap.get(m[1]!);
+                                return name ? <span className="ml-2 text-muted-foreground text-xs">· {name}</span> : null;
+                              })()}
+                            </SelectItem>
                           ))}
                         </SelectGroup>
                       ))}
@@ -734,9 +762,11 @@ function RuleEditor({
 function TracePanel({
   trace,
   onSelectRule,
+  signalNameMap,
 }: {
   trace: TraceResponse;
   onSelectRule: (ruleId: string) => void;
+  signalNameMap: Map<string, string>;
 }) {
   if (trace.replay.evaluatorError) {
     return (
@@ -851,7 +881,7 @@ function TracePanel({
                     <div className="text-muted-foreground mt-0.5">
                       failed:{" "}
                       <span className="font-mono">
-                        {s.failedClause.lvalue} {labelOp(s.failedClause.op)}{" "}
+                        {humanLvalue(s.failedClause.lvalue, signalNameMap)} {labelOp(s.failedClause.op)}{" "}
                         {formatValue(s.failedClause.rvalue)}
                       </span>{" "}
                       → actual was{" "}
@@ -911,6 +941,17 @@ export default function AdminOutcomeRulesPage() {
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editorDraft, setEditorDraft] = useState<RuleDraft>(emptyDraft());
   const [editorError, setEditorError] = useState<string | null>(null);
+
+  const { data: signalsData } = useQuery({
+    queryKey: ["engine-config-signals"],
+    queryFn: fetchSignalCatalog,
+    staleTime: 5 * 60 * 1000,  // signals rarely change — cache 5 min
+  });
+  const signalNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const sig of signalsData?.signals ?? []) m.set(sig.code, sig.name);
+    return m;
+  }, [signalsData]);
 
   const { data: rulesData, isLoading: rulesLoading, error: rulesError } =
     useQuery({ queryKey: ["outcome-rules"], queryFn: fetchRules });
@@ -1064,6 +1105,7 @@ export default function AdminOutcomeRulesPage() {
               onExpand={setExpandedRuleId}
               onEdit={openEdit}
               onDelete={handleDelete}
+              signalNameMap={signalNameMap}
             />
           )}
         </CardContent>
@@ -1078,6 +1120,7 @@ export default function AdminOutcomeRulesPage() {
         onCancel={() => setEditorOpen(false)}
         error={editorError}
         saving={saving}
+        signalNameMap={signalNameMap}
       />
 
       <Card>
@@ -1136,6 +1179,7 @@ export default function AdminOutcomeRulesPage() {
             <TracePanel
               trace={traceData}
               onSelectRule={(id) => setExpandedRuleId(id)}
+              signalNameMap={signalNameMap}
             />
           )}
           {selectedRun && traceData && (
