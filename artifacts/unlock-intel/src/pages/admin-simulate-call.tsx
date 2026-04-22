@@ -27,6 +27,23 @@ interface ContactRow {
   last_call_outcome: string | null;
 }
 
+interface AgentCallList {
+  id: string;
+  name: string;
+  active: boolean;
+  closing_only: boolean;
+  daily_quota: number;
+  contacts: Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    phone: string | null;
+    dispatch_status: string | null;
+    last_call_outcome: string | null;
+    membership_added_at: string;
+  }>;
+}
+
 interface TagMappingRow {
   aircall_tag: string;
   outcome: string;
@@ -91,6 +108,17 @@ export default function AdminSimulateCallPage() {
     () => contacts.find(c => c.id === selectedContactId) || null,
     [contacts, selectedContactId],
   );
+
+  // Agent-owned call lists. Loaded when the agent picker changes. The flow
+  // is agent → list → contact so the operator picks a realistic combination
+  // (matching how agents actually work — only contacts on their own list).
+  // Special values for selectedListId:
+  //   ""    = nothing picked yet (blocks contact picker)
+  //   "any" = ad-hoc ("Any contact") — falls back to the full contact list
+  //   else  = specific list id → filtered contacts shown
+  const [agentLists, setAgentLists] = useState<AgentCallList[]>([]);
+  const [agentListsLoading, setAgentListsLoading] = useState(false);
+  const [selectedListId, setSelectedListId] = useState<string>("");
 
   // Form fields
   const [agentId, setAgentId] = useState<string>("");
@@ -158,6 +186,50 @@ export default function AdminSimulateCallPage() {
     [tag, tagMapping],
   );
 
+  // When agent changes, load their call lists. Reset list + contact pickers
+  // so the operator doesn't accidentally simulate an inconsistent combo.
+  useEffect(() => {
+    if (!agentId) {
+      setAgentLists([]);
+      setSelectedListId("");
+      setSelectedContactId("");
+      return;
+    }
+    setAgentListsLoading(true);
+    setSelectedListId("");
+    setSelectedContactId("");
+    (async () => {
+      try {
+        const res = await apiFetch(`${API_BASE}/admin/agents/${agentId}/call-lists`);
+        const data = await res.json();
+        setAgentLists(data.lists || []);
+      } catch {
+        setAgentLists([]);
+      } finally {
+        setAgentListsLoading(false);
+      }
+    })();
+  }, [agentId]);
+
+  // Contacts to show in the contact picker, based on list selection.
+  const contactOptions = useMemo(() => {
+    if (selectedListId === "any") {
+      return contacts.map((c) => ({
+        id: c.id,
+        label: `${c.first_name} ${c.last_name}`,
+        sub: [c.phone, c.dispatch_status].filter(Boolean).join(" · "),
+      }));
+    }
+    if (!selectedListId) return [];
+    const list = agentLists.find((l) => l.id === selectedListId);
+    if (!list) return [];
+    return list.contacts.map((c) => ({
+      id: c.id,
+      label: `${c.first_name} ${c.last_name}`,
+      sub: [c.phone, c.dispatch_status, c.last_call_outcome].filter(Boolean).join(" · "),
+    }));
+  }, [selectedListId, agentLists, contacts]);
+
   const handleSubmit = async () => {
     if (!selectedContact) { setSubmitError("Pick a contact first"); return; }
     if (!agentId) { setSubmitError("Pick an agent"); return; }
@@ -217,37 +289,7 @@ export default function AdminSimulateCallPage() {
           <CardContent className="space-y-4">
             {/* Contact picker */}
             <div className="space-y-1">
-              <label className="text-sm font-medium">Contact</label>
-              <Select value={selectedContactId} onValueChange={setSelectedContactId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={
-                    contactsLoading
-                      ? "Loading contacts…"
-                      : contacts.length === 0
-                        ? "No contacts in the database"
-                        : "Select a contact…"
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  {contacts.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.first_name} {c.last_name}
-                      {c.phone ? ` · ${c.phone}` : ""}
-                      {c.dispatch_status ? ` · ${c.dispatch_status}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedContact && (
-                <p className="text-xs text-muted-foreground">
-                  {selectedContact.email || "no email"} · status: {selectedContact.dispatch_status || "—"} · last outcome: {selectedContact.last_call_outcome || "—"}
-                </p>
-              )}
-            </div>
-
-            {/* Agent picker */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Calling as (agent)</label>
+              <label className="text-sm font-medium">1. Calling as (agent)</label>
               <Select value={agentId} onValueChange={setAgentId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select agent..." />
@@ -258,6 +300,90 @@ export default function AdminSimulateCallPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick the agent first — their call lists load below, then you
+                pick a contact from one of those lists. This mirrors real
+                operation: agents only call contacts on their own lists.
+              </p>
+            </div>
+
+            {/* List picker — appears once an agent is picked */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">2. Call list</label>
+              <Select
+                value={selectedListId}
+                onValueChange={(v) => { setSelectedListId(v); setSelectedContactId(""); }}
+                disabled={!agentId || agentListsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !agentId
+                        ? "Pick an agent first"
+                        : agentListsLoading
+                        ? "Loading lists…"
+                        : agentLists.length === 0
+                        ? "Agent has no call lists (use 'Any contact' below)"
+                        : "Select a call list…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {agentLists.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name} · {l.contacts.length} active
+                      {l.closing_only ? " · closing only" : ""}
+                      {!l.active ? " · inactive" : ""}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="any">
+                    Any contact (ad-hoc — bypasses realistic list routing)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {selectedListId === "any" && (
+                <p className="text-xs text-amber-600">
+                  Ad-hoc mode — you're simulating an unusual scenario
+                  (admin override, Power Dialer override, etc.). Review
+                  ownership may route to whoever owns the contact's current
+                  list, not the agent you picked.
+                </p>
+              )}
+            </div>
+
+            {/* Contact picker — filtered to the selected list's contacts */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">3. Contact</label>
+              <Select
+                value={selectedContactId}
+                onValueChange={setSelectedContactId}
+                disabled={!selectedListId || (selectedListId === "any" && contactsLoading)}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !selectedListId
+                        ? "Pick a list first"
+                        : contactOptions.length === 0
+                        ? "No contacts on this list"
+                        : "Select a contact…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {contactOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.label}
+                      {c.sub ? ` · ${c.sub}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedContact && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedContact.email || "no email"} · status: {selectedContact.dispatch_status || "—"} · last outcome: {selectedContact.last_call_outcome || "—"}
+                </p>
+              )}
             </div>
 
             {/* Tag picker */}

@@ -623,6 +623,58 @@ router.post("/admin/simulate-call", async (req, res) => {
 
 // ==================== Phase 7.1a — NBA Outcome Rules ====================
 
+// GET /api/admin/agents/:id/call-lists — lists assigned to this agent,
+// each with currently-active memberships (contacts on that list now).
+// Used by the /admin/simulate-call page to flow agent → list → contact
+// matching how agents actually work (they call from their own lists,
+// not arbitrary contacts from the pool).
+router.get("/admin/agents/:id/call-lists", async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const lists = await db
+      .select({
+        id: callListConfigsTable.id,
+        name: callListConfigsTable.name,
+        active: callListConfigsTable.active,
+        closing_only: callListConfigsTable.closing_only,
+        daily_quota: callListConfigsTable.daily_quota,
+      })
+      .from(callListConfigsTable)
+      .where(eq(callListConfigsTable.assigned_agent_id, agentId));
+
+    // Fetch active memberships per list in parallel. Cap at 100 per list
+    // so the simulator picker stays usable.
+    const withContacts = await Promise.all(
+      lists.map(async (l: typeof lists[number]) => {
+        const rows = await db
+          .select({
+            id: contactsTable.id,
+            first_name: contactsTable.first_name,
+            last_name: contactsTable.last_name,
+            phone: contactsTable.phone,
+            dispatch_status: contactsTable.dispatch_status,
+            last_call_outcome: contactsTable.last_call_outcome,
+            membership_added_at: callListMembershipsTable.added_at,
+          })
+          .from(callListMembershipsTable)
+          .innerJoin(contactsTable, eq(contactsTable.id, callListMembershipsTable.contact_id))
+          .where(and(
+            eq(callListMembershipsTable.call_list_id, l.id),
+            isNull(callListMembershipsTable.removed_at),
+          ))
+          .orderBy(desc(callListMembershipsTable.added_at))
+          .limit(100);
+        return { ...l, contacts: rows };
+      }),
+    );
+
+    res.json({ lists: withContacts });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/agents/:id/call-lists failed");
+    res.status(500).json({ error: "list_failed", message: err.message });
+  }
+});
+
 // GET /api/admin/engine-outcome-rules — list all rules, priority asc.
 // Read-only in session 1. Editing ships in 7.1b.
 router.get("/admin/engine-outcome-rules", async (_req, res) => {
