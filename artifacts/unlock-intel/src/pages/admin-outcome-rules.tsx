@@ -124,6 +124,30 @@ const OP_LABELS: Record<string, string> = {
   "<=": "less than or equal",
 };
 function labelOp(op: string): string { return OP_LABELS[op] ?? op; }
+
+const SIGNAL_CODES = ["QT","QL","C1","C2","C3","C4","G1","G2","G3","L1","L2","P2","P3","S1","S2","S3","S4","S5","S6"];
+const SIGNAL_STATES = ["green","amber","grey","red","n_a","confirmed","not_confirmed","unknown"];
+type RvalueKind = { kind: "enum"; options: string[] } | { kind: "number" } | { kind: "text" } | { kind: "null-only" };
+function rvalueOptionsFor(lvalue: string): RvalueKind {
+  if (lvalue === "callType") return { kind: "enum", options: ["cold_call","demo","opportunity"] };
+  if (lvalue === "content") return { kind: "null-only" };
+  if (lvalue === "investor.demoScore") return { kind: "number" };
+  if (lvalue === "investor.persona") return { kind: "enum", options: ["preserver","growth_seeker","legacy_builder","undetermined"] };
+  if (lvalue === "investor.hotButton") return { kind: "enum", options: ["family","freedom","legacy","relief","significance"] };
+  if (lvalue === "gate.c4Compliance") return { kind: "enum", options: ["open","blocked"] };
+  if (lvalue === "gate.pack1") return { kind: "enum", options: ["eligible","blocked"] };
+  if (lvalue === "gate.activeRoute") return { kind: "enum", options: ["book_1","send_100_revisit","nurture","nurture_no_situational","pending"] };
+  if (lvalue.startsWith("signal.") && lvalue.endsWith(".state")) return { kind: "enum", options: SIGNAL_STATES };
+  return { kind: "text" };
+}
+const LVALUE_GROUPS: Array<{ group: string; items: string[] }> = [
+  { group: "Call type", items: ["callType"] },
+  { group: "Signals (state)", items: SIGNAL_CODES.map((c) => `signal.${c}.state`) },
+  { group: "Gates", items: ["gate.c4Compliance","gate.pack1","gate.activeRoute"] },
+  { group: "Investor", items: ["investor.demoScore","investor.persona","investor.hotButton"] },
+  { group: "Content", items: ["content"] },
+];
+
 const ACTION_TYPE_SUGGESTIONS = [
   "send_content",
   "schedule_call",
@@ -533,27 +557,32 @@ function RuleEditor({
             </div>
             <div className="space-y-2">
               {draft.when_clauses.map((c, i) => (
-                <div key={i} className="grid grid-cols-[1fr_80px_1fr_32px] gap-2 items-center">
-                  <Input
-                    list="lvalue-suggestions"
-                    value={c.lvalue}
-                    onChange={(e) => setClause(i, { lvalue: e.target.value })}
-                    placeholder="signal.S2.state"
-                    className="font-mono text-xs"
-                  />
-                  <Select value={c.op} onValueChange={(v) => setClause(i, { op: v })}>
+                <div key={i} className="grid grid-cols-[1fr_90px_1fr_32px] gap-2 items-center">
+                  <Select value={c.lvalue} onValueChange={(v) => setClause(i, { lvalue: v, rvalue: null })}>
                     <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LVALUE_GROUPS.map((grp) => (
+                        <div key={grp.group}>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{grp.group}</div>
+                          {grp.items.map((l) => (
+                            <SelectItem key={l} value={l} className="font-mono">{l}</SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={c.op} onValueChange={(v) => setClause(i, { op: v })}>
+                    <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {OP_OPTIONS.map((op) => (
                         <SelectItem key={op} value={op}>{labelOp(op)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    value={c.rvalue === null ? "null" : String(c.rvalue)}
-                    onChange={(e) => setClause(i, { rvalue: parseRvalue(e.target.value) })}
-                    placeholder='"green" or 70 or null'
-                    className="font-mono text-xs"
+                  <ClauseRvalue
+                    lvalue={c.lvalue}
+                    rvalue={c.rvalue}
+                    onChange={(v) => setClause(i, { rvalue: v })}
                   />
                   <Button
                     size="sm"
@@ -671,9 +700,6 @@ function RuleEditor({
           </div>
 
           {/* Datalists for autocomplete */}
-          <datalist id="lvalue-suggestions">
-            {LVALUE_SUGGESTIONS.map((l) => <option key={l} value={l} />)}
-          </datalist>
           <datalist id="action-type-suggestions">
             {ACTION_TYPE_SUGGESTIONS.map((a) => <option key={a} value={a} />)}
           </datalist>
@@ -850,6 +876,30 @@ function TracePanel({
 }
 
 // ----- main page -----
+
+function ClauseRvalue({ lvalue, rvalue, onChange }: { lvalue: string; rvalue: string | number | null; onChange: (v: string | number | null) => void }) {
+  const opts = rvalueOptionsFor(lvalue);
+  if (opts.kind === "null-only") {
+    return <div className="h-9 px-3 flex items-center text-xs text-muted-foreground border rounded bg-muted/30">null (only valid comparison)</div>;
+  }
+  if (opts.kind === "number") {
+    return <Input type="number" value={rvalue === null ? "" : String(rvalue)} onChange={(e) => { const v = e.target.value; onChange(v === "" ? null : Number(v)); }} placeholder="e.g. 70" className="font-mono text-xs" />;
+  }
+  if (opts.kind === "enum") {
+    const current = rvalue === null ? "" : String(rvalue);
+    return (
+      <Select value={current} onValueChange={(v) => onChange(v)}>
+        <SelectTrigger className="font-mono text-xs"><SelectValue placeholder="Pick a value" /></SelectTrigger>
+        <SelectContent>
+          {opts.options.map((o) => <SelectItem key={o} value={o} className="font-mono">{o}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    );
+  }
+  return (
+    <Input value={rvalue === null ? "null" : String(rvalue)} onChange={(e) => { const raw = e.target.value; if (raw === "null") onChange(null); else if (raw === "") onChange(""); else { const n = Number(raw); onChange(!isNaN(n) && String(n) === raw ? n : raw); } }} placeholder={String.fromCharCode(34) + "green" + String.fromCharCode(34) + " or 70 or null"} className="font-mono text-xs" />
+  );
+}
 
 export default function AdminOutcomeRulesPage() {
   const queryClient = useQueryClient();
