@@ -172,6 +172,30 @@ const LVALUE_GROUPS: Array<{ group: string; items: string[] }> = [
   { group: "Content", items: ["content"] },
 ];
 
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  "send_content": "Send content — email the routed document",
+  "schedule_call": "Schedule call — book a follow-up",
+  "schedule_adviser_call": "Schedule adviser call — three-way with accountant/IFA",
+  "reserve_stock": "Reserve stock — commitment path (SeedLegals + Pack 1/2)",
+  "close_deal": "Close deal — mark lost, check Book 2",
+  "escalate_to_tom": "Escalate to Tom — flag for manual review",
+  "move_to_nurture": "Move to nurture — long-cycle drip, no immediate action",
+  "set_next_call_type": "Set next call type (hint) — secondary-only side effect",
+};
+const OWNER_LABELS: Record<string, string> = {
+  "agent": "Agent (cold caller)",
+  "tom": "Tom (closer)",
+  "system": "System (automated)",
+};
+const TIMING_LABELS: Record<string, string> = {
+  "immediate": "Immediate",
+  "24_48_hours": "24–48 hours",
+  "scheduled": "Scheduled (operator picks)",
+};
+function labelActionType(a: string): string { return ACTION_TYPE_LABELS[a] ?? a; }
+function labelOwner(o: string): string { return OWNER_LABELS[o] ?? o; }
+function labelTiming(t: string): string { return TIMING_LABELS[t] ?? t; }
+
 const ACTION_TYPE_SUGGESTIONS = [
   "send_content",
   "schedule_call",
@@ -720,30 +744,39 @@ function RuleEditor({
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Action type</label>
-                      <Input
-                        list="action-type-suggestions"
-                        value={a.action_type}
-                        onChange={(e) => setAction(i, { action_type: e.target.value })}
-                        className="font-mono text-xs"
-                      />
+                      <Select value={a.action_type} onValueChange={(v) => setAction(i, { action_type: v })}>
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent className="max-h-[50vh]">
+                          {ACTION_TYPE_SUGGESTIONS.map((at) => (
+                            <SelectItem key={at} value={at}>
+                              <span className="font-mono">{at}</span>
+                              <span className="ml-2 text-muted-foreground text-xs">· {ACTION_TYPE_LABELS[at]?.split(" — ")[1] ?? ""}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Owner</label>
-                      <Input
-                        list="owner-suggestions"
-                        value={a.owner}
-                        onChange={(e) => setAction(i, { owner: e.target.value })}
-                        className="font-mono text-xs"
-                      />
+                      <Select value={a.owner} onValueChange={(v) => setAction(i, { owner: v })}>
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {OWNER_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{labelOwner(o)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Timing</label>
-                      <Input
-                        list="timing-suggestions"
-                        value={a.timing}
-                        onChange={(e) => setAction(i, { timing: e.target.value })}
-                        className="font-mono text-xs"
-                      />
+                      <Select value={a.timing} onValueChange={(v) => setAction(i, { timing: v })}>
+                        <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {TIMING_OPTIONS.map((t) => (
+                            <SelectItem key={t} value={t}>{labelTiming(t)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -785,18 +818,6 @@ function RuleEditor({
               ))}
             </div>
           </div>
-
-          {/* Datalists for autocomplete */}
-          <datalist id="action-type-suggestions">
-            {ACTION_TYPE_SUGGESTIONS.map((a) => <option key={a} value={a} />)}
-          </datalist>
-          <datalist id="owner-suggestions">
-            {OWNER_OPTIONS.map((o) => <option key={o} value={o} />)}
-          </datalist>
-          <datalist id="timing-suggestions">
-            {TIMING_OPTIONS.map((t) => <option key={t} value={t} />)}
-          </datalist>
-
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 rounded p-3 whitespace-pre-wrap">
               {error}
