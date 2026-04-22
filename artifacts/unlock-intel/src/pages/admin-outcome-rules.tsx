@@ -109,6 +109,17 @@ const LVALUE_SUGGESTIONS = [
   "investor.hotButton",
 ];
 const OP_OPTIONS = ["===", "!==", "==", "!=", ">", ">=", "<", "<="] as const;
+const OP_LABELS: Record<string, string> = {
+  "===": "equals",
+  "!==": "not equal",
+  "==": "equals (loose)",
+  "!=": "not equal (loose)",
+  ">": "greater than",
+  ">=": "greater than or equal",
+  "<": "less than",
+  "<=": "less than or equal",
+};
+function labelOp(op: string): string { return OP_LABELS[op] ?? op; }
 const ACTION_TYPE_SUGGESTIONS = [
   "send_content",
   "schedule_call",
@@ -190,7 +201,7 @@ function fetchTrace(runId: string): Promise<TraceResponse> {
 
 function conditionSummary(clauses: OutcomeRule["when_clauses"]): string {
   return clauses
-    .map((c) => `${c.lvalue} ${c.op} ${JSON.stringify(c.rvalue)}`)
+    .map((c) => `${c.lvalue} ${labelOp(c.op)} ${JSON.stringify(c.rvalue)}`)
     .join(" AND ");
 }
 
@@ -322,7 +333,7 @@ function RulesTable({
                               <span className="text-muted-foreground">
                                 {c.lvalue}
                               </span>{" "}
-                              <span className="text-primary">{c.op}</span>{" "}
+                              <span className="text-primary">{labelOp(c.op)}</span>{" "}
                               <span>{formatValue(c.rvalue)}</span>
                             </li>
                           ))}
@@ -530,7 +541,7 @@ function RuleEditor({
                     <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {OP_OPTIONS.map((op) => (
-                        <SelectItem key={op} value={op} className="font-mono">{op}</SelectItem>
+                        <SelectItem key={op} value={op}>{labelOp(op)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -810,7 +821,7 @@ function TracePanel({
                     <div className="text-muted-foreground mt-0.5">
                       failed:{" "}
                       <span className="font-mono">
-                        {s.failedClause.lvalue} {s.failedClause.op}{" "}
+                        {s.failedClause.lvalue} {labelOp(s.failedClause.op)}{" "}
                         {formatValue(s.failedClause.rvalue)}
                       </span>{" "}
                       → actual was{" "}
