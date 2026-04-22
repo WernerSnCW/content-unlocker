@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -562,12 +562,12 @@ function RuleEditor({
                     <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {LVALUE_GROUPS.map((grp) => (
-                        <div key={grp.group}>
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{grp.group}</div>
+                        <SelectGroup key={grp.group}>
+                          <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wider">{grp.group}</SelectLabel>
                           {grp.items.map((l) => (
                             <SelectItem key={l} value={l} className="font-mono">{l}</SelectItem>
                           ))}
-                        </div>
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
