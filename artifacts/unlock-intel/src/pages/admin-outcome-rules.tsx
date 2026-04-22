@@ -560,7 +560,7 @@ function RuleEditor({
                 <div key={i} className="grid grid-cols-[1fr_90px_1fr_32px] gap-2 items-center">
                   <Select value={c.lvalue} onValueChange={(v) => setClause(i, { lvalue: v, rvalue: null })}>
                     <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[50vh]">
                       {LVALUE_GROUPS.map((grp) => (
                         <SelectGroup key={grp.group}>
                           <SelectLabel className="text-xs text-muted-foreground uppercase tracking-wider">{grp.group}</SelectLabel>
