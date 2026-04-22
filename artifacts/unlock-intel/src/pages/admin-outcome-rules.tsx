@@ -250,6 +250,24 @@ interface TraceResponse {
 // ----- fetchers -----
 
 interface SignalInfo { code: string; name: string; category: string }
+interface RoutingEntry {
+  signal: string;
+  triggerStates: string[];
+  docId: number | null;
+  docName?: string;
+  personaFilter?: string;
+  personaVariant?: Record<string, { docId: number | null; docName?: string }>;
+  altDoc?: { docId: number; docName: string };
+  isComplianceGateOverride?: boolean;
+  gateCondition?: string;
+  note?: string;
+}
+function fetchRoutingMap(): Promise<{ routingMap: RoutingEntry[] }> {
+  return apiFetch("/api/engine/config/all").then((r) => {
+    if (!r.ok) throw new Error("Routing map fetch failed");
+    return r.json().then((body) => ({ routingMap: body.routingMap || [] }));
+  });
+}
 function fetchSignalCatalog(): Promise<{ signals: SignalInfo[] }> {
   return apiFetch("/api/engine/config/signals").then((r) => {
     if (!r.ok) throw new Error("Signals fetch failed");
@@ -514,6 +532,7 @@ function RuleEditor({
   error,
   saving,
   signalNameMap,
+  routingBySignal,
 }: {
   open: boolean;
   mode: "create" | "edit";
@@ -524,6 +543,7 @@ function RuleEditor({
   error: string | null;
   saving: boolean;
   signalNameMap: Map<string, string>;
+  routingBySignal: Map<string, RoutingEntry[]>;
 }) {
   const setClause = (i: number, patch: Partial<RuleDraft["when_clauses"][number]>) => {
     onDraftChange({
@@ -704,6 +724,38 @@ function RuleEditor({
                       : "'routed (any document)' — routing picked a document. Use this on rules that send content."}
                   </p>
                 )}
+                {(() => {
+                  const m = c.lvalue.match(/^signal\.([A-Z0-9]+)\.state$/);
+                  if (!m) return null;
+                  const code = m[1]!;
+                  const routes = routingBySignal.get(code) ?? [];
+                  if (routes.length === 0) return null;
+                  return (
+                    <div className="text-xs text-muted-foreground pl-1 italic border-l-2 border-primary/30 ml-1 pl-2">
+                      <div className="not-italic font-semibold text-foreground/70 text-[11px] uppercase tracking-wider mb-0.5">Routing map for {code}</div>
+                      {routes.map((r, idx) => (
+                        <div key={idx}>
+                          {code} {(r.triggerStates || []).join(" or ")}
+                          {" → "}
+                          {r.docId != null
+                            ? <>doc {r.docId}{r.docName ? ` (${r.docName})` : ""}</>
+                            : <>(no direct doc)</>}
+                          {r.personaFilter ? ` · only for ${r.personaFilter}` : ""}
+                          {r.personaVariant
+                            ? ` · varies by persona (${Object.keys(r.personaVariant).join(", ")})`
+                            : ""}
+                          {r.altDoc ? ` · alt doc ${r.altDoc.docId} (${r.altDoc.docName})` : ""}
+                          {r.isComplianceGateOverride ? " · OVERRIDE: fires when C4 compliance gate is not green" : ""}
+                        </div>
+                      ))}
+                      {routes.some((r) => r.personaFilter) && (
+                        <div className="mt-1 text-[11px]">
+                          Other personas: no route. If this rule assumes a specific persona, add a persona clause.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 </div>
               ))}
             </div>
@@ -1041,6 +1093,20 @@ export default function AdminOutcomeRulesPage() {
     for (const sig of signalsData?.signals ?? []) m.set(sig.code, sig.name);
     return m;
   }, [signalsData]);
+  const { data: routingData } = useQuery({
+    queryKey: ["engine-config-routing"],
+    queryFn: fetchRoutingMap,
+    staleTime: 5 * 60 * 1000,
+  });
+  const routingBySignal = useMemo(() => {
+    const m = new Map<string, RoutingEntry[]>();
+    for (const r of routingData?.routingMap ?? []) {
+      const list = m.get(r.signal) ?? [];
+      list.push(r);
+      m.set(r.signal, list);
+    }
+    return m;
+  }, [routingData]);
 
   const { data: rulesData, isLoading: rulesLoading, error: rulesError } =
     useQuery({ queryKey: ["outcome-rules"], queryFn: fetchRules });
@@ -1210,6 +1276,7 @@ export default function AdminOutcomeRulesPage() {
         error={editorError}
         saving={saving}
         signalNameMap={signalNameMap}
+        routingBySignal={routingBySignal}
       />
 
       <Card>
