@@ -96,6 +96,12 @@ export default function AdminSimulateCallPage() {
   const [agentId, setAgentId] = useState<string>("");
   const [tag, setTag] = useState<string>("");
   const [duration, setDuration] = useState<string>("60");
+  // Session-4 improvement B — explicit call type override. "auto" = infer
+  // from duration (the production behaviour). Picking cold/demo/opportunity
+  // tells the backend to synthesize a duration in the right bucket so the
+  // engine classifies as requested, regardless of what's typed in the
+  // duration field.
+  const [callType, setCallType] = useState<"auto" | "cold_call" | "demo" | "opportunity">("auto");
   const [direction, setDirection] = useState<"inbound" | "outbound">("outbound");
   const [ensureMembership, setEnsureMembership] = useState(true);
   const [transcript, setTranscript] = useState<string>("");
@@ -167,6 +173,7 @@ export default function AdminSimulateCallPage() {
         transcript,
         summary,
         duration_seconds: Number(duration) || 60,
+        call_type: callType === "auto" ? undefined : callType,
         direction,
         ensure_membership: ensureMembership,
       }, { redirectOn401: false });
@@ -276,10 +283,35 @@ export default function AdminSimulateCallPage() {
             </div>
 
             {/* Metadata row */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Call type</label>
+                <Select value={callType} onValueChange={(v: any) => setCallType(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto (from duration)</SelectItem>
+                    <SelectItem value="cold_call">Cold call</SelectItem>
+                    <SelectItem value="demo">Demo</SelectItem>
+                    <SelectItem value="opportunity">Opportunity</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {callType === "auto"
+                    ? "Engine infers from duration."
+                    : "Overrides duration-based inference."}
+                </p>
+              </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium">Duration (s)</label>
-                <Input type="number" value={duration} onChange={e => setDuration(e.target.value)} />
+                <Input
+                  type="number"
+                  value={duration}
+                  onChange={e => setDuration(e.target.value)}
+                  disabled={callType !== "auto"}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {callType !== "auto" ? "Overridden by call type." : "Any positive number."}
+                </p>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium">Direction</label>

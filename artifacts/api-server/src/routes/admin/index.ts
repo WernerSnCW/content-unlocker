@@ -373,7 +373,21 @@ router.post("/admin/simulate-call", async (req, res) => {
   const tagName = typeof body.tag === "string" ? body.tag.trim() : null;
   const transcript = typeof body.transcript === "string" ? body.transcript : "";
   const summary = typeof body.summary === "string" && body.summary.trim() ? body.summary : null;
-  const duration = Number.isFinite(Number(body.duration_seconds)) ? Number(body.duration_seconds) : 60;
+  let duration = Number.isFinite(Number(body.duration_seconds)) ? Number(body.duration_seconds) : 60;
+
+  // Phase 7.1a session 4 improvement B — explicit call_type override.
+  // The engine's inferCallType() today maps duration → type (<20min cold,
+  // 20–40 opportunity, ≥40 demo). When the simulator caller picks a call
+  // type explicitly we translate it back to a representative duration so
+  // the existing webhook chain + engine infer the right type downstream.
+  // Belt-and-braces: duration is still used as the safety net for real
+  // calls where no hint is available.
+  const callTypeOverride = typeof body.call_type === "string" ? body.call_type : null;
+  if (callTypeOverride === "cold_call") duration = 600;        // 10 min
+  else if (callTypeOverride === "opportunity") duration = 1800; // 30 min
+  else if (callTypeOverride === "demo") duration = 2520;        // 42 min
+  // any other value falls through to the caller-supplied duration
+
   const direction: "inbound" | "outbound" = body.direction === "inbound" ? "inbound" : "outbound";
   const ensureMembership = body.ensure_membership !== false;
 
