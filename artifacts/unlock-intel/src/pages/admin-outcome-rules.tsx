@@ -1,25 +1,26 @@
-// Phase 7.1a session 3 — Outcome rules admin page (read-only).
+// Phase 7.1a session 3 — Outcome rules admin page.
+// Phase 7.1b session 2 — Editable CRUD.
 //
 // Three panes:
-//   1. Rules table — all seeded rules ordered by priority. Click a row
-//      to expand the full clause JSON and outcome details.
+//   1. Rules table — all rules ordered by priority. Click a row to
+//      expand the full clause JSON + action list. Edit/Delete buttons
+//      on hover. "+ New rule" at top.
 //   2. Run picker — recent engine_runs with contact name, call type,
 //      NBA summary. Click to replay rules against that run's context.
 //   3. Trace view — step-by-step evaluator output. For each rule:
 //      matched (green) or failed (muted) with the exact failing clause
 //      rendered inline. The matched rule highlights in the main table
 //      via cross-link.
-//
-// Edit/CRUD ships in Phase 7.1b. This page is visibility-only —
-// helps admins answer "why did the engine pick THIS action?" without
-// reading code.
 
 import { Fragment, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -34,23 +35,93 @@ import {
   CheckCircle2,
   ChevronRight,
   Loader2,
+  Pencil,
+  Plus,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiClient";
+
+interface RuleAction {
+  action_type: string;
+  owner: string;
+  timing: string;
+  detail: string;
+  uses_content: boolean;
+  next_call_type?: "cold_call" | "demo" | "opportunity" | "none" | null;
+}
 
 interface OutcomeRule {
   id: string;
   priority: number;
   enabled: boolean;
   when_clauses: Array<{ lvalue: string; op: string; rvalue: unknown }>;
-  action_type: string;
-  owner: string;
-  timing: string;
-  detail: string;
-  uses_content: boolean;
+  actions: RuleAction[] | null;
+  // Legacy single-action fields — nullable in 7.1b. Read only by the
+  // backend loader when actions is null (transitional migration).
+  action_type: string | null;
+  owner: string | null;
+  timing: string | null;
+  detail: string | null;
+  uses_content: boolean | null;
   created_at: string;
   updated_at: string;
 }
+
+// Normalise a rule to its active actions list. If the row has the new
+// `actions` array, use it. Otherwise synthesize a single-element list
+// from the legacy columns so downstream rendering doesn't have to
+// branch.
+function actionsFor(r: OutcomeRule): RuleAction[] {
+  if (Array.isArray(r.actions) && r.actions.length > 0) return r.actions;
+  return [{
+    action_type: r.action_type ?? "no_action",
+    owner: r.owner ?? "system",
+    timing: r.timing ?? "scheduled",
+    detail: r.detail ?? "",
+    uses_content: r.uses_content ?? false,
+  }];
+}
+
+const LVALUE_SUGGESTIONS = [
+  "callType",
+  "content",
+  "signal.S1.state",
+  "signal.S2.state",
+  "signal.S3.state",
+  "signal.S4.state",
+  "signal.S5.state",
+  "signal.S6.state",
+  "signal.C1.state",
+  "signal.C2.state",
+  "signal.C3.state",
+  "signal.C4.state",
+  "signal.G1.state",
+  "signal.L1.state",
+  "signal.P2.state",
+  "signal.QT.state",
+  "signal.QL.state",
+  "gate.pack1",
+  "gate.c4Compliance",
+  "gate.activeRoute",
+  "investor.demoScore",
+  "investor.persona",
+  "investor.hotButton",
+];
+const OP_OPTIONS = ["===", "!==", "==", "!=", ">", ">=", "<", "<="] as const;
+const ACTION_TYPE_SUGGESTIONS = [
+  "send_content",
+  "schedule_call",
+  "schedule_adviser_call",
+  "reserve_stock",
+  "close_deal",
+  "escalate_to_tom",
+  "move_to_nurture",
+  "set_next_call_type",
+];
+const OWNER_OPTIONS = ["agent", "tom", "system"] as const;
+const TIMING_OPTIONS = ["immediate", "24_48_hours", "scheduled"] as const;
+const NEXT_CALL_TYPE_OPTIONS = ["cold_call", "demo", "opportunity", "none"] as const;
 
 interface RunSummary {
   id: string;
@@ -137,11 +208,15 @@ function RulesTable({
   highlightedRuleId,
   expandedRuleId,
   onExpand,
+  onEdit,
+  onDelete,
 }: {
   rules: OutcomeRule[];
   highlightedRuleId: string | null;
   expandedRuleId: string | null;
   onExpand: (id: string | null) => void;
+  onEdit: (rule: OutcomeRule) => void;
+  onDelete: (rule: OutcomeRule) => void;
 }) {
   return (
     <Table>
@@ -150,20 +225,22 @@ function RulesTable({
           <TableHead className="w-16">Pri</TableHead>
           <TableHead>Rule</TableHead>
           <TableHead>Condition</TableHead>
-          <TableHead>Action</TableHead>
-          <TableHead>Owner</TableHead>
-          <TableHead>Timing</TableHead>
+          <TableHead>Primary action</TableHead>
+          <TableHead className="w-20">Actions</TableHead>
           <TableHead className="w-20">Enabled</TableHead>
+          <TableHead className="w-24">Edit</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rules.map((r) => {
           const isExpanded = expandedRuleId === r.id;
           const isHighlighted = highlightedRuleId === r.id;
+          const acts = actionsFor(r);
+          const primary = acts[0]!;
           return (
             <Fragment key={r.id}>
               <TableRow
-                className={`cursor-pointer ${
+                className={`group cursor-pointer ${
                   isHighlighted
                     ? "bg-primary/10"
                     : isExpanded
@@ -189,10 +266,11 @@ function RulesTable({
                   {conditionSummary(r.when_clauses)}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {r.action_type}
+                  {primary.action_type} · {primary.owner} · {primary.timing}
                 </TableCell>
-                <TableCell className="text-xs">{r.owner}</TableCell>
-                <TableCell className="text-xs">{r.timing}</TableCell>
+                <TableCell className="text-xs text-center">
+                  <Badge variant="outline">{acts.length}</Badge>
+                </TableCell>
                 <TableCell>
                   {r.enabled ? (
                     <Badge
@@ -206,6 +284,28 @@ function RulesTable({
                       no
                     </Badge>
                   )}
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => onEdit(r)}
+                      title="Edit rule"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => onDelete(r)}
+                      title="Delete rule"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
               {isExpanded && (
@@ -230,33 +330,29 @@ function RulesTable({
                       </div>
                       <div>
                         <div className="font-semibold mb-1 text-muted-foreground uppercase tracking-wider">
-                          Outcome
+                          Actions ({acts.length})
                         </div>
-                        <div className="space-y-0.5">
-                          <div>
-                            <span className="text-muted-foreground">
-                              Action:
-                            </span>{" "}
-                            <span className="font-mono">{r.action_type}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Detail:
-                            </span>{" "}
-                            "{r.detail}"
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Uses content:
-                            </span>{" "}
-                            {r.uses_content ? "yes" : "no"}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Updated:
-                            </span>{" "}
-                            {new Date(r.updated_at).toLocaleString()}
-                          </div>
+                        <ol className="space-y-2 list-decimal pl-4">
+                          {acts.map((a, i) => (
+                            <li key={i} className="space-y-0.5">
+                              <div className="font-mono">
+                                {a.action_type}
+                                {a.next_call_type ? ` → ${a.next_call_type}` : ""}
+                              </div>
+                              <div className="text-muted-foreground">
+                                {a.owner} · {a.timing}
+                                {a.uses_content ? " · uses content" : ""}
+                              </div>
+                              {a.detail && (
+                                <div className="text-muted-foreground">
+                                  "{a.detail}"
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                        <div className="text-muted-foreground mt-2">
+                          Updated: {new Date(r.updated_at).toLocaleString()}
                         </div>
                       </div>
                     </div>
@@ -268,6 +364,329 @@ function RulesTable({
         })}
       </TableBody>
     </Table>
+  );
+}
+
+// ---- Rule editor dialog ----
+
+interface RuleDraft {
+  id: string;
+  priority: number;
+  enabled: boolean;
+  when_clauses: Array<{ lvalue: string; op: string; rvalue: string | number | null }>;
+  actions: RuleAction[];
+}
+
+function emptyDraft(): RuleDraft {
+  return {
+    id: "",
+    priority: 100,
+    enabled: true,
+    when_clauses: [{ lvalue: "callType", op: "===", rvalue: "cold_call" }],
+    actions: [{ action_type: "send_content", owner: "agent", timing: "24_48_hours", detail: "", uses_content: false }],
+  };
+}
+
+function draftFromRule(r: OutcomeRule): RuleDraft {
+  return {
+    id: r.id,
+    priority: r.priority,
+    enabled: r.enabled,
+    when_clauses: r.when_clauses.map((c) => ({
+      lvalue: c.lvalue,
+      op: c.op,
+      rvalue: (c.rvalue === null || typeof c.rvalue === "string" || typeof c.rvalue === "number")
+        ? c.rvalue
+        : String(c.rvalue),
+    })),
+    actions: actionsFor(r).map((a) => ({ ...a })),
+  };
+}
+
+function RuleEditor({
+  open,
+  mode,
+  draft,
+  onDraftChange,
+  onSave,
+  onCancel,
+  error,
+  saving,
+}: {
+  open: boolean;
+  mode: "create" | "edit";
+  draft: RuleDraft;
+  onDraftChange: (d: RuleDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  error: string | null;
+  saving: boolean;
+}) {
+  const setClause = (i: number, patch: Partial<RuleDraft["when_clauses"][number]>) => {
+    onDraftChange({
+      ...draft,
+      when_clauses: draft.when_clauses.map((c, j) => (i === j ? { ...c, ...patch } : c)),
+    });
+  };
+  const addClause = () =>
+    onDraftChange({
+      ...draft,
+      when_clauses: [...draft.when_clauses, { lvalue: "callType", op: "===", rvalue: "" }],
+    });
+  const removeClause = (i: number) =>
+    onDraftChange({
+      ...draft,
+      when_clauses: draft.when_clauses.filter((_, j) => j !== i),
+    });
+
+  const setAction = (i: number, patch: Partial<RuleAction>) => {
+    onDraftChange({
+      ...draft,
+      actions: draft.actions.map((a, j) => (i === j ? { ...a, ...patch } : a)),
+    });
+  };
+  const addAction = () =>
+    onDraftChange({
+      ...draft,
+      actions: [...draft.actions, { action_type: "set_next_call_type", owner: "system", timing: "immediate", detail: "", uses_content: false, next_call_type: "demo" }],
+    });
+  const removeAction = (i: number) =>
+    onDraftChange({
+      ...draft,
+      actions: draft.actions.filter((_, j) => j !== i),
+    });
+
+  // Parse rvalue: if it looks like a number, store as number; keep null literal; otherwise string.
+  const parseRvalue = (raw: string): string | number | null => {
+    if (raw === "null") return null;
+    if (raw === "") return "";
+    const n = Number(raw);
+    if (!isNaN(n) && String(n) === raw) return n;
+    return raw;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{mode === "create" ? "New rule" : `Edit rule · ${draft.id}`}</DialogTitle>
+          <DialogDescription>
+            {mode === "create"
+              ? "Rules are evaluated by priority ascending. First match wins."
+              : "Changes take effect on the next engine run (cache invalidates on save)."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* Identity + meta */}
+          <div className="grid grid-cols-[1fr_120px_auto] gap-3 items-end">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">ID (slug)</label>
+              <Input
+                value={draft.id}
+                onChange={(e) => onDraftChange({ ...draft, id: e.target.value })}
+                disabled={mode === "edit"}
+                placeholder="e.g. demo_pack2_eligible"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Priority</label>
+              <Input
+                type="number"
+                value={draft.priority}
+                onChange={(e) => onDraftChange({ ...draft, priority: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground block">Enabled</label>
+              <div className="h-9 flex items-center">
+                <Switch
+                  checked={draft.enabled}
+                  onCheckedChange={(v) => onDraftChange({ ...draft, enabled: v })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Clauses */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">When (all AND-ed)</label>
+              <Button size="sm" variant="outline" onClick={addClause}>
+                <Plus className="w-3 h-3 mr-1" /> Clause
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {draft.when_clauses.map((c, i) => (
+                <div key={i} className="grid grid-cols-[1fr_80px_1fr_32px] gap-2 items-center">
+                  <Input
+                    list="lvalue-suggestions"
+                    value={c.lvalue}
+                    onChange={(e) => setClause(i, { lvalue: e.target.value })}
+                    placeholder="signal.S2.state"
+                    className="font-mono text-xs"
+                  />
+                  <Select value={c.op} onValueChange={(v) => setClause(i, { op: v })}>
+                    <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {OP_OPTIONS.map((op) => (
+                        <SelectItem key={op} value={op} className="font-mono">{op}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={c.rvalue === null ? "null" : String(c.rvalue)}
+                    onChange={(e) => setClause(i, { rvalue: parseRvalue(e.target.value) })}
+                    placeholder='"green" or 70 or null'
+                    className="font-mono text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeClause(i)}
+                    disabled={draft.when_clauses.length === 1}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">
+                Actions ({draft.actions.length}) — first is primary NBA
+              </label>
+              <Button size="sm" variant="outline" onClick={addAction}>
+                <Plus className="w-3 h-3 mr-1" /> Action
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {draft.actions.map((a, i) => (
+                <div
+                  key={i}
+                  className={`border rounded p-3 space-y-2 ${
+                    i === 0 ? "border-primary/40 bg-primary/5" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {i === 0 ? "PRIMARY" : `SECONDARY #${i}`}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeAction(i)}
+                      disabled={draft.actions.length === 1}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Action type</label>
+                      <Input
+                        list="action-type-suggestions"
+                        value={a.action_type}
+                        onChange={(e) => setAction(i, { action_type: e.target.value })}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Owner</label>
+                      <Input
+                        list="owner-suggestions"
+                        value={a.owner}
+                        onChange={(e) => setAction(i, { owner: e.target.value })}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Timing</label>
+                      <Input
+                        list="timing-suggestions"
+                        value={a.timing}
+                        onChange={(e) => setAction(i, { timing: e.target.value })}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Detail (supports {"{docName}"} token)
+                    </label>
+                    <Input
+                      value={a.detail}
+                      onChange={(e) => setAction(i, { detail: e.target.value })}
+                      placeholder="Operator-facing reason"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-xs">
+                      <Switch
+                        checked={a.uses_content}
+                        onCheckedChange={(v) => setAction(i, { uses_content: v })}
+                      />
+                      Attach routed content
+                    </label>
+                    {a.action_type === "set_next_call_type" && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Next call type:</span>
+                        <Select
+                          value={a.next_call_type ?? "demo"}
+                          onValueChange={(v) => setAction(i, { next_call_type: v as any })}
+                        >
+                          <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {NEXT_CALL_TYPE_OPTIONS.map((nct) => (
+                              <SelectItem key={nct} value={nct}>{nct}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Datalists for autocomplete */}
+          <datalist id="lvalue-suggestions">
+            {LVALUE_SUGGESTIONS.map((l) => <option key={l} value={l} />)}
+          </datalist>
+          <datalist id="action-type-suggestions">
+            {ACTION_TYPE_SUGGESTIONS.map((a) => <option key={a} value={a} />)}
+          </datalist>
+          <datalist id="owner-suggestions">
+            {OWNER_OPTIONS.map((o) => <option key={o} value={o} />)}
+          </datalist>
+          <datalist id="timing-suggestions">
+            {TIMING_OPTIONS.map((t) => <option key={t} value={t} />)}
+          </datalist>
+
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 rounded p-3 whitespace-pre-wrap">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={onSave} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            {mode === "create" ? "Create rule" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -418,11 +837,98 @@ function TracePanel({
 // ----- main page -----
 
 export default function AdminOutcomeRulesPage() {
+  const queryClient = useQueryClient();
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
+  // Editor dialog state
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editorDraft, setEditorDraft] = useState<RuleDraft>(emptyDraft());
+  const [editorError, setEditorError] = useState<string | null>(null);
+
   const { data: rulesData, isLoading: rulesLoading, error: rulesError } =
     useQuery({ queryKey: ["outcome-rules"], queryFn: fetchRules });
+
+  // --- mutations ---
+  const invalidateRules = () => {
+    queryClient.invalidateQueries({ queryKey: ["outcome-rules"] });
+    // Trace view also re-reads rules on the server side; invalidate so a
+    // newly-added/removed rule shows up without a hard refresh.
+    queryClient.invalidateQueries({ queryKey: ["outcome-rules-trace"] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async (draft: RuleDraft) => {
+      const res = await apiFetch("/api/admin/engine-outcome-rules", {
+        method: "POST",
+        body: JSON.stringify(draft),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body.messages || [body.error || "create failed"]).join("\n"));
+      return body.rule as OutcomeRule;
+    },
+    onSuccess: () => {
+      invalidateRules();
+      setEditorOpen(false);
+    },
+    onError: (err: any) => setEditorError(err?.message || "create failed"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (draft: RuleDraft) => {
+      const res = await apiFetch(`/api/admin/engine-outcome-rules/${encodeURIComponent(draft.id)}`, {
+        method: "PUT",
+        body: JSON.stringify(draft),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body.messages || [body.error || "update failed"]).join("\n"));
+      return body.rule as OutcomeRule;
+    },
+    onSuccess: () => {
+      invalidateRules();
+      setEditorOpen(false);
+    },
+    onError: (err: any) => setEditorError(err?.message || "update failed"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiFetch(`/api/admin/engine-outcome-rules/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "delete failed");
+      }
+      return id;
+    },
+    onSuccess: invalidateRules,
+  });
+
+  const openCreate = () => {
+    setEditorMode("create");
+    setEditorDraft(emptyDraft());
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+  const openEdit = (rule: OutcomeRule) => {
+    setEditorMode("edit");
+    setEditorDraft(draftFromRule(rule));
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+  const handleSave = () => {
+    setEditorError(null);
+    if (editorMode === "create") createMutation.mutate(editorDraft);
+    else updateMutation.mutate(editorDraft);
+  };
+  const handleDelete = (rule: OutcomeRule) => {
+    if (!window.confirm(`Delete rule "${rule.id}"? This is permanent.\n\nPrefer the "Enabled" toggle if you want a reversible change.`)) return;
+    deleteMutation.mutate(rule.id);
+  };
+  const saving = createMutation.isPending || updateMutation.isPending;
+
 
   const { data: runsData, isLoading: runsLoading } = useQuery({
     queryKey: ["engine-runs-recent"],
@@ -460,17 +966,19 @@ export default function AdminOutcomeRulesPage() {
         <CardHeader className="pb-3">
           <CardTitle>Outcome rules</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Read-only view of the NBA rule engine. Click a rule to see its
-            full clause JSON. Pick an engine run below to replay the rules
-            against that run's context — you'll see which rule matched and
-            why the others didn't. Edit/CRUD ships in Phase 7.1b.
+            NBA rule engine — evaluated by priority ascending, first match wins. Click
+            a rule to see full clauses + action list. Edit/delete via the
+            row buttons, or add a new rule at the top right.
           </p>
         </CardHeader>
       </Card>
 
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Rules</CardTitle>
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-1" /> New rule
+          </Button>
         </CardHeader>
         <CardContent>
           {rulesLoading && (
@@ -489,10 +997,23 @@ export default function AdminOutcomeRulesPage() {
               highlightedRuleId={highlightedRuleId}
               expandedRuleId={expandedRuleId}
               onExpand={setExpandedRuleId}
+              onEdit={openEdit}
+              onDelete={handleDelete}
             />
           )}
         </CardContent>
       </Card>
+
+      <RuleEditor
+        open={editorOpen}
+        mode={editorMode}
+        draft={editorDraft}
+        onDraftChange={setEditorDraft}
+        onSave={handleSave}
+        onCancel={() => setEditorOpen(false)}
+        error={editorError}
+        saving={saving}
+      />
 
       <Card>
         <CardHeader className="pb-2">

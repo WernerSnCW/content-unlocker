@@ -705,6 +705,218 @@ router.post("/admin/engine-outcome-rules/seed", async (_req, res) => {
   }
 });
 
+// ---------- Phase 7.1b — CRUD on rules ----------
+//
+// All three endpoints share validation and cache invalidation. Cache
+// invalidation on every write means the next engine run picks up the
+// change within milliseconds, not within the 60s TTL.
+
+const ALLOWED_OPS = new Set(["===", "!==", "==", "!=", ">", ">=", "<", "<="]);
+const ALLOWED_LVALUE_ROOTS = new Set(["callType", "content"]);
+const ALLOWED_LVALUE_PREFIXES = ["signal.", "gate.", "investor."];
+
+/**
+ * Normalise and validate a rule payload. Returns a {rule, errors} tuple.
+ * Errors is non-empty when the input is malformed. All shape drift is
+ * reported up-front so the UI can show a single error summary.
+ */
+function validateRulePayload(body: any): { rule: any; errors: string[] } {
+  const errors: string[] = [];
+  const out: any = {};
+
+  if (typeof body?.id !== "string" || !body.id.trim()) {
+    errors.push("id is required and must be a non-empty string");
+  } else {
+    out.id = body.id.trim();
+  }
+
+  const pri = Number(body?.priority);
+  if (!Number.isFinite(pri) || pri < 0 || pri > 100000) {
+    errors.push("priority must be a number between 0 and 100000");
+  } else {
+    out.priority = Math.round(pri);
+  }
+
+  out.enabled = body?.enabled !== false; // default true
+
+  // when_clauses: array of {lvalue, op, rvalue}
+  if (!Array.isArray(body?.when_clauses) || body.when_clauses.length === 0) {
+    errors.push("when_clauses must be a non-empty array");
+  } else {
+    const normalised: any[] = [];
+    body.when_clauses.forEach((c: any, i: number) => {
+      if (typeof c?.lvalue !== "string" || !c.lvalue) {
+        errors.push(`clause ${i}: lvalue is required`);
+        return;
+      }
+      const isRoot = ALLOWED_LVALUE_ROOTS.has(c.lvalue);
+      const isPrefixed = ALLOWED_LVALUE_PREFIXES.some((p) => c.lvalue.startsWith(p));
+      if (!isRoot && !isPrefixed) {
+        errors.push(`clause ${i}: lvalue "${c.lvalue}" not in allowed list (callType, content, signal.*, gate.*, investor.*)`);
+      }
+      if (typeof c?.op !== "string" || !ALLOWED_OPS.has(c.op)) {
+        errors.push(`clause ${i}: op "${c?.op}" not in allowed set (${[...ALLOWED_OPS].join(", ")})`);
+      }
+      // rvalue can be string, number, or null; reject undefined/objects
+      const rtype = typeof c?.rvalue;
+      if (c.rvalue !== null && rtype !== "string" && rtype !== "number") {
+        errors.push(`clause ${i}: rvalue must be string, number, or null`);
+      }
+      normalised.push({ lvalue: c.lvalue, op: c.op, rvalue: c.rvalue ?? null });
+    });
+    out.when_clauses = normalised;
+  }
+
+  // actions: array of {action_type, owner, timing, detail, uses_content, next_call_type?}
+  if (!Array.isArray(body?.actions) || body.actions.length === 0) {
+    errors.push("actions must be a non-empty array (at least one action)");
+  } else {
+    const normalised: any[] = [];
+    body.actions.forEach((a: any, i: number) => {
+      if (typeof a?.action_type !== "string" || !a.action_type) {
+        errors.push(`action ${i}: action_type is required`);
+        return;
+      }
+      if (typeof a?.owner !== "string" || !a.owner) {
+        errors.push(`action ${i}: owner is required`);
+      }
+      if (typeof a?.timing !== "string" || !a.timing) {
+        errors.push(`action ${i}: timing is required`);
+      }
+      if (typeof a?.detail !== "string") {
+        errors.push(`action ${i}: detail must be a string (empty OK)`);
+      }
+      // set_next_call_type requires a valid next_call_type
+      if (a.action_type === "set_next_call_type") {
+        const nct = a.next_call_type;
+        if (!["cold_call", "demo", "opportunity", "none"].includes(nct)) {
+          errors.push(`action ${i}: set_next_call_type requires next_call_type in [cold_call, demo, opportunity, none]`);
+        }
+      }
+      normalised.push({
+        action_type: a.action_type,
+        owner: a.owner,
+        timing: a.timing,
+        detail: a.detail ?? "",
+        uses_content: !!a.uses_content,
+        next_call_type: a.next_call_type ?? null,
+      });
+    });
+    out.actions = normalised;
+  }
+
+  return { rule: out, errors };
+}
+
+// POST /api/admin/engine-outcome-rules — create a new rule. 409 on id
+// collision so the operator knows to pick a different slug.
+router.post("/admin/engine-outcome-rules", async (req, res) => {
+  const { rule, errors } = validateRulePayload(req.body);
+  if (errors.length > 0) {
+    res.status(400).json({ error: "validation_failed", messages: errors });
+    return;
+  }
+  try {
+    const [existing] = await db.select({ id: engineOutcomeRulesTable.id })
+      .from(engineOutcomeRulesTable)
+      .where(eq(engineOutcomeRulesTable.id, rule.id))
+      .limit(1);
+    if (existing) {
+      res.status(409).json({ error: "rule_id_exists", id: rule.id });
+      return;
+    }
+    const [created] = await db.insert(engineOutcomeRulesTable).values({
+      id: rule.id,
+      priority: rule.priority,
+      enabled: rule.enabled,
+      when_clauses: rule.when_clauses,
+      actions: rule.actions,
+      // Legacy single-action columns intentionally left null for new rows.
+      action_type: null,
+      owner: null,
+      timing: null,
+      detail: null,
+      uses_content: false,
+      updated_at: new Date(),
+    }).returning();
+    invalidateOutcomeRulesCache();
+    res.status(201).json({ rule: created });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-outcome-rules create failed");
+    res.status(500).json({ error: "create_failed", message: err.message });
+  }
+});
+
+// PUT /api/admin/engine-outcome-rules/:id — update the rule with the
+// given id. The id in the URL and body must match to avoid accidentally
+// renaming. Only mutable fields are written.
+router.put("/admin/engine-outcome-rules/:id", async (req, res) => {
+  const idFromUrl = req.params.id;
+  if (req.body?.id && req.body.id !== idFromUrl) {
+    res.status(400).json({ error: "id_mismatch", message: "URL id and body id must match" });
+    return;
+  }
+  const payload = { ...req.body, id: idFromUrl };
+  const { rule, errors } = validateRulePayload(payload);
+  if (errors.length > 0) {
+    res.status(400).json({ error: "validation_failed", messages: errors });
+    return;
+  }
+  try {
+    const [existing] = await db.select({ id: engineOutcomeRulesTable.id })
+      .from(engineOutcomeRulesTable)
+      .where(eq(engineOutcomeRulesTable.id, idFromUrl))
+      .limit(1);
+    if (!existing) {
+      res.status(404).json({ error: "rule_not_found", id: idFromUrl });
+      return;
+    }
+    const [updated] = await db.update(engineOutcomeRulesTable)
+      .set({
+        priority: rule.priority,
+        enabled: rule.enabled,
+        when_clauses: rule.when_clauses,
+        actions: rule.actions,
+        // Clear legacy columns on update so upgraded rules don't leave
+        // stale single-action data behind.
+        action_type: null,
+        owner: null,
+        timing: null,
+        detail: null,
+        uses_content: false,
+        updated_at: new Date(),
+      })
+      .where(eq(engineOutcomeRulesTable.id, idFromUrl))
+      .returning();
+    invalidateOutcomeRulesCache();
+    res.json({ rule: updated });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-outcome-rules update failed");
+    res.status(500).json({ error: "update_failed", message: err.message });
+  }
+});
+
+// DELETE /api/admin/engine-outcome-rules/:id — permanent delete. Prefer
+// disable (enabled=false) for reversibility; delete is only for genuinely
+// retired rules.
+router.delete("/admin/engine-outcome-rules/:id", async (req, res) => {
+  const id = req.params.id;
+  try {
+    const result = await db.delete(engineOutcomeRulesTable)
+      .where(eq(engineOutcomeRulesTable.id, id))
+      .returning({ id: engineOutcomeRulesTable.id });
+    if (result.length === 0) {
+      res.status(404).json({ error: "rule_not_found", id });
+      return;
+    }
+    invalidateOutcomeRulesCache();
+    res.json({ ok: true, id });
+  } catch (err: any) {
+    logger.error({ err: err.message }, "admin/engine-outcome-rules delete failed");
+    res.status(500).json({ error: "delete_failed", message: err.message });
+  }
+});
+
 // GET /api/admin/engine-runs/recent — recent engine runs for the trace-view
 // picker on the Outcome Rules admin page. Returns enough context for the
 // picker to display meaningful labels (contact name, call type, NBA action,
