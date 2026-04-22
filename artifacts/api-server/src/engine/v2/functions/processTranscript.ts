@@ -288,6 +288,35 @@ export function processTranscriptDetailed(
 }
 
 /**
+ * Session-4 shadow-mode diff. Compares two NextAction objects across
+ * the five observable fields. Returns null for identical (agreement),
+ * or a list of "field: legacy=X, rules=Y" strings for the webhook to
+ * log.
+ *
+ * This MUST be a top-level function declaration (not a const arrow)
+ * so it's hoisted and available to both processTranscriptDetailed
+ * and processTranscriptWithLLM regardless of file order. Previous
+ * attempt placed the definition after processTranscriptWithLLM which
+ * the runtime refused to resolve — engine runs failed with
+ * "diffNextAction is not defined".
+ */
+function diffNextAction(a: NextAction, b: NextAction): string[] | null {
+  const diffs: string[] = [];
+  if (a.actionType !== b.actionType)
+    diffs.push(`actionType: legacy=${a.actionType}, rules=${b.actionType}`);
+  if (a.owner !== b.owner)
+    diffs.push(`owner: legacy=${a.owner}, rules=${b.owner}`);
+  if (a.timing !== b.timing)
+    diffs.push(`timing: legacy=${a.timing}, rules=${b.timing}`);
+  if (a.detail !== b.detail)
+    diffs.push(`detail: legacy="${a.detail}", rules="${b.detail}"`);
+  const aDoc = a.contentToSend?.docId ?? null;
+  const bDoc = b.contentToSend?.docId ?? null;
+  if (aDoc !== bDoc) diffs.push(`contentDoc: legacy=${aDoc}, rules=${bDoc}`);
+  return diffs.length > 0 ? diffs : null;
+}
+
+/**
  * Phase 4.9 — LLM-powered orchestrator. Replaces keyword pattern matching
  * in Layer 1 (persona, hot-button, signals, questions, fact-find) with a
  * single LLM extraction call. Layer 2 (gates, routing, NBA, etc.) is the
