@@ -880,6 +880,7 @@ function RuleEditor({
               ))}
             </div>
           </div>
+          <InterpretRule draft={draft} signalNameMap={signalNameMap} routingBySignal={routingBySignal} />
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 rounded p-3 whitespace-pre-wrap">
               {error}
@@ -1069,6 +1070,97 @@ function ClauseRvalue({ lvalue, rvalue, onChange }: { lvalue: string; rvalue: st
   }
   return (
     <Input value={rvalue === null ? "null" : String(rvalue)} onChange={(e) => { const raw = e.target.value; if (raw === "null") onChange(null); else if (raw === "") onChange(""); else { const n = Number(raw); onChange(!isNaN(n) && String(n) === raw ? n : raw); } }} placeholder={String.fromCharCode(34) + "green" + String.fromCharCode(34) + " or 70 or null"} className="font-mono text-xs" />
+  );
+}
+
+function signalLabel(code: string, signalNameMap: Map<string, string>): string {
+  const name = signalNameMap.get(code);
+  return name ? code + " (" + name + ")" : code;
+}
+
+function InterpretRule({ draft, signalNameMap, routingBySignal }: {
+  draft: RuleDraft;
+  signalNameMap: Map<string, string>;
+  routingBySignal: Map<string, RoutingEntry[]>;
+}) {
+  const whenParts: string[] = [];
+  for (const c of draft.when_clauses) {
+    if (c.lvalue === "callType" && c.op === "===") {
+      whenParts.push("the call type is " + c.rvalue);
+    } else if (c.lvalue === "content" && c.op === "===") {
+      whenParts.push("no document was routed");
+    } else if (c.lvalue === "content" && c.op === "!==") {
+      whenParts.push("a document was routed");
+    } else if (c.lvalue.startsWith("signal.") && c.lvalue.endsWith(".state")) {
+      const code = c.lvalue.slice(7, -6);
+      whenParts.push(signalLabel(code, signalNameMap) + " is " + labelOp(c.op) + " " + JSON.stringify(c.rvalue));
+    } else if (c.lvalue === "investor.persona" && c.op === "===") {
+      whenParts.push("the investor is a " + c.rvalue);
+    } else if (c.lvalue === "investor.demoScore") {
+      whenParts.push("the demo score is " + labelOp(c.op) + " " + JSON.stringify(c.rvalue));
+    } else {
+      whenParts.push(c.lvalue + " " + labelOp(c.op) + " " + JSON.stringify(c.rvalue));
+    }
+  }
+  const whenText = whenParts.join(" AND ");
+
+  const actionRows = draft.actions.map((a, i) => {
+    const isPrimary = i === 0;
+    const label = ACTION_TYPE_LABELS[a.action_type]?.split(" — ")[0] ?? a.action_type;
+    let text = label + " (owner: " + labelOwner(a.owner) + ", in " + labelTiming(a.timing) + ")";
+    if (a.detail) text += ". Message: \"" + a.detail + "\"";
+    if (a.uses_content) text += ". Document: attach the routed document.";
+    if (a.action_type === "set_next_call_type" && a.next_call_type) {
+      text = "Hint that the next call for this contact should be \"" + a.next_call_type + "\".";
+    }
+    return { isPrimary, text };
+  });
+
+  const routingHints: string[] = [];
+  for (const c of draft.when_clauses) {
+    const m = c.lvalue.match(/^signal\.([A-Z0-9]+)\.state$/);
+    if (!m) continue;
+    const code = m[1]!;
+    const routes = routingBySignal.get(code);
+    if (!routes || routes.length === 0) continue;
+    for (const r of routes) {
+      const stateList = (r.triggerStates || []).join(" or ");
+      let line = signalLabel(code, signalNameMap) + " " + stateList + " routes to ";
+      line += r.docId != null ? "doc " + r.docId + (r.docName ? " (" + r.docName + ")" : "") : "(no direct doc)";
+      if (r.personaFilter) line += " — only for " + r.personaFilter;
+      routingHints.push(line);
+    }
+  }
+
+  return (
+    <div className="border rounded p-3 bg-primary/5 border-primary/30 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wider text-primary">
+        Plain-English summary
+      </div>
+      <div className="text-sm">
+        <span className="text-muted-foreground">When </span>
+        <span>{whenText || "— (no clauses)"}</span>
+      </div>
+      <div className="text-sm space-y-0.5">
+        <div className="text-muted-foreground">Then:</div>
+        <ol className="list-decimal pl-5 space-y-0.5">
+          {actionRows.map((r, i) => (
+            <li key={i}>
+              {r.isPrimary && <span className="text-primary font-semibold text-xs mr-1">PRIMARY</span>}
+              {r.text}
+            </li>
+          ))}
+        </ol>
+      </div>
+      {routingHints.length > 0 && (
+        <div className="text-xs text-muted-foreground border-t pt-2">
+          <div className="font-semibold mb-1">What happens when this rule fires:</div>
+          <ul className="list-disc pl-5">
+            {routingHints.map((h, i) => <li key={i}>{h}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

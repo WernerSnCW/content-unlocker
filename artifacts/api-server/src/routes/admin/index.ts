@@ -1050,4 +1050,69 @@ router.post("/admin/engine-outcome-rules/trace", async (req, res) => {
   }
 });
 
+// POST /api/admin/engine-outcome-rules/preview — Phase 7.1b session 2.5
+// Evaluate rules against a SYNTHETIC context instead of a stored run.
+router.post("/admin/engine-outcome-rules/preview", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const callType = body.callType;
+    if (!["cold_call", "demo", "opportunity"].includes(callType)) {
+      res.status(400).json({ error: "callType required (cold_call|demo|opportunity)" });
+      return;
+    }
+    const signals: any = {};
+    const now = new Date().toISOString();
+    for (const [code, state] of Object.entries(body.signals || {})) {
+      signals[code] = { code, state, surfacedBy: "preview", notes: "", updatedAt: now, confidence: "high" };
+    }
+    const investor: any = {
+      investorId: "preview",
+      persona: body.investor?.persona || "undetermined",
+      hotButton: body.investor?.hotButton || null,
+      demoScore: body.investor?.demoScore ?? null,
+      signals,
+      factFind: {},
+    };
+    const gateResult = body.gateResult || {
+      c4Compliance: "open",
+      pack1: "blocked",
+      pack1BlockedReasons: [],
+      activeRoute: "pending",
+      blockedSignals: [],
+    };
+    const content = body.content ?? null;
+    const storedRules = await loadOutcomeRules();
+    let rules: any[] = storedRules as any;
+    if (body.draftRule) {
+      const draft = {
+        ...body.draftRule,
+        actions: body.draftRule.actions || [],
+        when_clauses: body.draftRule.when_clauses || [],
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      const withoutSameId = (storedRules as any[]).filter((r) => r.id !== draft.id);
+      rules = [...withoutSameId, draft].sort((a, b) => a.priority - b.priority);
+    }
+    try {
+      const result = evaluateOutcomeRules(rules as any, { callType, signals, investor, content, gateResult });
+      res.json({
+        matchedRuleId: result.trace.matchedRuleId,
+        action: result.action,
+        secondary: result.secondary,
+        trace: result.trace,
+      });
+    } catch (err: any) {
+      if (err instanceof RuleCoverageError) {
+        res.json({ matchedRuleId: null, action: null, secondary: [], trace: null, error: err.message });
+        return;
+      }
+      throw err;
+    }
+  } catch (err: any) {
+    logger.error({ err: err.message, stack: err.stack }, "admin/engine-outcome-rules/preview failed");
+    res.status(500).json({ error: "preview_failed", message: err.message });
+  }
+});
+
 export default router;
