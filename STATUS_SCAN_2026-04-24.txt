@@ -1,0 +1,2367 @@
+===========================================================================
+SECTION 0 — SCAN COVERAGE
+===========================================================================
+
+Scope of scan:
+  Repo root: /home/runner/workspace
+  Date of scan: 2026-04-24
+  Method: Read-only inspection of source files via filesystem read + ripgrep.
+  No code was modified. No tests or builds were executed.
+
+This document is a partial snapshot, not a complete scan. The largest
+unread block is the frontend UI body (33 React pages plus
+OutcomeDrawer/PreCallPanel — see "Inventoried only" and "Limitations"
+below). Statements outside the "Read end-to-end" tier should be read
+with that scope in mind.
+
+Top-level layout observed:
+  - .replit, replit.nix, replit.md
+  - package.json, pnpm-workspace.yaml, tsconfig.base.json, tsconfig.json
+  - artifacts/   (3 sub-projects: api-server, unlock-intel, mockup-sandbox)
+  - lib/         (api-spec, api-zod, api-client-react, db, integrations,
+                  integrations-anthropic-ai + 3 root .ts files)
+  - scripts/
+  - docs/        (file presence only: 1 engine spec markdown, 1
+                  operational readiness markdown, 6 ADR markdowns under
+                  decisions/, plus a decisions/README.md. No non-markdown
+                  assets observed in docs/. Body content of these files
+                  was not opened.)
+  - Several pre-existing root markdown files (HEALTH_CHECK_*, MASTER_*,
+    PRODUCT_GOALS, FIX_REPORT_GAP_RANK, STRATEGIC_ASSESSMENT_*) which were
+    not opened — they are out of scope per task instructions.
+
+Read end-to-end (every line of the file was opened and read):
+  - All repo-root configuration files
+  - artifacts/api-server/src/app.ts
+  - artifacts/api-server/src/index.ts
+  - artifacts/api-server/build.mjs
+  - artifacts/api-server/src/routes/index.ts
+  - artifacts/api-server/src/middlewares/requireAuth.ts
+  - artifacts/api-server/src/middlewares/requireAdmin.ts
+  - artifacts/api-server/src/lib/auth/session.ts
+  - artifacts/api-server/src/lib/queueEvents.ts
+  - artifacts/api-server/src/types/express.d.ts
+  - artifacts/api-server/src/types/text-imports.d.ts
+  - artifacts/api-server/src/engine/v2/version.ts
+  - artifacts/api-server/src/engine/v2/index.ts (barrel)
+  - artifacts/api-server/src/engine/v2/tests/runTests.ts (642 LOC)
+  - artifacts/api-server/src/engine/v2/tests/runAdapterTests.ts (252 LOC)
+  - artifacts/api-server/src/engine/v2/tests/fixtures.ts
+  - artifacts/api-server/src/engine/v2/outcomeRules/loader.ts
+  - artifacts/api-server/src/engine/v2/outcomeRules/evaluator.ts
+  - All 44 files under lib/db/src/schema/
+  - lib/db/src/index.ts, lib/db/drizzle.config.ts, lib/db/package.json
+  - lib/api-spec/orval.config.ts, package.json
+  - lib/integrations-anthropic-ai/src/client.ts, src/index.ts, package.json
+  - lib/call-questions.ts, lib/coverage-matrix.ts, lib/personas.ts
+  - artifacts/unlock-intel/src/main.tsx, App.tsx,
+    components/layout.tsx, ProtectedRoute.tsx, AdminOnlyRoute.tsx,
+    lib/apiClient.ts, hooks/useCurrentUser.ts
+  - artifacts/mockup-sandbox/src/App.tsx, mockupPreviewPlugin.ts,
+    vite.config.ts
+  - scripts/post-merge.sh, scripts/package.json
+
+Read at file-head level (leading code or leading comment block read in
+full — sufficient to state the file's purpose, exported surface, and
+in most cases the dependencies it pulls in — but the body of every
+handler/function was NOT walked line-by-line):
+  - All 35 router files under artifacts/api-server/src/routes/**
+    (heads + every Express route definition extracted)
+  - All ~25 service / helper files under artifacts/api-server/src/lib/
+  - All 15 files under artifacts/api-server/src/engine/v2/functions/
+  - All 5 files under artifacts/api-server/src/engine/v2/llm/
+  - artifacts/api-server/src/engine/v2/types.ts (373 LOC),
+    config.ts (878 LOC), persistence.ts (317 LOC), util.ts
+  - artifacts/api-server/src/lib/auth/oidcClient.ts
+  - lib/api-spec/openapi.yaml (header + tag list only)
+
+Inventoried only (file presence and LOC captured; contents not opened):
+  - All 33 frontend pages under artifacts/unlock-intel/src/pages/
+    (per-page React component bodies are the largest single block of
+    unread code in this scan)
+  - artifacts/unlock-intel/src/components/OutcomeDrawer.tsx (1652 LOC)
+    and PreCallPanel.tsx (727 LOC)
+  - All ~50 shadcn/ui primitive components under
+    artifacts/unlock-intel/src/components/ui/  and equivalent under
+    artifacts/mockup-sandbox/src/components/ui/
+    (each is a thin Radix UI wrapper)
+  - artifacts/unlock-intel/src/hooks/use-aircall-phone.ts,
+    use-mobile.tsx, use-toast.ts, and the equivalent two hook files in
+    mockup-sandbox
+
+Out of scope (deliberately not opened):
+  - Generated code under lib/api-zod/src/generated/ and
+    lib/api-client-react/src/generated/ (Orval output, derived from
+    openapi.yaml)
+  - Body of openapi.yaml beyond header (3,577 lines)
+  - Binary asset artifacts/api-server/src/assets/unlock-design-bible-v0.2.pdf
+    and the Inter font woff2 binaries under src/assets/fonts/
+  - Seed JSON / Markdown payload bodies under
+    artifacts/api-server/src/data/  (registry.json, channels.json,
+    acu-seed.json, compliance_constants.json, leads.json,
+    SCHEMA_SUMMARY.json, 100-CURRENT-STATE-OUTPUT.md,
+    230_EMAILS_Pack1_Templates_V2_CURRENT.txt, the content/ markdown
+    reference docs, and the snapshots/ dir)
+  - All node_modules trees
+  - Pre-existing root markdown reports (HEALTH_CHECK_*, MASTER_*, etc.)
+  - docs/*.md content beyond knowing the file titles and sizes
+
+Limitations (honest):
+  - 33 frontend page components (totalling ~25,000 LOC) were not opened.
+    Their behaviour is described in Section 3 only via the API endpoints
+    they consume and the routes they're mounted at, never via what each
+    page actually does on screen.
+  - The intelligence engine config file (engine/v2/config.ts, 878 LOC)
+    holds the bulk of the spec data (signal registry, gates, routing
+    map, persona config, post-close workflow, etc.). Its leading
+    header was read and the names of its exports captured (visible in
+    engine/v2/index.ts) — but the shape of each constant was not
+    enumerated.
+  - For files read at the head level only, statements about handler
+    bodies (validation specifics, error paths, branching logic inside
+    individual route handlers) are inferred from the imports and
+    leading code; they are not direct observations of every line.
+  - No build, no test run, no DB connection was attempted, so any
+    "this matches that" claim about runtime behaviour is structural
+    only.
+
+Counts at end of scan:
+  - 44 Drizzle schema files in lib/db/src/schema/
+  - 35 sub-routers mounted from artifacts/api-server/src/routes/index.ts
+  - 33 page files in artifacts/unlock-intel/src/pages/
+  - ~50 shadcn/ui primitives per UI artifact
+  - artifacts/api-server/src TypeScript LOC total: 28,734
+  - artifacts/unlock-intel/src TypeScript+TSX LOC total (from per-file
+    sum of files >= 100 LOC alone): >25,000
+  - artifacts/mockup-sandbox/src TypeScript+TSX LOC total: ~5,000
+    (mostly the embedded ui/ primitives)
+
+
+===========================================================================
+SECTION 1 — KEY FILES
+===========================================================================
+
+# ---------- Repo root ----------
+
+package.json
+  Workspace root manifest. private:true. Defines scripts:
+    preinstall (force pnpm; deletes any package-lock/yarn.lock),
+    build (typecheck then `pnpm -r --if-present run build`),
+    typecheck:libs (`tsc --build`),
+    typecheck (libs first then per-artifact + scripts).
+  devDeps: typescript ~5.9.2, prettier ^3.8.1.
+
+pnpm-workspace.yaml
+  packages: artifacts/*, lib/*, lib/integrations/*, scripts.
+  Sets minimumReleaseAge: 1440 (24h supply-chain delay) with @replit/* and
+  stripe-replit-sync excluded.
+  catalog: pins versions for shared deps (react 19.1.0, react-dom 19.1.0,
+  vite ^7.3.0, drizzle-orm ^0.45.1, tanstack-react-query ^5.90.21,
+  tailwindcss ^4.1.14, framer-motion ^12.23.24, lucide-react ^0.545.0,
+  zod ^3.25.76, tsx ^4.21.0, several @replit/vite-plugin-* and
+  @vitejs/plugin-react ^5.0.4, @types/* etc.).
+  autoInstallPeers: false.
+  onlyBuiltDependencies: @swc/core, esbuild, msw, unrs-resolver.
+  overrides: removes every non-linux-x64 native binary from esbuild,
+  lightningcss, @tailwindcss/oxide, rollup, @expo/ngrok-bin; pins
+  @esbuild-kit/esm-loader to tsx; pins esbuild to 0.27.3.
+
+tsconfig.base.json
+  Shared TS compiler options (NOT inspected line-by-line in this scan;
+  presence confirmed and is referenced by per-package tsconfig.json files).
+
+tsconfig.json
+  Workspace-level TypeScript project references file (NOT inspected
+  line-by-line; referenced by `tsc --build`).
+
+.replit
+  modules = ["nodejs-24", "postgresql-16"]
+  Two registered artifacts: artifacts/api-server, artifacts/mockup-sandbox
+  (artifacts/unlock-intel is registered separately via the workspace
+  artifacts registry — see overview block at top of file).
+  deployment.deploymentTarget = "autoscale", router = "application",
+  postBuild runs `pnpm store prune` with CI=true.
+  workflows.runButton = "Project".
+  agent.stack = "PNPM_WORKSPACE", expertMode true,
+  integrations = ["google-drive:1.0.0"].
+  postMerge.path = "scripts/post-merge.sh", timeoutMs 20000.
+  nix.channel = "stable-25_05".
+
+replit.nix
+  Nix package manifest (presence confirmed; not inspected line-by-line).
+
+replit.md
+  Long-form project description. Declares the project as "Unlock Content
+  Intelligence Platform" (UK fintech). Lists "core layers" (Recommendation
+  Engine, Lead History, Content Management, Content Generation & QC,
+  Content Gap Analysis, Feature Update Cascade, ACU, Template/Prompt
+  Registries, Campaign Intelligence Platform, Compliance Constants
+  Governance, Document Import Pipeline, Task Manager, Google Sheets
+  Transcript Sync, Investor Intelligence & Belief State System), enumerates
+  the technical stack, and contains a long "Recent Changes" log running
+  through phases up to 013c. User preferences include: do not modify lib/
+  without instruction; ask before introducing dependencies or making
+  architectural changes.
+
+# ---------- artifacts/api-server ----------
+
+artifacts/api-server/package.json
+  @workspace/api-server, ESM, type:"module".
+  scripts: dev (NODE_ENV=development → build → start), build (`node
+  ./build.mjs`), start (`node --enable-source-maps ./dist/index.mjs`),
+  typecheck (`tsc -p tsconfig.json --noEmit`).
+  deps: @fontsource/inter, @replit/connectors-sdk ^0.3.0,
+  @workspace/api-zod, @workspace/db, @workspace/integrations-anthropic-ai,
+  connect-pg-simple, cookie-parser, cors, drizzle-orm (catalog),
+  express ^5, express-session, jspdf, mammoth, marked, multer ^2,
+  openid-client ^6, pdf-parse, pdfjs-dist 4.4.168, pino, pino-http,
+  puppeteer-core ^24.
+  devDeps: @types/* for the express stack, esbuild ^0.27.3,
+  esbuild-plugin-pino, pino-pretty, thread-stream 3.1.0.
+
+artifacts/api-server/tsconfig.json
+  Per-artifact TS config (presence confirmed).
+
+artifacts/api-server/build.mjs
+  Custom esbuild bundler. Resolves __dirname via fileURLToPath(import.meta.url),
+  recreates dist/, runs esbuild on src/index.ts → dist/index.mjs (ESM,
+  platform=node, bundle=true, outExtension .js→.mjs), externalises every
+  native module known to be unbundleable (sharp, better-sqlite3, sqlite3,
+  canvas, bcrypt, argon2, fsevents, pg-native, oracledb, etc., plus the
+  *.node loader extension and a long allowlist).
+
+artifacts/api-server/src/index.ts
+  Boot script. Reads PORT (throws if missing or non-numeric). Runs
+  `seedDatabase()` from lib/dataManager, then `loadConstants()` from
+  lib/complianceConstantsService — if zero compliance constants come
+  back the process logs FATAL and exits(1). Calls `startUntaggedSweep()`
+  (a 5-minute interval defined in routes/aircall) and finally calls
+  `app.listen(port)`. On seed failure it logs and continues to listen
+  anyway.
+
+artifacts/api-server/src/app.ts
+  Express 5 app factory. trust proxy = 1. Mounts pino-http with custom
+  req/res serialisers. CORS: if APP_URL env is set → restrict origin to
+  it with credentials:true; otherwise permissive cors() (early dev).
+  Mounts cookieParser, express.json, express.urlencoded({extended:true}).
+  Wraps `buildSessionMiddleware()` in try/catch — if SESSION_SECRET is
+  missing the session middleware is skipped and a warning is logged
+  (only /api/auth/* is documented to fail in that case). Finally
+  mounts the api router under `/api`.
+
+artifacts/api-server/src/routes/index.ts
+  Single barrel router that imports and mounts (in this order):
+  authRouter, adminRouter, healthRouter, leadsRouter, documentsRouter,
+  recommendationRouter, contentRouter, generationRouter, dashboardRouter,
+  gdocsRouter, callFrameworkRouter, analyticsRouter, videosRouter,
+  acuRouter, campaignsRouter, templatesRouter, promptsRouter,
+  complianceConstantsRouter, importRouter, tasksRouter,
+  sheetSyncRouter (mounted at `/sheet-sync`), beliefsRouter,
+  leadBeliefsRouter, leadIntelligenceRouter, workQueueRouter,
+  documentHealthRouter, settingsRouter, contactsRouter,
+  campaignsDispatchRouter, aircallRouter, engineRouter,
+  outcomeReviewsRouter, eventsRouter.
+
+artifacts/api-server/src/middlewares/requireAuth.ts
+  Reads req.session.userId, loads usersTable + agentsTable, attaches
+  {user, agent} to req.auth, or responds 401/403 (not_authenticated,
+  user_not_found, no_agent_linked, agent_inactive). On user_not_found
+  it destroys the session.
+
+artifacts/api-server/src/middlewares/requireAdmin.ts
+  Composes requireAuth and then verifies req.auth.user.role === "admin",
+  otherwise 403 admin_only.
+
+artifacts/api-server/src/lib/auth/oidcClient.ts
+  Google OIDC client. Caches `discovery()` for issuer
+  https://accounts.google.com using GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  APP_URL (throws if any missing). Builds redirect_uri =
+  `${APP_URL}/api/auth/callback`. Optional GOOGLE_WORKSPACE_DOMAIN passed as
+  hd hint. Exports getOidcContext, buildAuthorizationUrl (PKCE S256 +
+  state + nonce, scope `openid email profile`), exchangeCode (validates
+  ID token via openid-client.authorizationCodeGrant).
+
+artifacts/api-server/src/lib/auth/session.ts
+  buildSessionMiddleware: express-session backed by connect-pg-simple over
+  the pg.Pool exported from @workspace/db. Cookie name `cu.sid`, rolling
+  sliding 7-day maxAge, httpOnly, sameSite=lax, secure when
+  NODE_ENV==='production'. createTableIfMissing is intentionally NOT used
+  (the session table is declared in lib/db schema). Validates SESSION_SECRET
+  is present and ≥32 chars.
+
+artifacts/api-server/src/lib/queueEvents.ts
+  In-process SSE broadcaster for call-queue updates. Webhook handlers and
+  the untagged-sweep call notifyQueueChanged() to push a refresh signal to
+  every connected Call Command page. Single-process only.
+
+artifacts/api-server/src/lib/logger.ts
+  Pino logger instance (presence confirmed).
+
+artifacts/api-server/src/lib/dataManager.ts (506 LOC)
+  Boot seeder. Imports leadsTable, documentsTable, changelogTable,
+  acuTable, channelsTable, complianceConstantsTable, beliefRegistryTable.
+  Reads JSON seed bundles (registry.json, leads.json,
+  compliance_constants.json, acu-seed.json, channels.json) plus the
+  *.ts seeder modules (seedACURefactor, seedTemplates, seedPrompts,
+  seedOutcomeRules, seedSimConversations). seedDatabase() short-circuits
+  to "incremental seeds only" when at least one lead already exists.
+  Also exports getNextBestAction (used by routes/leads) and
+  validateSeedData (used by routes/dashboard).
+
+artifacts/api-server/src/lib/complianceConstantsService.ts
+  In-memory cache for the compliance_constants table. loadConstants()
+  populates _cache from rows where status='ACTIVE' and is called by
+  index.ts at boot. getConstants() returns the cached set or, when
+  COMPLIANCE_CONSTANTS_DB === "false", the JSON fallback shipped under
+  src/data/. Maintains a hardcoded PROHIBITED_VALUES guard
+  ("22p","7.8x","78x") used by validateOverride.
+
+artifacts/api-server/src/lib/dispatchService.ts (702 LOC)
+  Call-list dispatch engine. resolveAgentRole() joins agentsTable→
+  usersTable to determine 'agent'/'closer'/'admin' and drives
+  closer-tier gating. hasAnyCloser() is the fallback predicate when no
+  closer exists. Public surface used by routes/campaigns-dispatch:
+  getQueueStatus, fillQueue, getCallList, reconcileUncalledContacts.
+
+artifacts/api-server/src/lib/contactIngestionService.ts (502 LOC)
+  CSV upload pipeline. Exports parseCsvRows, detectColumns,
+  suggestColumnMapping, stageUpload, commitUpload, plus the
+  ColumnMapping/ParsedContact types. normalisePhone (UK +44 specific)
+  and normaliseEmail are unit-style helpers in the same file.
+
+artifacts/api-server/src/lib/templates/index.ts (642 LOC)
+  Selects an HTML template (one-pager, three-pager, pack, briefing,
+  explainer, default) by document file_code prefix (10*→one-pager,
+  11*→three-pager, 12*/13*→pack, 18*→briefing). Contains a
+  markdownToHtml() converter and getTemplate / getGdocsTemplate
+  exports consumed by routes/documents and routes/gdocs respectively.
+  Imports BRAND from ../brand for shared colour/typography tokens.
+
+artifacts/api-server/src/lib/pdfService.ts (411 LOC)
+  Server-side PDF rendering. findChromium() locates the Nix Chromium
+  binary (hardcoded /nix/store/...138.0.7204.100 path with `which
+  chromium` fallback). Holds a single puppeteer-core Browser
+  singleton (browserInstance). loadFontBase64() embeds Inter weights
+  400/500/600/700 from src/assets/fonts/Inter-*.woff2 as data URIs
+  inside @font-face declarations. Exports generatePdf, used by
+  routes/documents.
+
+artifacts/api-server/src/lib/formatService.ts
+  Sends document markdown through Claude using a long
+  DESIGN_BIBLE_SYSTEM prompt that encodes Unlock Design Bible v0.2
+  (typography in pt, 8pt spacing grid, brand-green/text-green colour
+  rules, downside-before-upside writing rules, etc.) and returns
+  Google-Docs-compatible HTML body content. Exports
+  formatContentForGdocs and wrapGdocsHtml; consumed by routes/gdocs.
+
+artifacts/api-server/src/lib/acuContradictionDetector.ts (315 LOC)
+  Pairwise scan over LOCKED ACU rows for conflicts. Numerical extraction
+  (extractNumbers regex), then Claude classification of any potential
+  contradiction; persists matches into acu_contradictions.
+
+artifacts/api-server/src/lib/acuScanner.ts (210 LOC)
+  Per-document Claude scan that proposes new acu_candidates rows
+  (importance level, rationale, source context). scanDocument and
+  scanAllDocuments are the public entry points; scan history lands in
+  acu_scan_log.
+
+artifacts/api-server/src/lib/aircallPowerDialer.ts
+  Wraps three Aircall REST endpoints under
+  /v1/users/:user_id/dialer_campaign/phone_numbers (GET / POST /
+  DELETE-by-id) using Basic auth read from integration_configs. Chunks
+  POST bodies at 100 numbers each. Exposes syncQueue used by
+  routes/campaigns-dispatch.
+
+artifacts/api-server/src/lib/analysisPipeline.ts
+  runPostTranscriptPipeline orchestrates: snapshot beliefs_before, save
+  transcript_text on the lead, generateIntelligence, analyzeBeliefs,
+  Claude-generated conversation summary, then a lead_conversations
+  insert with before/after snapshots. Each step is independent — one
+  failing does not abort the others.
+
+artifacts/api-server/src/lib/beliefAnalysisService.ts (210 LOC)
+  analyzeBeliefs(leadId, transcript) — Claude classifies each registered
+  belief into a state for the lead, writing/updating lead_beliefs and
+  recording belief_transitions. CLUSTER_ORDER pins the
+  growth_seeker/preserver/legacy_builder ordinals.
+
+artifacts/api-server/src/lib/brand.ts
+  Constant export BRAND = { fonts, colours, spacing, logo, typography }.
+  Drives pdfService.ts and the templates module.
+
+artifacts/api-server/src/lib/campaignGenerator.ts (390 LOC)
+  buildSequenceFromBrief / buildAssetGenerationPrompt /
+  buildACBuildInstructions / buildTagTable — produce the prompt
+  scaffolding used by routes/campaigns when a brief is converted into
+  a generated sequence + per-node asset prompts. GENERIC_TO_SPECIFIC
+  maps high-level channels (email/call/linkedin/...) to specific
+  output_type values.
+
+artifacts/api-server/src/lib/campaignQC.ts (218 LOC)
+  runCampaignQC(sequence, assets, complianceConstraints) — combines
+  per-asset channel-constraint checks with sequence-level structural
+  checks (CampaignQCCheck rows) and returns
+  PASSED/FAILED/PENDING.
+
+artifacts/api-server/src/lib/channelConstraints.ts
+  validateChannelCompliance(content, channel) — counts words, lines,
+  sentences, links and reports ChannelViolation rows against the
+  channel's max_words/max_links/max_lines/max_sentences columns.
+  Companion buildChannelConstraintPrompt and getOutputTypeForChannel
+  helpers are used by the campaign generator.
+
+artifacts/api-server/src/lib/claudeTimeout.ts
+  claudeWithTimeout(client, params, timeoutMs=90_000) wraps
+  Anthropic.messages.create with an AbortController; throws
+  ClaudeTimeoutError on abort. Used by every Claude call site in the
+  codebase.
+
+artifacts/api-server/src/lib/fuzzyMatch.ts
+  fuzzyMatchLeads(query, leads) — exact / token-set / first-name-prefix
+  / last-name-prefix scoring (1.0/0.85/0.5/0.4) returning the top 3
+  candidates with confidence scores. Consumed by routes/leads (lead
+  match endpoint) and routes/sheet-sync.
+
+artifacts/api-server/src/lib/generationEngine.ts (250 LOC)
+  checkTemplateCompliance enforces required sections, max_words (+5%
+  tolerance), max_sentences, max_chars per template section.
+  Generation runs Claude (claudeWithTimeout) against acu+
+  outputTemplate context to fill {section_id: content} maps.
+
+artifacts/api-server/src/lib/importParser.ts
+  parseImportFile reads <!--IMPORT_FILE--> headers and individual
+  blocks out of an import .md/.txt file, hashing each block, marking
+  blocks VALID or REJECTED, and tagging matches against a
+  PROHIBITED_PATTERNS list ("22p","7.8x","78x","asa","safe",
+  "series a","£99/month","£249/month","advanced subscription
+  agreement"). Exports computeFileHash for the upload session table.
+
+artifacts/api-server/src/lib/intelligenceService.ts
+  generateIntelligence(leadId) — pulls lead notes + transcript_text +
+  the last 5 conversation summaries, sends them to Claude with the
+  ALLOWED_FIELDS list (qualification_status, higher_rate_taxpayer,
+  cluster, hot_button, SPIN fields, blocker_type, …) and merges the
+  result into lead_intelligence. Returns {intelligence, isNew}.
+
+artifacts/api-server/src/lib/outcomeReviews.ts (250 LOC)
+  Phase 4.7 outcome-review lifecycle helpers. Exports handOffReview,
+  reclaimReview, recordActionDecision (consumed by
+  routes/outcome-reviews). Header comment encodes the rules: handoff
+  is always explicit; closer can bounce a review back to the original
+  agent; admin can reclaim or reassign; ownership defaults to the
+  agent of the most-recent call_list_membership for the contact.
+
+artifacts/api-server/src/lib/propagation.ts
+  detectPropagationTargets(sourceDocId) — scans documents for
+  upstream_dependencies that reference the source doc and returns
+  direct + (when source is tier 1) second-order dependents.
+  propagateFromDocument flips review_state on those targets and
+  writes changelog entries.
+
+artifacts/api-server/src/lib/recommendation-context.ts
+  Pure-function deriveMatrixFlags() — pattern-matches transcript
+  summary, gaps and objections against EIS-familiarity / IHT-confirmed
+  / adviser-mentioned regex sets and returns three booleans plus
+  derivation_notes. Consumed by the recommendation router.
+
+artifacts/api-server/src/lib/tagModel.ts
+  Single source of truth for Outcome and SideEffect string unions
+  (interested, no-interest, no-answer, callback-requested,
+  meeting-booked, hung-up, do-not-call, does-not-exist /
+  none, record_only, cool_off, immediate_recall, callback_1d/2d/3d/7d,
+  exclude_from_campaign, global_exclude). Documented under
+  docs/decisions/001-tag-outcome-side-effect-model.md. Imported by
+  the aircall webhook handler, dispatchService, and the settings UI.
+
+artifacts/api-server/src/lib/taskHelpers.ts
+  createReviewTasksForPropagation(targets) — for each propagation
+  target inserts a "Review: ..." task row (Open / Review type) unless
+  one already exists in non-Done state, and writes a changelog entry.
+
+artifacts/api-server/src/types/express.d.ts
+  Module augmentation that adds `auth?: { user, agent }` to Express
+  Request (the value populated by requireAuth).
+
+artifacts/api-server/src/types/text-imports.d.ts
+  Ambient module declaration so `import x from "*.txt"` (and similar
+  text/markdown imports used by template/seed loaders) typechecks as
+  string.
+
+artifacts/api-server/src/data/
+  Seed/asset directory. Files observed:
+    100-CURRENT-STATE-OUTPUT.md, 230_EMAILS_Pack1_Templates_V2_CURRENT.txt,
+    SCHEMA_SUMMARY.json, registry.json, channels.json, acu-seed.json,
+    compliance_constants.json, leads.json, document-usage-matrix.ts (467
+    LOC), seed-templates.ts (412 LOC), seed-outcome-rules.ts (294 LOC),
+    seed-acu-refactor.ts, seed-prompts.ts, seed-sim-conversations.ts,
+    compare-nba-cli.ts, content/ subdir (8 markdown reference docs incl.
+    Voice Style Guide, Master Generation Context, Business Plan, Sales
+    Strategy, Communication Strategy, Foundational Inputs Schema,
+    Investor Personas Guide, Content Bank V4), snapshots/
+    (gap_assessment_2026-04-04.md).
+  Bodies of the JSON / Markdown payloads were not opened. The *.ts
+  seeders alongside them (and dataManager.ts above) are the loaders;
+  payloads are referenced via `import data from "./X.json" with
+  { type: "json" }` and via the text-imports.d.ts ambient declaration.
+
+artifacts/api-server/src/assets/
+  unlock-design-bible-v0.2.pdf and a fonts/ subdirectory. Binary; not
+  inspected.
+
+artifacts/api-server/src/engine/v2/version.ts
+  Exports ENGINE_VERSION = "3.0.0",
+  ENGINE_SPEC = "402_SPEC_Intelligence_Engine_V3_CURRENT.md",
+  ENGINE_UPDATED = "2026-04-14".
+
+artifacts/api-server/src/engine/v2/index.ts
+  Public engine entry point. Re-exports types and ENGINE_VERSION/SPEC/
+  UPDATED, and the function set:
+    detectPersona, detectHotButton, analyseSignals, evaluateGates,
+    routeContent, generateCoverNote, determineNextAction, buildCrmNote,
+    validateCompliance, processTranscript, processTranscriptWithLLM,
+    processTranscriptDetailed (+ its ProcessOptions / ProcessDetail
+    types), loadOutcomeRules / invalidateOutcomeRulesCache /
+    isOutcomeRulesCacheWarm + LoadedOutcomeRule type,
+    evaluateOutcomeRules / outcomeRulesFlagEnabled + RuleCoverageError,
+    UnknownLvalueError + EvaluationContext / EvaluationTrace types,
+    extractViaLLM / ExtractionError + ExtractionAudit / ExtractionSuccess
+    + LLMExtractionResult.
+  V3 additions exported: detectQuestions, analyseDemoSegments,
+  generateEmail, determinePostCloseActions, routeToBook2.
+  Persistence: loadInvestor, saveEngineRun, getEngineSignals,
+  getEngineTransitions, getEngineRuns, getInvestorState.
+  Config diagnostics: SIGNAL_REGISTRY, GATES, ROUTING_MAP, PERSONA_CONFIG,
+  CALL_TYPES, TIMING_RULES, COMPLIANCE, RED_SIGNAL_ACTIONS,
+  PIPELINE_STAGES, QUESTION_REGISTRY, DEMO_SEGMENTS, COLD_CALL_STEPS,
+  EMAIL_TEMPLATES, PROBLEM_BELIEF_PATTERNS, POST_CLOSE_WORKFLOW,
+  ADVISER_LOOP_WORKFLOW, BOOK2_ROUTING.
+
+artifacts/api-server/src/engine/v2/types.ts (373 LOC)
+  Header read. Defines:
+    SignalCategory ("qualification"|"core"|"problem"|"situational"),
+    BeliefState (green|amber|grey|red|n_a),
+    QualState (confirmed|not_confirmed|unknown),
+    Persona (preserver|growth_seeker|legacy_builder|undetermined),
+    HotButton (family|freedom|legacy|relief|significance),
+    DecisionStyle (quick|thorough|unknown),
+    BookTrack (book_1|nurture),
+    CallType (cold_call|demo|opportunity),
+    ActionType (send_content|schedule_call|close_deal|move_to_nurture|
+                escalate_to_tom|reserve_stock|initiate_seedlegals|
+                schedule_adviser_call),
+    Owner (agent|tom|system),
+    Confidence (high|medium|low),
+    FlagType (compliance_warning|missing_data|timing_violation|
+              gate_blocked).
+  Interfaces seen: SignalState, SignalMap (Record<string, SignalState>),
+  FactFind, CallRecord, ArtifactRecord, Investor, SignalUpdate,
+  ContentRecommendation, GateResult (incomplete in scan — body of file
+  beyond first 100 lines not read).
+
+artifacts/api-server/src/engine/v2/config.ts (878 LOC)
+  Header confirms: holds the SIGNAL_REGISTRY plus the constants
+  re-exported from index.ts. Body not read.
+
+artifacts/api-server/src/engine/v2/persistence.ts (317 LOC)
+  Implements the loadInvestor/saveEngineRun/getEngine* helpers exported
+  by index.ts. Body not read line-by-line.
+
+artifacts/api-server/src/engine/v2/util.ts
+  Engine helper module. Body not read.
+
+artifacts/api-server/src/engine/v2/functions/  (15 files, leading
+comments captured):
+  detectPersona.ts        — "C1. detectPersona", uses PERSONA_CONFIG
+  detectHotButton.ts      — "C2. detectHotButton", uses PERSONA_CONFIG
+  analyseSignals.ts       — "C3. analyseSignals", V3: also checks A14
+                             PROBLEM_BELIEF_PATTERNS for G1-G3, L1-L2,
+                             P2-P3 in addition to per-signal patterns
+  evaluateGates.ts        — "C4. evaluateGates", uses GATES,
+                             SIGNAL_REGISTRY
+  routeContent.ts         — "C5. routeContent", uses ROUTING_MAP
+  generateCoverNote.ts    — "C6. generateCoverNote", template-based
+                             observation hierarchy per spec
+  determineNextAction.ts  — "C7. determineNextAction", legacy hardcoded
+                             cascade replaced by outcome-rules engine
+                             (gated by ENGINE_OUTCOME_RULES env flag)
+  buildCrmNote.ts         — "C8. buildCrmNote"
+  validateCompliance.ts   — "C9. validateCompliance", uses COMPLIANCE
+  detectQuestions.ts      — "C11. detectQuestions" (V3): fuzzy-matches
+                             diagnostic questions against transcript
+  analyseDemoSegments.ts  — "C12. analyseDemoSegments" (V3): runs only
+                             when callType === "demo"
+  generateEmail.ts (223 LOC)
+                          — "C13. generateEmail" (V3): produces complete
+                             email draft (EMAIL_1 demo confirmation or
+                             EMAIL_2 post-demo) with subject, body,
+                             attachment, cover-note angle
+  determinePostCloseActions.ts
+                          — "C14. determinePostCloseActions" (V3): maps
+                             a Call 3 outcome to ordered action list
+                             from POST_CLOSE_WORKFLOW (committed) or
+                             ADVISER_LOOP_WORKFLOW (adviser_loop)
+  routeToBook2.ts         — "C15. routeToBook2" (V3): respects
+                             founding_investor permanent block
+  processTranscript.ts (541 LOC)
+                          — "C16. processTranscript — V3 orchestrator,
+                             supersedes V2's C10. Returns EngineOutputV3
+                             which is a strict superset of EngineOutput."
+
+artifacts/api-server/src/engine/v2/llm/ (5 files):
+  extractionSchema.ts     — Defines LLMExtractionResult shape used by
+                             the extractor
+  buildExtractionPrompt.ts (313 LOC)
+  extractViaLLM.ts        — Main entry: extractViaLLM, ExtractionError,
+                             ExtractionAudit, ExtractionSuccess
+  adaptExtraction.ts (210 LOC)
+                          — Adapters from LLMExtractionResult to
+                             Layer-2 inputs:
+                             extractionToPersona, extractionToHotButton,
+                             extractionToSignalUpdates,
+                             extractionToQuestionDetections,
+                             extractionToFactFindUpdates,
+                             extractionToDemoScore
+  generateEmailWithLLM.ts (358 LOC)
+                          — V3 LLM-backed email generator (V2 fallback
+                             still callable; gate path not inspected)
+
+artifacts/api-server/src/engine/v2/outcomeRules/  (Phase 7.1a NBA rule
+engine):
+  loader.ts               — loadOutcomeRules, invalidateOutcomeRulesCache,
+                             isOutcomeRulesCacheWarm; produces
+                             LoadedOutcomeRule
+  evaluator.ts (318 LOC)  — evaluateOutcomeRules, outcomeRulesFlagEnabled
+                             (reads ENGINE_OUTCOME_RULES env), throws
+                             RuleCoverageError / UnknownLvalueError;
+                             EvaluationContext / EvaluationTrace exported
+
+artifacts/api-server/src/engine/v2/tests/  (in-house assertion-based
+tests for the engine — see Section 5):
+  fixtures.ts             — blankInvestor() factory, signalAt() helper
+  runTests.ts (642 LOC)   — ~30 test() blocks covering every public
+                             engine function (V3, backwards compatible
+                             with V2). Defines its own minimal test()
+                             /expect() helpers, tracks passed/failed
+                             counters, prints "✓"/"✗" per case, exits
+                             non-zero on any failure.
+  runAdapterTests.ts (252 LOC)
+                          — ~12 unit tests for the LLM-result →
+                             Layer-2-input adapters in
+                             llm/adaptExtraction.ts. Same in-house
+                             test() pattern. Synthetic
+                             LLMExtractionResult fixtures; no Claude
+                             call.
+
+artifacts/api-server/src/routes/  (35 sub-routers; file head + every
+Express route definition captured for each. Individual handler bodies
+were not walked line-by-line, so per-handler validation specifics and
+error paths beyond what's visible from imports/leading code are not
+inventoried.)
+
+  health.ts
+    GET /healthz — returns parsed HealthCheckResponse from api-zod.
+
+  auth/index.ts (364 LOC)
+    GET  /auth/google                 — OIDC kick-off (writes state +
+                                         PKCE verifier + nonce to session)
+    GET  /auth/callback               — code exchange, user upsert, session
+                                         binding
+    POST /auth/logout
+    GET  /auth/dev-mode               — feature probe
+    POST /auth/dev-login              — non-OIDC dev path
+    GET  /auth/me                     — protected; returns {user, agent}
+
+  admin/index.ts (1118 LOC)
+    GET   /admin/agents
+    POST  /admin/agents
+    PATCH /admin/agents/:id
+    GET   /admin/agents/:id/power-dialer-queue
+    POST  /admin/agents/:id/clear-power-dialer-queue
+    GET   /admin/aircall/users
+    GET   /admin/tag-mapping
+    POST  /admin/simulate-call
+    GET   /admin/agents/:id/call-lists
+    GET   /admin/engine-outcome-rules
+    POST  /admin/engine-outcome-rules/seed
+    POST  /admin/engine-outcome-rules
+    PUT   /admin/engine-outcome-rules/:id
+    DELETE /admin/engine-outcome-rules/:id
+    GET   /admin/engine-runs/recent
+    POST  /admin/engine-outcome-rules/trace
+    POST  /admin/engine-outcome-rules/preview
+
+  leads/index.ts (449 LOC)
+    GET    /leads/match
+    GET    /leads
+    POST   /leads
+    DELETE /leads/:id
+    POST   /leads/bulk
+    GET    /leads/:id
+    PATCH  /leads/:id
+    PATCH  /leads/:id/notes
+    POST   /leads/:id/confirm-persona
+    GET    /leads/:id/next-action
+
+  documents/index.ts (740 LOC)
+    GET   /documents
+    GET   /documents/propagation-status
+    POST  /documents/:id/quality-score
+    GET   /documents/:id
+    POST  /documents/:id/generate-pdf
+    GET   /documents/:id/download-pdf
+    POST  /documents/:id/export-pdf
+    POST  /documents/import-pdf            (multer single-file upload)
+    GET   /documents/:id/source-pdf
+    PATCH /documents/:id
+    POST  /documents/:id/propagate
+
+  recommendation/index.ts (1471 LOC)
+    POST /recommendation/parse-transcripts (multer; up to MAX_FILES+1)
+    POST /recommendation/analyze-batch
+    POST /recommendation/analyze
+    POST /recommendation/rank
+    POST /recommendation/confirm-send
+    POST /recommendation/email-draft
+    POST /recommendation/gap-brief
+
+  content/feature-update.ts (346 LOC)
+    POST /content/feature-update
+    GET  /content/feature-update/:updateId/queue
+  content/gaps.ts (728 LOC)
+    GET   /content/gaps
+    GET   /content/gaps/history
+    GET   /content/gaps/history/:snapshotId
+    GET   /content/gaps/history/:snapshotId/export
+    PATCH /content/gaps/history/:snapshotId
+    POST  /content/generate-brief
+    POST  /content/generate-from-brief
+  content/index.ts
+    GET /content-bank
+    GET /content-bank/personas
+
+  generation/index.ts (925 LOC)
+    POST /generation/generate
+    POST /generation/:id/regenerate
+    POST /generation/from-template
+    POST /generation/:id/qc-rerun
+    POST /generation/:id/promote
+
+  dashboard/index.ts
+    GET /dashboard/summary
+    GET /dashboard/recent-activity
+    GET /changelog
+    GET /seed/validate
+
+  gdocs/index.ts (320 LOC)
+    POST /gdocs/export/:id
+    POST /gdocs/import/:id
+    GET  /gdocs/status/:id
+
+  call-framework/index.ts
+    GET /call-framework/questions
+
+  analytics/index.ts
+    GET /analytics/personas
+
+  videos/index.ts
+    GET   /videos
+    POST  /videos
+    GET   /videos/:id
+    PATCH /videos/:id
+    POST  /videos/:id/promote
+
+  acu/index.ts (583 LOC)
+    GET   /acu, /acu/prohibited, /acu/injectable, /acu/backlog,
+          /acu/backlog/contradictions, /acu/coverage, /acu/scan-log
+    POST  /acu/scan, /acu/scan/:document_id, /acu, /acu/:id/version
+    PATCH /acu/backlog/:id/{approve,reject,defer,duplicate},
+          /acu/contradictions/:id/resolve,
+          /acu/:id/{approve,lock,cascade}
+    GET   /acu/:id
+
+  campaigns/index.ts (550 LOC)
+    POST  /campaigns
+    GET   /campaigns
+    GET   /campaigns/:id
+    GET   /campaigns/:id/assets
+    POST  /campaigns/:id/generate
+    GET   /campaigns/:id/qc
+    PATCH /campaigns/:id/activate
+    GET   /campaigns/:id/sequence
+    GET   /campaigns/:id/ac-build
+    GET   /campaigns/:id/tag-table
+    GET   /channels
+    GET   /channels/:id
+
+  templates/index.ts
+    GET /templates, GET /templates/:id
+
+  prompts/index.ts
+    GET /prompts, GET /prompts/:id
+
+  compliance-constants/index.ts (265 LOC)
+    GET  /compliance-constants
+    GET  /compliance-constants/categories
+    POST /compliance-constants/propose
+    POST /compliance-constants/confirm
+    GET  /compliance-constants/key/:key
+    GET  /compliance-constants/:id
+
+  import/index.ts (429 LOC)
+    GET  /import
+    POST /import/parse
+    GET  /import/documents-list
+    POST /import/quick-update
+    GET  /import/:session_id
+    POST /import/:session_id/execute
+
+  tasks/index.ts (215 LOC)
+    GET    /tasks
+    POST   /tasks/reconcile
+    POST   /tasks
+    GET    /tasks/summary
+    PATCH  /tasks/:id
+    DELETE /tasks/:id
+
+  sheet-sync/index.ts (214 LOC)   — mounted under /api/sheet-sync
+    POST /sync
+    GET  /sessions
+    GET  /sessions/:id
+
+  beliefs/index.ts
+    GET /beliefs
+
+  lead-beliefs/index.ts (290 LOC)
+    GET   /leads/:leadId/beliefs/next
+    POST  /leads/:leadId/beliefs/analyze
+    GET   /leads/:leadId/beliefs/gates
+    GET   /leads/:leadId/beliefs
+    PATCH /leads/:leadId/beliefs/:beliefId
+    GET   /leads/:leadId/beliefs/transitions
+
+  lead-intelligence/index.ts
+    POST  /leads/:leadId/intelligence/generate
+    GET   /leads/:leadId/intelligence
+    PATCH /leads/:leadId/intelligence
+
+  work-queue/index.ts (699 LOC)
+    GET  /work-queue/status
+    POST /work-queue/start
+    GET  /work-queue/cards
+    POST /work-queue/auto-fix
+    GET  /work-queue/summary
+    POST /work-queue/cards/:findingId/accept
+    POST /work-queue/cards/:findingId/skip
+
+  document-health/index.ts (325 LOC)
+    POST /document-health/run
+    GET  /document-health/latest
+
+  settings/index.ts (335 LOC)   — most endpoints gated by requireAdmin
+    GET   /settings/integrations              [requireAdmin]
+    GET   /settings/integrations/:provider
+    POST  /settings/integrations/:provider    [requireAdmin]
+    POST  /settings/integrations/aircall/test-connection [requireAdmin]
+    GET   /settings/integrations/aircall/users           [requireAdmin]
+    GET   /settings/agents
+    POST  /settings/agents                    [requireAdmin]
+    PATCH /settings/agents/:id                [requireAdmin]
+    DELETE /settings/agents/:id               [requireAdmin]
+
+  contacts/index.ts (239 LOC)
+    GET   /contacts
+    GET   /contacts/sources
+    GET   /contacts/stats
+    GET   /contacts/uploads
+    POST  /contacts/uploads/suggest
+    POST  /contacts/uploads
+    GET   /contacts/uploads/:sessionId
+    PATCH /contacts/uploads/:sessionId/decisions
+    POST  /contacts/uploads/:sessionId/commit
+    POST  /contacts/uploads/:sessionId/cancel
+
+  campaigns-dispatch/index.ts (466 LOC)
+    GET    /call-lists
+    POST   /call-lists
+    PATCH  /call-lists/:id
+    DELETE /call-lists/:id
+    GET    /call-lists/:id/queue-status
+    GET    /call-lists/new-preview
+    POST   /call-lists/:id/fill-queue
+    GET    /call-lists/:id/call-list
+    POST   /call-lists/:id/send-to-power-dialer
+    GET    /call-lists/today-outcomes
+    GET    /call-lists/stale-count
+    POST   /call-lists/carry-over
+    POST   /call-lists/reconcile
+    GET    /call-lists/:id/pool-count
+
+  aircall/index.ts (1203 LOC)
+    GET  /aircall/webhook-log
+    POST /aircall/webhook
+    GET  /aircall/webhook
+    POST /aircall/sweep-untagged
+    Also exports startUntaggedSweep() (consumed by src/index.ts).
+    Also exports handleCallEnded() (consumed by admin router).
+
+  engine/index.ts (536 LOC)
+    GET  /engine/version
+    GET  /engine/config/all
+    GET  /engine/config/questions
+    GET  /engine/config/signals
+    GET  /engine/config/demo-segments
+    GET  /engine/config/documents
+    GET  /engine/contact/:id
+    GET  /engine/runs/:id
+    POST /engine/reprocess
+    POST /engine/compare
+    POST /engine/compare-nba
+
+  outcome-reviews/index.ts (505 LOC)
+    GET  /outcome-reviews
+    GET  /outcome-reviews/count
+    GET  /outcome-reviews/by-run/:runId
+    GET  /outcome-reviews/:id
+    POST /outcome-reviews/:id/hand-off
+    POST /outcome-reviews/:id/reclaim
+    POST /outcome-reviews/:id/decisions
+    POST /outcome-reviews/:id/notes
+    POST /outcome-reviews/:id/actioned
+    GET  /users/closers
+
+  events/index.ts
+    GET /events/queue   — SSE endpoint (Content-Type:
+                          text/event-stream); subscribes via
+                          subscribeQueueEvents() from
+                          lib/queueEvents
+    GET /events/health  — diagnostic for subscriberCount()
+
+# ---------- artifacts/unlock-intel (React+Vite SPA) ----------
+
+artifacts/unlock-intel/package.json
+  @workspace/unlock-intel, ESM. Scripts: dev (`vite --host 0.0.0.0`),
+  build, serve, typecheck. devDeps: full @radix-ui set,
+  @hookform/resolvers, @tanstack/react-query (catalog), react/react-dom
+  catalog (19.1.0), react-hook-form, react-day-picker, react-icons,
+  react-resizable-panels, recharts, sonner, vaul, framer-motion,
+  lucide-react, clsx, class-variance-authority, tailwind-merge,
+  tailwindcss + @tailwindcss/vite + @tailwindcss/typography, vite (catalog),
+  @vitejs/plugin-react, @replit/vite-plugin-cartographer,
+  @replit/vite-plugin-dev-banner, @replit/vite-plugin-runtime-error-modal,
+  cmdk, date-fns, embla-carousel-react, input-otp, next-themes, zod,
+  wouter, @workspace/api-client-react.
+  Runtime deps (`dependencies`, not `devDependencies`): aircall-everywhere
+  ^2.0.5, react-markdown ^10.1.0.
+
+artifacts/unlock-intel/vite.config.ts
+  Per-artifact Vite config (presence confirmed; not inspected line-by-line).
+
+artifacts/unlock-intel/tsconfig.json
+  Per-artifact TS config (presence confirmed).
+
+artifacts/unlock-intel/index.html
+  HTML entry (presence confirmed).
+
+artifacts/unlock-intel/src/main.tsx
+  ReactDOM.createRoot(document.getElementById("root")!).render(<App />)
+  + side-effect import of "./index.css".
+
+artifacts/unlock-intel/src/App.tsx
+  React Query client (retry:false, refetchOnWindowFocus:false), wrapped
+  in TooltipProvider and WouterRouter (base = trimmed BASE_URL).
+  Route table:
+    PUBLIC  /login                       → LoginPage
+    AUTHED  (everything else under <ProtectedRoute><AppLayout>):
+      /                                 → CallCommand
+      /dashboard                        → Dashboard
+      /recommend                        → Recommend
+      /leads, /leads/:id                → Leads, LeadDetail
+      /registry, /registry/:id          → Registry, DocumentDetail
+      /content-bank                     → ContentBank
+      /changelog                        → Changelog
+      /generate                         → Generate
+      /gaps                             → GapAnalysis
+      /feature-updates                  → FeatureUpdates
+      /call-prep                        → CallPrep
+      /analytics/personas               → PersonaAnalytics
+      /acu                              → ACUPage
+      /campaigns, /campaigns/:id        → CampaignsPage, CampaignDetailPage
+      /compliance-constants             → ComplianceConstants
+      /import                           → ImportPage
+      /tasks                            → TasksPage
+      /work-queue                       → WorkQueue
+      /document-health                  → DocumentHealth
+      /settings                         → IntegrationSettings  [admin]
+      /admin/agents                     → AdminAgentsPage      [admin]
+      /admin/simulate-call              → AdminSimulateCallPage [admin]
+      /admin/engine-config              → AdminEngineConfigPage [admin]
+      /admin/outcome-rules              → AdminOutcomeRulesPage [admin]
+      /contacts/upload                  → ContactIngestion
+      /call-list                        → CallList
+      /outcomes, /outcomes/:id          → OutcomesPage, OutcomeDetailPage
+      /webhook-log                      → WebhookLog
+      *                                 → NotFound
+  Mounts <Toaster /> globally.
+
+artifacts/unlock-intel/src/components/layout.tsx (334 LOC)
+  AppLayout shell. Body not fully read. Header observed earlier in
+  inventory: defines 4 nav groups; some entries are role-gated.
+
+artifacts/unlock-intel/src/components/ProtectedRoute.tsx
+  Probes useCurrentUser(); when not loading and no data and no error →
+  setLocation(`/login?returnTo=${encoded current path}`). Renders
+  children only after a successful /api/auth/me response.
+
+artifacts/unlock-intel/src/components/AdminOnlyRoute.tsx
+  Assumes ProtectedRoute already ran. If user role !== "admin", redirects
+  to "/". Otherwise renders children.
+
+artifacts/unlock-intel/src/components/OutcomeDrawer.tsx (1652 LOC)
+artifacts/unlock-intel/src/components/PreCallPanel.tsx (727 LOC)
+  Inventoried only — file body not opened.
+
+artifacts/unlock-intel/src/components/ui/  (shadcn/ui primitives — ~50
+files, each one a small wrapper around Radix UI or the equivalent
+upstream component. Not opened individually.)
+
+artifacts/unlock-intel/src/lib/apiClient.ts
+  Exports apiFetch(path, opts), apiPost<T>(path, body, opts), logout(),
+  UnauthorizedError class.
+  apiFetch always sends `credentials:"include"`, sets Content-Type:
+  application/json when body is non-FormData, and on a 401 (when
+  redirectOn401 is true, default) sets window.location.href to
+  /login?returnTo=<encoded path> and throws UnauthorizedError.
+
+artifacts/unlock-intel/src/lib/utils.ts
+  Standard shadcn `cn()` helper (presence confirmed; body not read).
+
+artifacts/unlock-intel/src/hooks/useCurrentUser.ts
+  Exports CurrentUser type, isAdmin(data), and useCurrentUser() — a
+  tanstack-query that calls /api/auth/me with redirectOn401:false,
+  returns null on 401 (not an error), throws on other non-OK statuses,
+  staleTime 60s, no retries.
+
+artifacts/unlock-intel/src/hooks/use-aircall-phone.ts
+artifacts/unlock-intel/src/hooks/use-mobile.tsx
+artifacts/unlock-intel/src/hooks/use-toast.ts
+  Inventoried only — file bodies not opened. (use-mobile and use-toast
+  are the standard shadcn hooks; use-aircall-phone is local.)
+
+artifacts/unlock-intel/src/types/  (directory observed; contents not
+inventoried in this scan).
+
+artifacts/unlock-intel/src/index.css
+  Tailwind entry + theme tokens (presence confirmed).
+
+artifacts/unlock-intel/src/pages/  (33 files):
+  login.tsx, dashboard.tsx, recommend.tsx (1283 LOC),
+  leads.tsx (392 LOC), lead-detail.tsx (904 LOC),
+  registry.tsx (487 LOC), document-detail.tsx (847 LOC),
+  content-bank.tsx, changelog.tsx, generate.tsx (746 LOC),
+  gaps.tsx (517 LOC), feature-updates.tsx (364 LOC),
+  call-prep.tsx (335 LOC), persona-analytics.tsx (277 LOC),
+  acu.tsx (1332 LOC), campaigns.tsx (563 LOC),
+  campaign-detail.tsx (671 LOC), compliance-constants.tsx (462 LOC),
+  import.tsx (1060 LOC), tasks.tsx (348 LOC),
+  work-queue.tsx (715 LOC), document-health.tsx (473 LOC),
+  settings.tsx (900 LOC), contact-ingestion.tsx (823 LOC),
+  call-list.tsx (393 LOC), call-command.tsx (2113 LOC),
+  webhook-log.tsx, outcomes.tsx (344 LOC),
+  outcome-detail.tsx (1295 LOC), admin-agents.tsx (478 LOC),
+  admin-simulate-call.tsx (629 LOC),
+  admin-engine-config.tsx (1311 LOC),
+  admin-outcome-rules.tsx (1444 LOC), not-found.tsx.
+  Inventoried only — each is a Wouter-routed page mounted from App.tsx;
+  per-page React component bodies NOT opened in this scan.
+
+# ---------- artifacts/mockup-sandbox ----------
+
+artifacts/mockup-sandbox/package.json
+  @workspace/mockup-sandbox v2.0.0, ESM. Scripts: dev (`vite dev`),
+  build, preview, typecheck. devDeps: same Radix/shadcn/Vite stack as
+  unlock-intel plus chokidar ^4 and fast-glob ^3.
+
+artifacts/mockup-sandbox/vite.config.ts (72 LOC)
+  Per-artifact Vite config (presence confirmed; not opened end-to-end).
+
+artifacts/mockup-sandbox/mockupPreviewPlugin.ts (180 LOC)
+  Custom Vite plugin (file presence + LOC confirmed; body not read).
+
+artifacts/mockup-sandbox/index.html
+  HTML entry (presence confirmed).
+
+artifacts/mockup-sandbox/src/main.tsx
+  Standard ReactDOM.createRoot mount.
+
+artifacts/mockup-sandbox/src/App.tsx (146 LOC)
+  Body not read end-to-end.
+
+artifacts/mockup-sandbox/src/.generated/mockup-components.ts (5 LOC)
+  Generated index produced by mockupPreviewPlugin.
+
+artifacts/mockup-sandbox/src/components/ui/  (~50 shadcn/ui primitives,
+each a small wrapper; not opened individually).
+
+artifacts/mockup-sandbox/src/lib/utils.ts (6 LOC)
+  Standard `cn()` helper (presence confirmed).
+
+artifacts/mockup-sandbox/src/hooks/use-mobile.tsx, use-toast.ts
+  Inventoried only — duplicates of the standard shadcn hooks of the
+  same name in unlock-intel.
+
+# ---------- lib/ (shared packages) ----------
+
+lib/api-spec/openapi.yaml
+  3577-line OpenAPI 3.1.0 spec. info.title="Api", version 0.1.0.
+  servers: /api. Tag list (header confirmed) includes: health, leads,
+  recommendation, documents, compliance, changelog, content, gaps,
+  feature-update, generation, dashboard, … (full tag list and
+  operations not enumerated — only the file header).
+
+lib/api-spec/orval.config.ts
+  Two Orval generators driven from openapi.yaml:
+    "api-client-react" → lib/api-client-react/src/generated, mode "split",
+      client "react-query", baseUrl "/api", custom-fetch mutator at
+      lib/api-client-react/src/custom-fetch.ts.
+    "zod"              → lib/api-zod/src/generated, mode "split",
+      client "zod", schemas under generated/types, useDates+useBigInt,
+      coerce config covers boolean/number/string for query+param,
+      bigint+date for body+response.
+  An InputTransformerFn forces info.title="Api" so the generated
+  module name is api.ts.
+
+lib/api-spec/package.json
+  @workspace/api-spec, scripts: codegen (`orval --config ./orval.config.ts`).
+
+lib/api-zod/
+  package.json + tsconfig.json + dist/ + src/index.ts (wrapper) +
+  src/generated/ (Orval output — files not read individually).
+
+lib/api-client-react/
+  package.json + tsconfig.json + dist/ + src/index.ts +
+  src/custom-fetch.ts (Orval mutator) + src/generated/ (Orval output).
+
+lib/db/package.json
+  @workspace/db. exports: . → src/index.ts, ./schema → src/schema/index.ts.
+  scripts: push (`drizzle-kit push --config ./drizzle.config.ts`),
+  push-force.
+  deps: drizzle-orm (catalog), drizzle-zod ^0.8.3, pg ^8.20.0,
+  zod (catalog). devDep: drizzle-kit ^0.31.9.
+
+lib/db/drizzle.config.ts
+  Reads DATABASE_URL (throws if missing). dialect "postgresql", schema
+  path = ./src/schema/index.ts.
+
+lib/db/src/index.ts
+  Builds a `pg.Pool({connectionString: DATABASE_URL})` (throws if
+  DATABASE_URL is unset), exports it as `pool`, builds and exports the
+  Drizzle ORM instance as `db = drizzle(pool, {schema})`. Re-exports
+  everything from ./schema.
+
+lib/db/src/schema/index.ts
+  Barrel that re-exports all 41 schema files (full list in Section 2).
+
+lib/db/src/schema/  — 44 files total, comprising 41 table modules + the
+barrel + the runtime session table + the document health pair. Each
+module follows the same pattern (drizzle-orm pgTable, drizzle-zod
+insertSchema, exported InsertX/X types). Per-table column inventory in
+Section 2.
+
+lib/integrations/anthropic_ai_integrations/
+  Empty directory (only the dir entry itself). No package files.
+
+lib/integrations-anthropic-ai/package.json
+  @workspace/integrations-anthropic-ai. exports . and ./batch.
+  deps: @anthropic-ai/sdk ^0.78.0, p-limit ^7.3.0, p-retry ^7.1.1.
+
+lib/integrations-anthropic-ai/src/client.ts
+  Constructs `new Anthropic({ apiKey: AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+  baseURL: AI_INTEGRATIONS_ANTHROPIC_BASE_URL })` and exports it as
+  `anthropic`. Throws at module load if either env var is missing.
+
+lib/integrations-anthropic-ai/src/index.ts
+  Re-exports `anthropic`, `batchProcess`, `batchProcessWithSSE`,
+  `isRateLimitError`, and the BatchOptions type (from ./batch).
+
+lib/integrations-anthropic-ai/src/batch/  (directory observed; contents
+not inventoried in this scan).
+
+lib/call-questions.ts
+  Exports CALL_FRAMEWORK_QUESTIONS — array of 4 question objects
+  (Q1-Q4) each with id, question, purpose, signals, listen_for. Also
+  exports CallQuestion type and QuestionsAnswered = {Q1,Q2,Q3,Q4:bool}.
+
+lib/coverage-matrix.ts
+  Exports ARCHETYPES (Growth Seeker, Preserver, Legacy Builder),
+  PIPELINE_STAGES (Outreach, Called, Demo Booked, Demo Complete,
+  Decision), COVERAGE_MATRIX (cartesian product of the two),
+  REQUIRED_DOCUMENT_TYPES (6 strings), EXPECTED_COMPLIANCE_FIELDS
+  (7 fields incl. eis_income_tax_relief, …, annual_seis_limit), and
+  COMPLIANCE_FIELD_LABELS (display map).
+
+lib/personas.ts
+  Exports PERSONA_TO_ARCHETYPE map (~20 personas → 3 archetypes),
+  VALID_ARCHETYPES, and resolveArchetype(persona) → string|null.
+
+# ---------- scripts/ ----------
+
+scripts/package.json
+  @workspace/scripts. scripts: hello (`tsx ./src/hello.ts`), typecheck.
+
+scripts/post-merge.sh
+  Bash script run by Replit's post-merge hook. Body:
+    set -e; pnpm install --frozen-lockfile; pnpm --filter db push.
+
+scripts/build_smoke_test_xlsx.py
+  Python smoke-test data generator (presence confirmed; not opened).
+
+scripts/migrate-belief-registry-0.9.sql
+  SQL migration script (presence confirmed; not opened).
+
+scripts/src/hello.ts
+  Trivial TS entry (presence confirmed; not opened).
+
+scripts/test-data/
+  Fixture inputs:
+    call-1-duncan.txt, call-2-duncan.txt,
+    contacts-list-1.csv, contacts-list-2.csv,
+    contacts-test-batch-30.csv, contacts-test-batch-30-real-uk.csv.
+
+# ---------- docs/ ----------
+
+docs/402_SPEC_Intelligence_Engine_V2_CURRENT.md  (1075 lines)
+docs/OPERATIONAL_READINESS_PLAN.md (704 lines)
+docs/decisions/README.md
+docs/decisions/001-tag-outcome-side-effect-model.md
+docs/decisions/002-pipedrive-integration.md
+docs/decisions/003-engine-phase-plan.md
+docs/decisions/004-website-integration.md
+docs/decisions/005-google-sso.md
+  Out-of-scope content; file presence + LOC noted only. (Not modified
+  per task instructions.)
+
+
+===========================================================================
+SECTION 2 — DATA MODEL
+===========================================================================
+
+Source of truth: lib/db/src/schema/  (44 files, all read end-to-end).
+Engine domain types live separately in
+artifacts/api-server/src/engine/v2/types.ts.
+
+Database tables (Drizzle / Postgres):
+
+  conversations               serial id, title, createdAt
+  messages                    serial id, conversationId FK→conversations
+                              (cascade), role, content, createdAt
+  session                     sid PK varchar, sess JSON, expire timestamp
+                              (idx); declared so drizzle-kit doesn't drop
+                              the connect-pg-simple runtime table.
+
+  users                       text id (uuid), google_sub UNIQUE, email
+                              UNIQUE, name, picture, role text default
+                              'agent' (values: agent | closer | admin),
+                              refresh_token, access_token,
+                              token_expires_at, scopes,
+                              created_at, last_login_at.
+  agents                      text id, name NOT NULL, email,
+                              aircall_user_id integer UNIQUE,
+                              user_id text UNIQUE FK→users (set null on
+                              delete), dialer_mode 'manual'|'power_dialer'
+                              (default manual), active bool default true,
+                              created_at, updated_at ($onUpdate).
+
+  contacts                    text id (`contact_<uuid8>`), first_name,
+                              last_name, email, phone, company,
+                              source_list, upload_batch,
+                              dedup_status default 'clean',
+                              dispatch_status default 'pool'
+                              (pool|queued|dispatched|called|qualified|
+                              archived),
+                              dispatch_date,
+                              call_attempts default 0, last_call_outcome,
+                              callback_date, outreach_paused_until,
+                              cool_off_until,
+                              next_call_type_hint
+                              (cold_call|demo|opportunity|null),
+                              assigned_closer_id (NULL|'any'|<userId>),
+                              aircall_contact_id integer UNIQUE,
+                              pipedrive_person_id integer UNIQUE,
+                              pipedrive_deal_id, lead_id (soft FK),
+                              created_at, updated_at.
+  leads                       text id, name, company,
+                              pipeline_stage default 'Outreach',
+                              first_contact, last_contact,
+                              detected_persona, confirmed_persona,
+                              confirmed_archetype,
+                              persona_confidence doublePrecision,
+                              stage_confidence doublePrecision,
+                              archived bool default false,
+                              send_log jsonb default [],
+                              stage_history jsonb default [],
+                              notes_legacy jsonb default [],
+                              notes text, source, transcript_filename,
+                              transcript_text, email, phone,
+                              call_attempts default 0, last_call_outcome,
+                              callback_date, outreach_paused_until,
+                              batch_date, campaign_name, sequence_stage,
+                              pipedrive_person_id integer UNIQUE,
+                              contact_id (soft FK), created_at,
+                              updated_at.
+
+  documents                   text id, file_code, type, name, filename,
+                              tier int, category,
+                              lifecycle_status default 'CURRENT',
+                              review_state default 'CLEAN',
+                              version int default 1, last_reviewed,
+                              description,
+                              pipeline_stage_relevance jsonb default [],
+                              persona_relevance jsonb default [],
+                              upstream_dependencies jsonb default [],
+                              downstream_dependents jsonb default [],
+                              is_generated bool default false,
+                              generation_brief_id, generation_attempt int,
+                              qc_report_id, source_trace jsonb default [],
+                              content text, qc_history jsonb default [],
+                              gdoc_id, gdoc_url,
+                              source_pdf_path, source_pdf_filename,
+                              source_pdf_imported_at,
+                              output_type default 'whitepaper', channel,
+                              campaign_id, sequence_position,
+                              sequence_id, word_count, branch_condition,
+                              belief_targets jsonb default [],
+                              pdf_exported_at, content_updated_at,
+                              pdf_file_path.
+  changelog                   text id, timestamp default now, action,
+                              document_id, lead_id, details, triggered_by.
+  gap_snapshots               text id, created_at, matrix_gaps jsonb,
+                              type_gaps jsonb,
+                              recommendation_gaps jsonb,
+                              information_readiness jsonb,
+                              summary jsonb, total_gaps int,
+                              file_path text, notes text.
+  videos                      text id, title, description, script_content,
+                              duration_seconds,
+                              format default 'portrait_mp4',
+                              send_method default 'whatsapp',
+                              persona_relevance jsonb default [],
+                              stage_relevance jsonb default [],
+                              objections_addressed jsonb default [],
+                              lifecycle_status default 'DRAFT',
+                              review_state default 'REQUIRES_REVIEW',
+                              created_at text, updated_at text.
+
+  approved_content_units (acu) text id, type, content,
+                              status default 'DRAFT', source, approved_by,
+                              approved_date, version int default 1,
+                              expression_variants jsonb default [],
+                              documents_referencing jsonb default [],
+                              cascade_on_change bool default true,
+                              notes, topics jsonb default [],
+                              requires_qualifier, parent_concept_id,
+                              is_expression_variant bool default false,
+                              variant_audience, supersedes,
+                              policy_status.
+  acu_candidates              text id, type, content,
+                              importance_level int, importance_label,
+                              importance_rationale,
+                              source_document_id, source_context,
+                              appears_in_documents jsonb default [],
+                              existing_acu_id,
+                              status default 'PENDING_REVIEW',
+                              scan_date, reviewed_by, review_date,
+                              review_action, notes.
+  acu_contradictions          text id, unit_a_id, unit_b_id,
+                              unit_a_content, unit_b_content,
+                              conflict_description, severity,
+                              status default 'UNRESOLVED',
+                              resolution, resolved_by, resolved_date.
+  acu_scan_log                text id, scan_date, documents_scanned,
+                              candidates_found, new_candidates,
+                              duplicates_found, contradictions_found,
+                              scan_duration_ms.
+
+  campaigns                   text id, name, description,
+                              status default 'DRAFT', target_cluster,
+                              personas jsonb, entry_stage, target_stage,
+                              channels jsonb, duration_weeks default 8,
+                              daily_volume, primary_belief,
+                              secondary_beliefs jsonb,
+                              primary_cta, secondary_cta, lead_magnet,
+                              compliance_constraints jsonb,
+                              blocked_content jsonb,
+                              prohibited_acus jsonb, notes,
+                              sequence jsonb, qc_status default 'PENDING',
+                              qc_report jsonb,
+                              asset_count, assets_passed_qc,
+                              created_at, activated_at.
+  campaign_assets             text id, campaign_id, node_id, channel,
+                              output_type, content, title, day,
+                              sequence_position, branch_condition,
+                              word_count, status default 'PENDING',
+                              qc_status default 'PENDING', qc_report jsonb,
+                              metadata jsonb default {}.
+  channels                    text id, name, format, max_words,
+                              max_links, max_ctas, max_lines,
+                              max_sentences, max_duration_seconds,
+                              headline_max_chars, body_max_chars,
+                              subject_max_words, subject_max_chars,
+                              prohibited jsonb, formats jsonb,
+                              cta_options jsonb,
+                              requires_meta_approval bool,
+                              requires_cta_button bool,
+                              video_thumbnail bool, from_address, goal,
+                              max_objection_responses, notes.
+  output_templates            text id, name, output_type, channel,
+                              parent_template_id, sections jsonb,
+                              formatting_rules jsonb,
+                              required_acus jsonb, prohibited_acus jsonb,
+                              generation_prompt_prefix,
+                              export_formats jsonb default ["docx"],
+                              version int default 1.
+  system_prompts              text id, name, location, prompt_text,
+                              rubric_score, version int default 1,
+                              status default 'ACTIVE', last_reviewed,
+                              reviewed_by.
+  compliance_constants        text id, key, label, value, value_type,
+                              status default 'ACTIVE',
+                              is_prohibited bool, prohibited_reason,
+                              subject_to_qualifier bool, qualifier_text,
+                              category, notes, superseded_by,
+                              override_reason, actor,
+                              source default 'manual_ui',
+                              activated_at, created_at.
+
+  import_sessions             text id, file_name, file_hash,
+                              status default 'PENDING',
+                              total_blocks, valid_blocks, rejected_blocks,
+                              executed_blocks, failed_blocks,
+                              block_results jsonb, created_at,
+                              completed_at.
+  tasks                       text id, title,
+                              status default 'Open',
+                              type default 'General',
+                              linked_document_id, context,
+                              created_at, updated_at.
+  sheet_sync_sessions         text id, sheet_url,
+                              status default 'RUNNING',
+                              rows_found, leads_created, leads_updated,
+                              leads_skipped, rows_failed, error_message,
+                              created_at, completed_at.
+
+  belief_registry             text id, cluster, cluster_display_name,
+                              cluster_tagline, name, description,
+                              belief_type, policy_status default 'active',
+                              gates jsonb, prerequisite_beliefs jsonb,
+                              is_hard_gate bool,
+                              primary_document_id,
+                              supporting_document_ids jsonb,
+                              conversation_question,
+                              content_if_unresolved,
+                              red_flag_signals jsonb,
+                              green_flag_signals jsonb, created_at.
+  lead_beliefs                text id, lead_id FK→leads,
+                              belief_id FK→belief_registry,
+                              state default 'UNKNOWN',
+                              investor_relevance default 'standard',
+                              relevance_rationale, established_date,
+                              evidence, evidence_source, confidence,
+                              last_updated, updated_by.
+                              UNIQUE(lead_id, belief_id).
+  belief_transitions          text id, lead_id, belief_id,
+                              from_state, to_state, transition_date,
+                              triggered_by, notes.
+  lead_intelligence           text id, lead_id UNIQUE FK→leads,
+                              qualification_status default
+                              'INSUFFICIENT_DATA',
+                              higher_rate_taxpayer bool,
+                              capital_available bool,
+                              self_directed bool,
+                              open_to_early_stage_risk bool,
+                              qualification_notes,
+                              cluster, ifa_involved bool,
+                              already_done_eis bool, estate_above_2m bool,
+                              assets_abroad bool, vct_aim_experience bool,
+                              hot_button, hot_button_confirmed bool,
+                              hot_button_quote,
+                              spin_situation, spin_problem,
+                              spin_implication, spin_need_payoff,
+                              readiness_status, primary_blocker,
+                              blocker_type, recommended_action,
+                              profile_summary, last_updated.
+
+  work_queue_sessions         text id (uuid),
+                              status default 'PENDING',
+                              started_at, completed_at,
+                              total_tasks, analysed_tasks,
+                              auto_fixed_count,
+                              cards_total, cards_resolved.
+  work_queue_findings         text id, session_id FK→work_queue_sessions,
+                              task_id, document_id,
+                              document_name, document_tier,
+                              finding_type, issue_description,
+                              proposed_fix, original_text,
+                              status default 'PENDING', skip_reason,
+                              sort_order, created_at, resolved_at.
+  document_health_sessions    text id, status default 'RUNNING',
+                              started_at, completed_at,
+                              documents_checked, documents_healthy,
+                              documents_warning, documents_failing,
+                              error_message.
+  document_health_scores      text id,
+                              session_id FK→document_health_sessions,
+                              document_id, document_name, document_tier,
+                              document_file_code,
+                              identity_status / identity_issues jsonb,
+                              targeting_status / targeting_issues jsonb,
+                              belief_status / belief_issues jsonb,
+                              compliance_status / compliance_issues jsonb,
+                              propagation_status / propagation_issues jsonb,
+                              content_status / content_issues jsonb,
+                              delivery_status / delivery_issues jsonb,
+                              overall_status default 'PASS', created_at.
+
+  lead_conversations          text id, lead_id FK→leads (nullable),
+                              contact_id FK→contacts (nullable),
+                              source (aircall|fireflies|manual),
+                              external_id, direction, duration_seconds,
+                              participants jsonb,
+                              transcript_text, summary,
+                              beliefs_before jsonb, beliefs_after jsonb,
+                              intelligence_delta jsonb,
+                              call_outcome, agent_name, agent_notes,
+                              tags jsonb, processed_at,
+                              engine_version,
+                              conversation_date, created_at.
+
+  integration_configs         text id, provider UNIQUE
+                              (aircall|pipedrive|fireflies|
+                              google_calendar),
+                              config jsonb (provider-specific),
+                              enabled bool, created_at, updated_at.
+                              File contains a comment block documenting
+                              expected JSONB shape per provider.
+
+  upload_sessions             text id (`upload_<uuid8>`), source_list,
+                              filename, uploaded_by,
+                              status default 'processing'
+                              (processing|ready_for_review|committed|
+                              cancelled),
+                              total_rows, new_count, duplicate_count,
+                              possible_match_count, invalid_count,
+                              committed_count, created_at, updated_at.
+  staged_contacts             text id, session_id FK→upload_sessions,
+                              row_number, first_name, last_name,
+                              email, phone, company,
+                              dedup_status default 'pending'
+                              (new|exact_duplicate|possible_match|invalid),
+                              match_reason, matched_contact_id,
+                              matched_details jsonb,
+                              decision (skip|update|create|null),
+                              invalid_reason, created_at.
+
+  call_list_configs           text id (`calllist_<uuid8>`), name,
+                              filter_criteria jsonb,
+                              daily_quota int default 100,
+                              assigned_agent_id, active bool,
+                              closing_only bool default false (closer-only
+                              tier-0 mode),
+                              total_dispatched, total_called,
+                              total_qualified, created_at, updated_at.
+  call_list_memberships       text id (`mem_<uuid8>`),
+                              call_list_id FK→call_list_configs,
+                              contact_id FK→contacts,
+                              added_at, removed_at (null=active),
+                              removal_reason
+                              (called|reconciled|carried_over),
+                              outcome_at_removal,
+                              carried_from_id (self soft-FK).
+                              Partial UNIQUE INDEX on contact_id
+                              WHERE removed_at IS NULL → at most one
+                              active membership per contact.
+
+  engine_investor_state       text id (`eis_<uuid8>`),
+                              contact_id UNIQUE FK→contacts,
+                              persona default 'undetermined'
+                              (preserver|growth_seeker|legacy_builder|
+                              undetermined),
+                              persona_confidence, persona_evidence,
+                              hot_button (family|freedom|legacy|relief|
+                              significance), hot_button_evidence,
+                              demo_score int, book_track (book_1|nurture),
+                              decision_style default 'unknown',
+                              pack1_gate default 'blocked',
+                              practical_problem, current_pressure,
+                              personal_angle, desired_outcome,
+                              exact_phrases jsonb<string[]>,
+                              portfolio_shape,
+                              annual_tax_liability numeric,
+                              decision_stakeholders, questions_for_call3,
+                              engine_version, created_at, updated_at.
+  engine_signals              text id, contact_id FK→contacts,
+                              code (QT,QL,C1-C4,G1-G3,L1-L2,P2-P3,S1-S6),
+                              state (per-category vocab — see file
+                              header), surfaced_by default 'not_yet'
+                              (question|conversation|not_yet),
+                              notes, evidence,
+                              confidence default 'medium' (high|med|low),
+                              engine_version, updated_at.
+                              UNIQUE(contact_id, code).
+  engine_signal_transitions   text id (`trn_<uuid8>`),
+                              contact_id FK→contacts, code,
+                              from_state, to_state, evidence, confidence,
+                              engine_run_id (soft FK), engine_version,
+                              transitioned_at. Append-only.
+  engine_runs                 text id (`run_<uuid8>`),
+                              contact_id FK→contacts,
+                              conversation_id FK→lead_conversations,
+                              call_type (cold_call|demo|opportunity),
+                              engine_version, output jsonb (full
+                              EngineOutput),
+                              status default 'keyword'
+                              (ok|failed|keyword),
+                              llm_extraction jsonb (LLMExtractionResult
+                              when ok), llm_model,
+                              llm_latency_ms,
+                              llm_input_tokens, llm_output_tokens,
+                              llm_cache_read_tokens,
+                              llm_cache_creation_tokens,
+                              llm_error, created_at.
+                              Indexes: (contact_id, created_at),
+                              (status, created_at).
+  engine_artifacts_sent       text id (`art_<uuid8>`),
+                              contact_id FK→contacts,
+                              doc_id int, doc_name, trigger_signal,
+                              cover_note, engine_run_id (soft),
+                              sent_at, opened bool, opened_at.
+                              Index (contact_id, sent_at).
+
+  outcome_reviews             text id (`rev_<uuid12>`),
+                              engine_run_id FK→engine_runs,
+                              contact_id FK→contacts,
+                              current_owner_user_id FK→users,
+                              status default 'awaiting_review'
+                              (awaiting_review|under_review|
+                               handed_to_closer|handed_to_agent|
+                               actioned|stale_escaped),
+                              handed_from_user_id FK→users,
+                              hand_note, handed_at,
+                              claimed_at, resolved_at,
+                              resolution_notes,
+                              created_at, updated_at.
+                              Indexes: owner+status, contact_id, run_id,
+                              status+updated_at.
+  outcome_action_decisions    text id (`dec_<uuid12>`),
+                              outcome_review_id FK→outcome_reviews,
+                              engine_run_id FK→engine_runs,
+                              action_type
+                              (nba|email|post_close_item|
+                               adviser_loop_item|book2),
+                              action_key (stable per-item id),
+                              decision (approved|edited|rejected|
+                                        deferred),
+                              edited_payload jsonb,
+                              decided_by_user_id FK→users,
+                              decided_at.
+                              UNIQUE(review_id, action_type, action_key).
+                              Index by review_id.
+  engine_outcome_rules        text id (slug), priority int,
+                              enabled bool default true,
+                              when_clauses jsonb (array of
+                              {lvalue, op, rvalue}),
+                              actions jsonb (array of
+                              OutcomeRuleAction; primary first;
+                              null falls back to legacy single-action
+                              fields below),
+                              action_type, owner, timing, detail,
+                              uses_content (legacy fields kept for
+                              backward-compat),
+                              created_at, updated_at.
+                              Index (enabled, priority).
+                              Also exports OutcomeRuleClause TS interface
+                              with op ∈ {===,!==,==,!=,>,>=,<,<=}.
+
+Engine domain types (artifacts/api-server/src/engine/v2/types.ts):
+  See Section 1 file entry — defines the type vocabulary used by every
+  engine function and persisted into engine_runs.output.
+
+Application/runtime types added on Express:
+  artifacts/api-server/src/types/express.d.ts adds
+    req.auth?: { user, agent }
+  artifacts/api-server/src/types/text-imports.d.ts allows `import x from
+    "*.txt"` (and similar) to typecheck as string.
+
+Frontend types:
+  artifacts/unlock-intel/src/hooks/useCurrentUser.ts defines the
+  CurrentUser response shape:
+    user: { id, email, name|null, picture|null, role:'agent'|'admin' }
+    agent: { id, name, email|null, aircall_user_id|null,
+             dialer_mode:'manual'|'power_dialer', active }
+  Note: this front-end role union does NOT include 'closer' even though
+  the database role column does — see Section 8.
+
+Shared TS constants (lib/):
+  lib/call-questions.ts → CALL_FRAMEWORK_QUESTIONS (Q1–Q4),
+                          CallQuestion, QuestionsAnswered.
+  lib/coverage-matrix.ts → ARCHETYPES, PIPELINE_STAGES,
+                           COVERAGE_MATRIX, REQUIRED_DOCUMENT_TYPES,
+                           EXPECTED_COMPLIANCE_FIELDS,
+                           COMPLIANCE_FIELD_LABELS.
+  lib/personas.ts → PERSONA_TO_ARCHETYPE, VALID_ARCHETYPES,
+                    resolveArchetype().
+
+API contract types:
+  Generated from lib/api-spec/openapi.yaml by Orval into
+    lib/api-zod/src/generated/        (Zod schemas + TS types)
+    lib/api-client-react/src/generated/ (React Query hooks)
+  Imported by the api-server (e.g. routes/health.ts uses
+  HealthCheckResponse from @workspace/api-zod) and by the unlock-intel
+  SPA via @workspace/api-client-react.
+
+
+===========================================================================
+SECTION 3 — DATA FLOW (input → storage → display)
+===========================================================================
+
+Below describes the flows that were directly observable from the code
+read in this scan. Where a flow runs through a route handler whose body
+was not opened in detail, the description is limited to what the route
+mounting, schema definitions, and file headers establish.
+
+A. AUTHENTICATION (read end-to-end)
+   User → /login (frontend page) → user clicks "Sign in with Google" →
+   GET /api/auth/google → buildAuthorizationUrl() in
+   lib/auth/oidcClient.ts generates state/PKCE/nonce, stores them on
+   req.session, redirects browser to Google →
+   Google redirects back to GET /api/auth/callback with code →
+   exchangeCode() validates ID token (state, nonce, PKCE) →
+   handler upserts users row (matched by google_sub), looks up agents
+   row by user_id (binding established at first login by email match),
+   sets req.session.userId and persists.
+   On every authed request, requireAuth loads usersTable + agentsTable
+   into req.auth. requireAdmin further checks user.role === 'admin'.
+   Frontend: ProtectedRoute calls useCurrentUser → /api/auth/me which
+   returns the {user, agent} payload; on 401 the route redirects to
+   /login?returnTo=<path>. Logout: POST /api/auth/logout, then
+   apiClient.logout() forces window.location to /login.
+   Storage: users (Postgres), agents (Postgres), session (Postgres via
+   connect-pg-simple in the `session` table).
+
+B. CALL TRANSCRIPT INTAKE (structural — handler bodies not all read)
+   Two ingress paths mention this flow in code that was opened:
+     1. Aircall webhook: POST /api/aircall/webhook (handlers in
+        routes/aircall/index.ts; bodies not read).
+     2. Sheet sync: POST /api/sheet-sync/sync (routes/sheet-sync;
+        bodies not read).
+   In both cases lead_conversations rows are created (schema confirms
+   source ∈ aircall|fireflies|manual) and the engine pipeline is
+   invoked.
+   Engine entry (verified via routes/engine/index.ts imports):
+     loadInvestor(contactId) → processTranscript / processTranscriptWithLLM
+     / processTranscriptDetailed (engine/v2) → saveEngineRun.
+   Persistence side-effects per saveEngineRun (per file headers and
+   schema):
+     engine_runs row written (call_type, engine_version, full output
+       jsonb, llm_* audit columns, status one of ok|failed|keyword).
+     engine_signals upserted per (contact, code).
+     engine_signal_transitions appended for state changes.
+     engine_investor_state upserted per contact.
+   When the call.tagged path detects an outcome configured with
+   creates_outcome_review=true (per the comment in
+   outcome_reviews schema), an outcome_reviews row is created in the
+   same transaction; outcome_action_decisions rows are then written
+   per operator action via the outcome-reviews router.
+   When content is actually dispatched (separate event from the engine
+   recommendation), engine_artifacts_sent rows are written.
+
+C. CONTACT INGESTION (structural)
+   POST /api/contacts/uploads creates an upload_sessions row →
+   /uploads/suggest + /uploads/:id/decisions populate staged_contacts
+   with dedup_status (new|exact_duplicate|possible_match|invalid) →
+   POST /uploads/:id/commit promotes accepted rows into the contacts
+   table (contact_id `contact_<uuid8>`). The contactIngestionService.ts
+   header confirms this is its scope.
+
+D. CALL LIST DISPATCH (structural)
+   Admins manage call_list_configs (filters + daily quota). Membership
+   is tracked in call_list_memberships with a partial UNIQUE INDEX on
+   contact_id WHERE removed_at IS NULL — at most one active membership
+   per contact at any time. Tiered fillQueue is invoked via
+   POST /api/call-lists/:id/fill-queue; the closing_only flag scopes
+   to tier-0 conversion calls only and is meaningful only for closer
+   role agents (per the schema comment).
+   Power Dialer push: POST /api/call-lists/:id/send-to-power-dialer
+   plus admin-side queue inspection
+   GET /api/admin/agents/:id/power-dialer-queue and clear endpoint.
+
+E. NEXT-BEST-ACTION DECISION (structural)
+   determineNextAction (engine/v2/functions/) is the legacy hardcoded
+   cascade. The Phase 7.1a outcome-rules engine
+   (engine/v2/outcomeRules/{loader, evaluator}) reads
+   engine_outcome_rules rows in priority order, evaluates the
+   AND-clause set against an EvaluationContext, and returns the matching
+   rule's actions list. Gating env: ENGINE_OUTCOME_RULES.
+   Admin endpoints (admin/index.ts):
+     GET    /admin/engine-outcome-rules
+     POST   /admin/engine-outcome-rules + /seed
+     PUT    /admin/engine-outcome-rules/:id
+     DELETE /admin/engine-outcome-rules/:id
+     POST   /admin/engine-outcome-rules/trace
+     POST   /admin/engine-outcome-rules/preview
+   Frontend pages /admin/outcome-rules + /admin/engine-config display
+   and edit these rules.
+
+F. DOCUMENT REGISTRY → PDF / GOOGLE DOC (structural)
+   Documents are stored in the documents table. PATCH /documents/:id
+   writes content_updated_at. POST /documents/:id/generate-pdf renders
+   via lib/pdfService.ts (Puppeteer-core + Inter font + Design Bible
+   HTML template) and persists pdf_exported_at + pdf_file_path.
+   GET /documents/:id/download-pdf serves the cached PDF.
+   POST /gdocs/export/:id pushes content to Google Drive/Docs; the
+   formatter pipeline in lib/formatService.ts (Claude with the
+   Design Bible v0.2 system prompt) is what produces the HTML body
+   that's uploaded.
+
+G. CONTENT GENERATION (structural)
+   Generation pipeline: POST /api/generation/generate (and /from-template,
+   /:id/regenerate, /:id/qc-rerun, /:id/promote) — orchestrated by
+   lib/generationEngine.ts. Per-section compliance enforcement
+   (max_words, max_sentences, max_chars, locked-content injection,
+   prohibited-ACU exclusion) lives in checkTemplateCompliance there.
+   A regen loop with MAX_REGEN_ATTEMPTS=2 is enforced in
+   routes/generation.
+   Campaign generation: POST /api/campaigns/:id/generate produces
+   campaign_assets rows; QC at GET /api/campaigns/:id/qc (lib/
+   campaignQC.ts validates per-channel constraints); activate at
+   PATCH /api/campaigns/:id/activate.
+
+H. WORK QUEUE (structural)
+   POST /api/work-queue/start creates a work_queue_sessions row, then
+   in background creates work_queue_findings (auto_fix or decision_card).
+   GET /api/work-queue/cards lists pending decision cards;
+   POST /api/work-queue/auto-fix applies all auto-fix findings;
+   per-card POST .../accept and .../skip resolve individual ones.
+   GET /api/work-queue/summary returns counts; the session row's
+   status field tracks RUNNING / READY / COMPLETE / FAILED.
+
+I. DOCUMENT HEALTH (structural)
+   POST /api/document-health/run creates a document_health_sessions row
+   and writes a document_health_scores row per CURRENT document with
+   7 dimension statuses (identity/targeting/belief/compliance/
+   propagation/content/delivery). GET /api/document-health/latest
+   returns the most recent session+scores for the
+   /document-health frontend page.
+
+J. LIVE QUEUE UPDATES (read end-to-end)
+   GET /api/events/queue is an SSE stream. lib/queueEvents.ts maintains
+   an in-memory subscriber set; webhook handlers and the
+   untagged-conversation sweep call notifyQueueChanged() to flush a
+   refresh ping to all connected Call Command pages. Single-process —
+   no Redis or external pub/sub.
+
+K. UNTAGGED CONVERSATION SWEEP (read end-to-end at orchestration level)
+   src/index.ts calls startUntaggedSweep() at boot (exported from
+   routes/aircall/index.ts). Comment in app boot logs "Untagged-
+   conversation sweep scheduled (every 5 min)". Body of the sweep
+   handler not read.
+
+L. COMPLIANCE CONSTANTS (structural)
+   Two-step propose/confirm workflow:
+     POST /api/compliance-constants/propose →
+     POST /api/compliance-constants/confirm.
+   src/index.ts loads the cache at boot via
+   lib/complianceConstantsService.loadConstants() and refuses to start
+   if zero rows are returned (FATAL).
+
+M. DISPLAY LAYER (read end-to-end at routing level)
+   The unlock-intel SPA mounts every authenticated page under
+   <ProtectedRoute><AppLayout>; admin-only pages additionally wrap in
+   <AdminOnlyRoute>. All API calls go through apiClient.apiFetch which
+   sends cookies, parses 401 → redirect to /login, and returns Response
+   for everything else. React Query is the data-fetching cache for
+   most reads; the body of each page (and its specific endpoints)
+   was not read in this scan.
+
+
+===========================================================================
+SECTION 4 — DEPENDENCIES BETWEEN FILES
+===========================================================================
+
+Workspace package graph (declared in package.json files):
+  @workspace/api-server depends on
+      @workspace/api-zod, @workspace/db,
+      @workspace/integrations-anthropic-ai
+  @workspace/unlock-intel depends on @workspace/api-client-react
+  @workspace/api-zod and @workspace/api-client-react are both produced
+      by Orval from @workspace/api-spec's openapi.yaml
+  @workspace/db is consumed by @workspace/api-server (and by
+      lib/db's own drizzle-kit push script via DATABASE_URL)
+  @workspace/integrations-anthropic-ai is consumed by api-server and
+      reads AI_INTEGRATIONS_ANTHROPIC_BASE_URL and
+      AI_INTEGRATIONS_ANTHROPIC_API_KEY at module load (throws if unset)
+
+Within api-server (observed via imports of files actually read or
+inventoried):
+  src/index.ts       → ./app, ./lib/logger, ./lib/dataManager,
+                       ./lib/complianceConstantsService,
+                       ./routes/aircall (named import startUntaggedSweep)
+  src/app.ts         → ./routes (barrel), ./lib/logger,
+                       ./lib/auth/session
+  src/routes/index.ts → 35 sub-router modules (full list in Section 1)
+  src/middlewares/requireAuth.ts → @workspace/db (usersTable, agentsTable),
+                                   drizzle-orm
+  src/middlewares/requireAdmin.ts → ./requireAuth
+  src/lib/auth/session.ts → @workspace/db (pool), express-session,
+                            connect-pg-simple
+  src/lib/auth/oidcClient.ts → openid-client, ../logger
+  src/routes/auth/index.ts → ../../lib/auth/oidcClient (build / exchange),
+                             ../../middlewares/requireAuth,
+                             @workspace/db (usersTable, agentsTable),
+                             drizzle-orm, ../../lib/logger
+  src/routes/admin/index.ts → @workspace/db (agentsTable, usersTable,
+                              integrationConfigsTable, contactsTable,
+                              callListConfigsTable,
+                              callListMembershipsTable,
+                              leadConversationsTable,
+                              engineOutcomeRulesTable, engineRunsTable),
+                              drizzle-orm, ../../middlewares/requireAdmin,
+                              ../../lib/logger,
+                              named imports from ../aircall
+                              (handleCallEnded etc.)
+  src/routes/aircall/index.ts → @workspace/db (contactsTable,
+                              leadConversationsTable,
+                              integrationConfigsTable, agentsTable,
+                              callListMembershipsTable),
+                              drizzle-orm,
+                              ../../engine/v2 (loadInvestor,
+                              processTranscript variants, saveEngineRun,
+                              ExtractionError, loadOutcomeRules,
+                              outcomeRulesFlagEnabled),
+                              ../../lib/tagModel
+                              (DEFAULT_TAG_MAPPING, DEFAULT_COOL_OFF_DAYS)
+  src/routes/recommendation/index.ts → @workspace/db (multiple tables),
+                              @workspace/integrations-anthropic-ai
+                              (anthropic), ../../lib/claudeTimeout
+                              (claudeWithTimeout), api-zod schemas
+  src/routes/health.ts → @workspace/api-zod (HealthCheckResponse)
+  src/routes/leads/index.ts → @workspace/db (leadsTable, changelogTable),
+                              drizzle-orm, api-zod params/bodies
+  src/routes/engine/index.ts → @workspace/db (engineRunsTable,
+                              leadConversationsTable),
+                              ../../engine/v2 (multiple)
+  src/routes/events/index.ts → ../../lib/queueEvents
+  src/routes/settings/index.ts uses ../../middlewares/requireAdmin
+  src/engine/v2/index.ts re-exports from ./types, ./version,
+      ./functions/*, ./outcomeRules/{loader,evaluator},
+      ./llm/{extractViaLLM, extractionSchema}, ./persistence, ./config
+
+Within unlock-intel (observed):
+  src/main.tsx → ./App, ./index.css
+  src/App.tsx  → wouter, @tanstack/react-query, every page module,
+                 ./components/{layout, ProtectedRoute, AdminOnlyRoute,
+                                ui/toaster, ui/tooltip}
+  src/components/ProtectedRoute.tsx → wouter, ../hooks/useCurrentUser
+  src/components/AdminOnlyRoute.tsx → wouter, ../hooks/useCurrentUser
+  src/hooks/useCurrentUser.ts → @tanstack/react-query, ../lib/apiClient
+  src/lib/apiClient.ts → (no app imports; uses fetch)
+
+Cross-cutting:
+  Every Drizzle table the api-server touches comes from @workspace/db
+  via the barrel re-export in lib/db/src/index.ts (`export * from
+  "./schema"`); the schema barrel itself re-exports all 41 schema
+  modules. Drizzle-zod insert schemas are colocated with each table
+  module.
+  The Anthropic SDK is imported through @workspace/integrations-anthropic-ai
+  exclusively — api-server code does not import @anthropic-ai/sdk
+  directly (per the package.json deps list and observed imports in
+  routes/recommendation and routes/aircall).
+  The frontend talks to the api-server only via apiClient.apiFetch and
+  the Orval-generated React Query hooks under @workspace/api-client-react
+  (when used). The session cookie `cu.sid` is the only auth carrier;
+  there is no Bearer token exchange.
+
+External services (declared in code, not in this scan considered as
+"used" unless an env var or call site was observed):
+  Postgres        — pg.Pool in lib/db/src/index.ts (DATABASE_URL)
+  Google OIDC     — openid-client in lib/auth/oidcClient.ts
+                    (GOOGLE_CLIENT_ID/SECRET, APP_URL, optional
+                    GOOGLE_WORKSPACE_DOMAIN)
+  Anthropic       — @anthropic-ai/sdk via the proxy
+                    (AI_INTEGRATIONS_ANTHROPIC_BASE_URL +
+                    AI_INTEGRATIONS_ANTHROPIC_API_KEY)
+  Aircall         — referenced throughout (routes/aircall, settings,
+                    schema integration_configs.config.aircall)
+  Pipedrive       — referenced (schema integration_configs.config.pipedrive,
+                    contacts.pipedrive_person_id, leads.pipedrive_person_id)
+  Fireflies       — referenced (integration_configs, lead_conversations.source)
+  Google Drive/Docs — referenced (replit.md, gdocs router)
+  Google Sheets   — referenced (sheet-sync router, sheet_sync_sessions)
+  Replit Connectors SDK — @replit/connectors-sdk in api-server deps
+  Puppeteer-core (Chromium) — local PDF rendering (declared in deps;
+                    used by pdfService.ts to render Design Bible HTML
+                    via a singleton headless browser)
+
+
+===========================================================================
+SECTION 5 — TEST COVERAGE
+===========================================================================
+
+The project has in-house assertion-based unit tests for the
+intelligence engine, written without a test framework. They are not
+wired to a CI runner or to any `test` script.
+
+What exists:
+  - artifacts/api-server/src/engine/v2/tests/runTests.ts (642 LOC).
+    A standalone runnable file. Defines its own minimal `test(name,
+    fn)` and `expect(actual)` helpers (with .toBe, .toEqual, .toBeNull,
+    .toContain, .toBeGreaterThan/.toBeLessThan, .toBeOneOf, .toMatch,
+    .toBeUndefined, .toBeNumber). Maintains module-level `passed` and
+    `failed` counters, prints `✓ name` / `✗ name (error)`, and ends
+    with a "TEST RESULTS" summary. Process exits non-zero on any
+    failure (exit code = failed count).
+    Coverage at the level of test() blocks (~30 in total) includes:
+    D1 detectPersona (3), D2 detectHotButton (3), D3 analyseSignals
+    (3), D4 evaluateGates (2), D5 routeContent (2), D6 cover-note
+    generation (2), D7 determineNextAction NBA cascade (2), D8
+    buildCrmNote (2), D9 validateCompliance (2), D10 processTranscript
+    end-to-end (1), D11 V2/V3 parity (1), and the V3-only blocks for
+    detectQuestions, analyseDemoSegments, generateEmail (EMAIL_1 +
+    EMAIL_2), determinePostCloseActions (committed + adviser_loop),
+    and routeToBook2 (including founding_investor permanent block).
+    Imports engine modules from ../index.ts; no Claude or DB calls.
+
+  - artifacts/api-server/src/engine/v2/tests/runAdapterTests.ts (252
+    LOC). Same in-house test()/expect() pattern. ~12 unit tests for
+    the LLM-result → Layer-2-input adapters in
+    engine/v2/llm/adaptExtraction.ts (extractionToPersona,
+    extractionToHotButton, extractionToSignalUpdates,
+    extractionToQuestionDetections, extractionToFactFindUpdates,
+    extractionToDemoScore). Uses synthetic LLMExtractionResult
+    fixtures; no Claude call.
+
+  - artifacts/api-server/src/engine/v2/tests/fixtures.ts. Shared
+    blankInvestor() factory and signalAt() helper used by the two
+    runners above.
+
+What does NOT exist:
+  - No Jest, Vitest, Mocha, Jasmine, AVA, node:test or Playwright
+    config anywhere in the repo, and none of the package.json files
+    declares such a framework as a devDependency.
+  - A workspace search for *.test.ts, *.test.tsx, *.spec.ts,
+    *.spec.tsx outside node_modules / .cache returns zero results.
+  - artifacts/api-server/package.json has no `test` script
+    (its scripts are: dev, build, start, typecheck). The workspace
+    root package.json also has no `test` script. The two runner files
+    above are invoked manually via `tsx` or `node`.
+  - No tests exist for any HTTP route handler, any lib/* service
+    other than the engine, any frontend page or component, the
+    schema/db layer, or the LLM extractor itself
+    (extractViaLLM/buildExtractionPrompt are not exercised by either
+    runner).
+
+
+===========================================================================
+SECTION 6 — EXTERNAL SERVICES
+===========================================================================
+
+The following external services are referenced in source code or
+schema:
+
+  PostgreSQL — Required at runtime. lib/db/src/index.ts throws if
+    DATABASE_URL is unset. Used as primary data store, session store
+    (connect-pg-simple), and for drizzle-kit schema push
+    (`pnpm --filter db push` is run by scripts/post-merge.sh).
+
+  Google OIDC (accounts.google.com) — Required for SSO. Configured via
+    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL, optional
+    GOOGLE_WORKSPACE_DOMAIN. Implemented in lib/auth/oidcClient.ts using
+    openid-client.
+
+  Anthropic Claude (via Replit AI Integrations proxy) — Used for the
+    LLM extraction layer (engine/v2/llm/), email generation
+    (generateEmailWithLLM), document QC, work queue analysis, ACU
+    scanning + contradiction detection (lib/acuScanner.ts +
+    lib/acuContradictionDetector.ts), intelligence + belief analysis
+    (lib/intelligenceService.ts + lib/beliefAnalysisService.ts),
+    campaign generation (lib/campaignGenerator.ts), and Google Docs
+    formatting (lib/formatService.ts). Every call site goes through
+    lib/claudeTimeout.ts. Configured via AI_INTEGRATIONS_ANTHROPIC_
+    BASE_URL and AI_INTEGRATIONS_ANTHROPIC_API_KEY (both required at
+    module load of @workspace/integrations-anthropic-ai).
+
+  Aircall — Telephony. Inbound webhooks (POST /api/aircall/webhook),
+    REST calls for Power Dialer push, contact upsert, user lookup,
+    and connection test. Credentials stored in
+    integration_configs.provider='aircall'.config (api_id, api_token,
+    webhook_token, webhook_url, transcription_mode and optional
+    transcription_api_key). Aircall Everywhere widget is loaded into
+    the unlock-intel SPA (`aircall-everywhere` runtime dep in
+    artifacts/unlock-intel/package.json).
+
+  Pipedrive — CRM sync. integration_configs.provider='pipedrive'.config
+    holds api_token. References on contacts (pipedrive_person_id,
+    pipedrive_deal_id) and leads (pipedrive_person_id) suggest two-way
+    person/deal sync; bodies of relevant route handlers were not read.
+
+  Fireflies — Conversation source. integration_configs.provider='fireflies'
+    holds webhook_secret. lead_conversations.source='fireflies' is one
+    of the documented values.
+
+  Google Drive / Google Docs — Document export pipeline. Routes
+    mounted under /api/gdocs use ReplitConnectors from @replit/
+    connectors-sdk to obtain Google credentials at request time.
+    The matching .replit integration is google-drive:1.0.0 (see
+    "Replit-managed integrations" below). The schema's
+    integration_configs.provider='google_calendar' entry holds a
+    generic Google OAuth credential block (client_id, client_secret,
+    redirect_uri, access_token, refresh_token); see Section 8 flag #4
+    for the naming inconsistency between this provider key and its
+    de-facto use.
+
+  Google Sheets — Read-only ingest of leads/transcripts. Routes mounted
+    under /api/sheet-sync. Sessions tracked in sheet_sync_sessions.
+
+  Local headless Chromium (Puppeteer-core) — Used for server-side PDF
+    rendering. Not a hosted service, but an external binary required
+    at runtime (puppeteer-core ^24 declared in artifacts/api-server/
+    package.json). lib/pdfService.ts hardcodes a Nix store path
+    (/nix/store/...138.0.7204.100/bin/chromium) with `which chromium`
+    as a fallback.
+
+Replit-managed integrations declared in .replit:
+  google-drive:1.0.0
+
+
+===========================================================================
+SECTION 7 — PATTERNS AND CONVENTIONS
+===========================================================================
+
+Project layout & tooling:
+  - pnpm workspace monorepo. Three artifacts under artifacts/, shared
+    libraries under lib/, helper scripts under scripts/.
+  - All TypeScript packages use ESM ("type": "module"). The api-server
+    boots from a single esbuild-bundled dist/index.mjs.
+  - Per-artifact `typecheck` script runs `tsc --noEmit`; root
+    `typecheck` first builds lib project references then fans out
+    across artifacts and scripts.
+  - npm packages are gated behind a 24-hour minimum release age
+    (pnpm-workspace.yaml), with an exception for @replit/* and a few
+    pinned trusted packages.
+  - Native binaries for non-linux-x64 platforms are explicitly removed
+    via overrides (esbuild, lightningcss, @tailwindcss/oxide, rollup,
+    @expo/ngrok-bin) — Replit container is linux-x64 only.
+
+Database / ORM:
+  - Drizzle ORM with drizzle-zod. Each schema file follows the same
+    template: pgTable definition, createInsertSchema(...).omit(...),
+    `export type InsertX = z.infer<...>` and `export type X = ...
+    $inferSelect`.
+  - All "id" columns are text primary keys with a randomUUID-based
+    `$defaultFn` and a domain-specific prefix (e.g. `contact_<uuid8>`,
+    `run_<uuid8>`, `rev_<uuid12>`, `dec_<uuid12>`, `eis_<uuid8>`,
+    `art_<uuid8>`, `mem_<uuid8>`, `calllist_<uuid8>`, `sig_<uuid8>`,
+    `trn_<uuid8>`, `upload_<uuid8>`).
+  - Timestamps almost universally use `{ withTimezone: true }` and
+    .notNull().defaultNow(); updated_at columns use `.$onUpdate(() =>
+    new Date())`.
+  - JSONB columns default to `[]` or `{}` and are typed via
+    drizzle-orm's jsonb helper; richer typing is occasionally added
+    via `.$type<...>()`.
+  - Foreign keys reference table objects directly (so Drizzle picks up
+    the relation), with explicit `onDelete: "set null"` where
+    appropriate (e.g. agents.user_id → users).
+  - Append-only history tables exist alongside their state tables
+    (engine_signals + engine_signal_transitions, lead_beliefs +
+    belief_transitions, changelog).
+  - Partial unique indexes are used for "at most one active per X"
+    invariants (call_list_memberships active per contact).
+
+API server:
+  - Express 5 with a single barrel router under /api. Each sub-router
+    is `Router()` from express, exported as default; routes/index.ts
+    mounts all of them.
+  - `pinoHttp` for request logging with custom serialisers; pino
+    everywhere for structured logs.
+  - Cookies-based session auth via express-session + connect-pg-simple.
+    Cookie name `cu.sid`, 7-day rolling expiry, sameSite=lax, secure
+    only in production.
+  - Auth middleware pair: requireAuth → requireAdmin (composes the
+    former). Routers mostly leave gating implicit (most endpoints
+    require auth simply by virtue of frontend guarding); requireAdmin
+    is applied per-route on settings/admin endpoints.
+  - Validation: zod (`zod/v4` for drizzle-zod outputs, `zod` for
+    api-spec-derived schemas). Health route demonstrates the pattern of
+    parsing the response shape through an api-zod schema before sending.
+  - SSE for live updates is implemented with a single in-process
+    subscriber set in lib/queueEvents.ts.
+  - Background work is started in src/index.ts by calling
+    startUntaggedSweep() after boot — there is no external job runner.
+
+Engine layout (engine/v2/, contains V3 implementation):
+  - Each engine function lives in its own file under functions/ with a
+    leading "C<n>. <name>" comment matching the spec numbering.
+  - Functions return strict typed shapes (types.ts is the single source
+    of truth) — V3 outputs are documented as "strict superset of V2"
+    so existing callers keep working.
+  - LLM extraction is a sub-layer (engine/v2/llm/) with a separate
+    extraction schema and adapter functions that translate the
+    LLMExtractionResult into Layer-2 inputs.
+  - Outcome-rule engine is independent (engine/v2/outcomeRules/) and
+    is gated behind ENGINE_OUTCOME_RULES env flag (per the
+    engine_outcome_rules schema header).
+  - Persistence is a separate persistence.ts file; the function layer
+    never imports the database directly. Tests/harnesses use
+    blankInvestor() fixtures and never touch the DB.
+
+Frontend SPA (unlock-intel):
+  - Routing via wouter. Single Switch in App.tsx, wrapped in
+    QueryClientProvider, TooltipProvider, and a base-path WouterRouter
+    derived from import.meta.env.BASE_URL.
+  - Two gating components: ProtectedRoute (every page except /login)
+    and AdminOnlyRoute (admin-only pages). Both rely on a single
+    useCurrentUser query hook with staleTime 60s and retry:false.
+  - All API calls go through apiClient.apiFetch which always sends
+    `credentials: "include"` and on a 401 forces a top-level navigation
+    to /login?returnTo=<path> (no inline auth UI).
+  - shadcn/ui primitives sit under components/ui/ — ~50 small wrappers
+    around Radix UI; the same set is replicated almost verbatim under
+    artifacts/mockup-sandbox/src/components/ui/.
+  - Tailwind v4 with @tailwindcss/vite. Theming via CSS variables in
+    src/index.css (file presence confirmed; not opened).
+  - React Query is the data-fetching cache; non-React-Query useEffect
+    fetches are also used in places.
+
+Code style:
+  - File-leading block comments are used heavily, particularly in
+    engine functions and in schema files where they describe the
+    column's role and the operational semantics around it.
+  - Comments often reference phase numbers (Phase 4.7, 4.9, 7.1a/b,
+    010c/d, 011a-c, 012a/c, 013a/b/c) tying code to the changelog in
+    replit.md.
+  - Constants and shared types live in lib/ (lib/personas.ts,
+    lib/coverage-matrix.ts, lib/call-questions.ts) so both server and
+    client can import them.
+  - api-zod and api-client-react are produced by Orval from a single
+    openapi.yaml, treating the API spec as the contract and generating
+    both sides.
+
+
+===========================================================================
+SECTION 8 — INCONSISTENCIES AND FLAGS
+===========================================================================
+
+Observations only. No fixes are proposed here.
+
+  1. Engine version naming.
+     The directory is artifacts/api-server/src/engine/v2/ but
+     ENGINE_VERSION = "3.0.0" and ENGINE_SPEC = "402_SPEC_Intelligence_
+     Engine_V3_CURRENT.md". The barrel file is labelled "V2 intelligence
+     engine" in routes/engine/index.ts's leading comment, while
+     processTranscript.ts says "V3 orchestrator. Supersedes V2's C10."
+     Path name has not caught up with the version it now contains.
+
+  2. Engine spec file in docs/ does not match the spec the code claims.
+     docs/402_SPEC_Intelligence_Engine_V2_CURRENT.md is checked in;
+     engine/v2/version.ts references
+     402_SPEC_Intelligence_Engine_V3_CURRENT.md, which does not appear
+     under docs/.
+
+  3. Frontend role union narrower than backend.
+     useCurrentUser.ts declares `role: "agent" | "admin"`. The users
+     schema and assigned_closer_id semantics on contacts establish a
+     third role "closer" used by the backend (see comment block in
+     users schema). A closer login would land in CurrentUser with a
+     role value the frontend type doesn't enumerate.
+
+  4. Schema comment vs actual provider key for Google.
+     integration_configs.ts comments document a `google_calendar`
+     provider config (client_id/secret/redirect_uri/access_token/
+     refresh_token), but the same OAuth credentials are described by
+     replit.md as being used for the Google Docs / Drive export
+     pipeline. The provider key name and the de-facto usage are not
+     fully aligned.
+
+  5. Two parallel "conversation" tables.
+     `conversations` (serial id, plus messages with ON DELETE CASCADE)
+     looks generic / scaffolded, while `lead_conversations` (text id,
+     transcript_text, beliefs_before/after, etc.) is the domain
+     conversation table. Whether `conversations` is still used
+     anywhere is not visible from this scan; nothing in the route
+     mounts referenced it directly.
+
+  6. Two outcome routing layers.
+     engine_outcome_rules has an `actions` jsonb column AND legacy
+     single-action columns (action_type, owner, timing, detail,
+     uses_content). The schema comment says "Loader + evaluator
+     prefer `actions` when present"; both shapes are still permitted
+     in storage. Migration window is acknowledged in the comment.
+
+  7. determineNextAction.ts and the outcome-rules engine coexist.
+     The legacy hardcoded determineNextAction is still exported from
+     engine/v2/index.ts and is gated against the ENGINE_OUTCOME_RULES
+     env flag at runtime. Two implementations of the same decision
+     are kept in tree.
+
+  8. integration_configs.provider value `aircall` vs the enabled
+     boolean column.
+     The provider column is a free-text unique key (not an enum), and
+     the only documented values come from the trailing comment. There
+     is no DB-level CHECK constraint enforcing the provider list
+     (aircall|pipedrive|fireflies|google_calendar). Out-of-band
+     additions would be silently accepted.
+
+  9. lib/integrations/anthropic_ai_integrations is an empty directory.
+     The actual Anthropic integration package lives at
+     lib/integrations-anthropic-ai (note hyphenation difference). The
+     empty directory is still listed under
+     pnpm-workspace.yaml's `packages: [..., lib/integrations/*, ...]`
+     glob — a future package added under that path would be picked up
+     automatically, but right now nothing else is there.
+
+ 10. Soft foreign-keys without database-level constraints.
+     contacts.lead_id, leads.contact_id, engine_signal_transitions.
+     engine_run_id, engine_artifacts_sent.engine_run_id, and
+     call_list_memberships.carried_from_id are all documented in
+     comments as "soft refs" — they are plain text columns without a
+     references() clause, so referential integrity for these links is
+     enforced (or not) only by application logic.
+
+ 11. work_queue_findings.task_id and document_id are NOT NULL but
+     lack FK constraints (per the file: "task_id/document_id no FK").
+     Whatever enforcement exists is at the application layer — there
+     is no DB-level guarantee that the referenced rows exist.
+
+ 12. Two DOM "use-mobile" / "use-toast" hooks.
+     Both unlock-intel and mockup-sandbox carry their own
+     hooks/use-mobile.tsx and hooks/use-toast.ts copies of what is
+     usually a shared shadcn helper. Same files are also duplicated
+     across the two artifacts under components/ui/. Drift between the
+     two copies is possible.
+
+ 13. The deployment manifest in .replit lists artifacts/api-server and
+     artifacts/mockup-sandbox but NOT artifacts/unlock-intel, even
+     though unlock-intel is the user-facing SPA. unlock-intel does
+     appear in the artifacts registry comment block at the top of the
+     project description, so this could be intentional (different
+     deployment topology), but it is asymmetric with the other two
+     artifacts.
+
+ 14. Boot-time fatal vs warning behaviour is not symmetric.
+     src/index.ts treats compliance_constants being empty as FATAL
+     (process.exit(1)). It treats seedDatabase() failing as a warning
+     (logs and still calls app.listen). Similarly, app.ts treats a
+     missing SESSION_SECRET as a warning (only /api/auth/* fails)
+     rather than a hard exit.
+
+ 15. Anthropic client throws at module load if env vars are missing,
+     but it is imported transitively by routes/recommendation/index.ts
+     and routes/aircall/index.ts. Booting api-server without those
+     env vars would fail the import resolution for the whole app, not
+     just the routes that actually need Claude.
+
+ 16. The "sheet-sync" sub-router is the only one mounted under a
+     prefix path (`router.use("/sheet-sync", sheetSyncRouter)`); the
+     other 34 sub-routers either declare the full `/api/...` path
+     inside their handlers or have no prefix. This makes
+     /api/sheet-sync routes the only ones whose mounted prefix is not
+     visible at the handler.
